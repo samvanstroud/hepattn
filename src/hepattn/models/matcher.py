@@ -77,11 +77,10 @@ class Matcher(nn.Module):
 
         self.step += 1
 
-        if self.adaptive_solver:
-            # If we are at a check interval, use the current cost batch to see which
-            # solver is the fastest, and set that to be the new solver
-            if self.step % self.adaptive_check_interval == 0:
-                self.adapt_solver(costs)
+        # If we are at a check interval, use the current cost batch to see which
+        # solver is the fastest, and set that to be the new solver
+        if self.adaptive_solver and self.step % self.adaptive_check_interval == 0:
+            self.adapt_solver(costs)
 
         # Convert back into a torch tensor and move it back onto the GPU
         return torch.from_numpy(pred_idxs).long().to(device)

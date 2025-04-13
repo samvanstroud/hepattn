@@ -77,8 +77,7 @@ class TestITkEvent:
         fig = plot_itk_event_reconstruction(inputs, targets)
         fig.savefig(Path("tests/outputs/itk/itk_event.png"))
 
-    def test_itk_matcher(self, itk_event):
-        # Setup the matcher
+    def test_itk_matcher(self):
         Matcher(
             default_solver="scipy",
             adaptive_solver=False,

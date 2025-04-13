@@ -77,8 +77,7 @@ class TestTrackMLEvent:
         fig = plot_trackml_event_reconstruction(inputs, targets)
         fig.savefig(Path("tests/outputs/trackml/trackml_event.png"))
 
-    def test_trackml_matcher(self, trackml_event):
-        # Setup the matcher
+    def test_trackml_matcher(self):
         Matcher(
             default_solver="scipy",
             adaptive_solver=False,

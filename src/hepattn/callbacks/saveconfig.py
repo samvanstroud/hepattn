@@ -12,7 +12,7 @@ class Metadata(Callback):
     def __init__(self) -> None:
         super().__init__()
 
-    def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
+    def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:  # noqa: ARG002
         if trainer.is_global_zero:
             print("-" * 80)
             print(f"log dir: {trainer.log_dir!r}")

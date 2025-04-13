@@ -24,18 +24,6 @@ def eval_event(fname, i, hit_cut):
     hits = load_event(fname, i)
     hits["pred"] = hits.prob > hit_cut
 
-    # parts["hits_pre"] = hits.pid.value_counts()
-    # parts["reconstructable_pre"] = (parts["hits_pre"] >= 3) & (parts["pid"] != 0) & (parts["pt"] > 1) & (parts["eta"].abs() < 2.5)
-
-    # hits_post = hits[hits["pred"]]
-    # parts["hits_post"] = hits_post.pid.value_counts()
-    # parts["reconstructable_post"] = (parts["hits_post"] >= 3) & (parts["pid"] != 0) & (parts["pt"] > 1) & (parts["eta"].abs() < 2.5)
-
-    # add particle eta and pt to each hit
-    # hits.index.name = ""
-    # parts.index.name = ""
-    # hits = hits.join(parts[["eta", "pt"]], on="pid")
-
     return hits
 
 
@@ -90,8 +78,8 @@ def make_plots(hits, parts, out_dir):
     plt.savefig(out_dir / "hit_prob.png")
 
 
-fname1 = "/share/rcifdata/svanstroud/hepattn/logs/HF-ftest-1024ws-10layer-rPE0.1-hybridnorm_20250411-T210657/ckpts/epoch=010-validate_loss=0.17719__test.h5"
-fname2 = "/share/rcifdata/svanstroud/hepattn/logs/HF-ftest-1024ws-10layer-rPE0.1-hybridnorm_20250411-T210657/ckpts/epoch=039-validate_loss=0.30950__test.h5"
+fname1 = "/share/rcifdata/svanstroud/hepattn/logs/HF-ftest-1024ws-10layer-rPE0.1-hybridnorm_20250411-T210657/ckpts/epoch=010-validate_loss=0.17719__test.h5"  # noqa: E501
+fname2 = "/share/rcifdata/svanstroud/hepattn/logs/HF-ftest-1024ws-10layer-rPE0.1-hybridnorm_20250411-T210657/ckpts/epoch=039-validate_loss=0.30950__test.h5"  # noqa: E501
 
 
 HIT_CUT = 0.01
@@ -120,27 +108,19 @@ if __name__ == "__main__":
     avg_hits_post = hits.pred.sum() / num_events
 
     # track level eff
-    # track_eff = parts.reconstructable_post.sum() / parts.reconstructable_pre.sum()
-    # track_eff_1gev = parts[parts.pt > 1].reconstructable_post.sum() / parts[parts.pt > 1].reconstructable_pre.sum()
 
     # recall before filtering
     precision_pre = hits.tgt.mean()
-    # sel = (hits.eta.abs() < 2.5) | (hits.pid == 0)
-    # precision_pre_eta = hits[sel].tgt.mean()
 
     # number of positive and negative samples
     print(f"Number of positive samples: {(hits.tgt == 1).sum() / NUM_EVENTS:.1f}")
     print(f"Number of negative samples: {(hits.tgt == 0).sum() / NUM_EVENTS:.1f}")
 
     print(f"Precision pre filter: {precision_pre:.1%}")
-    # print(f"Precision pre filter eta: {precision_pre_eta:.1%}")
     print(f"Precision post: {precision:.1%}")
     print(f"Recall post: {recall:.1%}")
     print(f"Hits before filter: {avg_hits_pre:.1f}")
     print(f"Hits after filter: {avg_hits_post:.1f}")
-    # print(f"Track level eff: {track_eff:.1%}")
-    # print(f"Hits post/pre: {avg_hits_post:.1f} / {avg_hits_pre:.1f}")
-    # print(f"Track level eff 1GeV: {track_eff_1gev:.1%}")
 
     # plot histograms of model outputs for positive and negtaive samples
 

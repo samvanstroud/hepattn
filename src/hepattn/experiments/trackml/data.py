@@ -185,8 +185,8 @@ class TrackMLDataset(Dataset):
         # Check that all hits have different phi
         # This is necessary as the fast sorting algorithm used by pytorch can be non-stable
         # if two values are equal, which could cause subtle bugs
-        # msg = f"Only {hits['phi'].nunique()} of the {len(hits)} have unique phi"
-        # assert hits["phi"].nunique() == len(hits), msg
+        msg = f"Only {hits['phi'].nunique()} of the {len(hits)} have unique phi"
+        assert hits["phi"].nunique() == len(hits), msg
 
         return hits, particles
 

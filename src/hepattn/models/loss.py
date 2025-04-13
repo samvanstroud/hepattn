@@ -4,7 +4,8 @@ import torch.nn.functional as F
 eps = 1e-6
 
 
-def object_ce_loss(pred_logits, true, mask=None, weight=None):
+def object_ce_loss(pred_logits, true, mask=None, weight=None):  # noqa: ARG001
+    # TODO: Add support for mask?
     losses = F.binary_cross_entropy_with_logits(pred_logits, true, weight=weight)
     return losses.mean()
 

@@ -14,7 +14,7 @@ class MaskFormer(nn.Module):
         tasks: nn.ModuleList,
         num_queries: int,
         embed_dim: int,
-        matcher: None | nn.Module = None,
+        matcher: nn.Module | None = None,
         input_sort_field: str | None = None,
     ):
         """
@@ -53,7 +53,7 @@ class MaskFormer(nn.Module):
         self.query_initial = nn.Parameter(torch.randn(num_queries, embed_dim))
         self.input_sort_field = input_sort_field
 
-    def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:  # noqa: C901, PLR0912
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
 
@@ -167,7 +167,7 @@ class MaskFormer(nn.Module):
 
         return preds
 
-    def loss(self, outputs: dict, targets: dict) -> dict:
+    def loss(self, outputs: dict, targets: dict) -> dict:  # noqa: C901
         """Computes the loss between the forward pass of the model and the data / targets.
         It first computes the cost / loss between each of the predicted and true tracks in each ROI
         and then uses the Hungarian algorihtm to perform an optimal bipartite matching. The model

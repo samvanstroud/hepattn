@@ -198,7 +198,7 @@ class ITkDataset(Dataset):
             hits[hit]["on_valid_particle"] = hits[hit]["particle_id"].isin(particles["particle_id"])
 
             # TODO: Add back in option to have truth based noise filtering
-            # hits[k] = hits[k][hits[k]["on_valid_particle"]]
+            # hits[k] = hits[k][hits[k]["on_valid_particle"]]  # noqa: ERA001
 
             assert len(hits[hit]) != 0, f"No {hit}s remaining, loosen selection"
 

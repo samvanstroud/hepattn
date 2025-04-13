@@ -165,12 +165,12 @@ class ModelWrapper(LightningModule):
     def configure_optimizers(self):
         # Pick which optimizer we want to use
         if self.optimizer.lower() == "adamw":
-            from torch.optim import AdamW
+            from torch.optim import AdamW  # noqa: PLC0415
 
             opt = AdamW(self.model.parameters(), lr=self.lrs_config["initial"], weight_decay=self.lrs_config["weight_decay"])
         # https://arxiv.org/abs/2302.06675
         elif self.optimizer.lower() == "lion":
-            from lion_pytorch import Lion
+            from lion_pytorch import Lion  # noqa: PLC0415
 
             opt = Lion(self.model.parameters(), lr=self.lrs_config["initial"], weight_decay=self.lrs_config["weight_decay"])
 

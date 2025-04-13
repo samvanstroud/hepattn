@@ -33,7 +33,7 @@ class CLDDataset(Dataset):
         self.random_seed = random_seed
 
         # Global random state initialisation
-        np.random.seed(random_seed)
+        np.random.seed(random_seed)  # noqa: NPY002
 
         # Setup the number of events that will be used
         event_filenames = list(Path(self.dirpath).glob("*reco*.parquet"))

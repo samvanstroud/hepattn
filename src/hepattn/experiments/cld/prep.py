@@ -227,7 +227,7 @@ def get_particle_class(pid, charge):
     return -1
 
 
-def prep_event(events, event_idx, namecodes, min_pt):
+def prep_event(events, event_idx, namecodes, min_pt):  # noqa: C901, PLR0912, PLR0914, PLR0915
     items = {}
 
     # First build the items by combinging them into properly formatted awkward arrays
@@ -349,8 +349,8 @@ def prep_event(events, event_idx, namecodes, min_pt):
 
     # Apply the alias map
     data_out_aliased = {}
-    for key in data_out:
-        data_out_aliased[key_alias_map[key]] = data_out[key]
+    for key, value in data_out.items():
+        data_out_aliased[key_alias_map[key]] = value
 
     data_out = ak.Array({key: [value] for key, value in data_out_aliased.items()})
 
