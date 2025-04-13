@@ -1,13 +1,11 @@
-import pytest
-import torch
-import yaml
-import matplotlib.pyplot as plt
-
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+import pytest
+import yaml
+
 from hepattn.experiments.cld.data import CLDDataset
 from hepattn.experiments.cld.plot_event import plot_cld_event_reconstruction
-
-
 
 plt.rcParams["figure.dpi"] = 300
 
@@ -17,7 +15,6 @@ class TestCLDEvent:
     def cld_event(self):
         config_path = Path("src/hepattn/experiments/cld/configs/base.yaml")
         config = yaml.safe_load(config_path.read_text())["data"]
- 
 
         dirpath = "/share/rcifdata/maxhart/data/cld/prepped"
         num_events = -1
@@ -63,9 +60,9 @@ class TestCLDEvent:
         # Every valid particle should have a unique particle id
 
         # Particle id should be a long
-    
+
     def test_cld_event_display_merged_inputs(self, cld_event):
-        # Plot an event display directly from dataloader with merged 
+        # Plot an event display directly from dataloader with merged
         # inputs to verify things look correct
         inputs, targets = cld_event
 
@@ -113,7 +110,6 @@ class TestCLDEvent:
         fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
         fig.savefig(Path("tests/outputs/cld/cld_event_tracker_merged.png"))
 
-        
     def test_cld_event_display(self, cld_event):
         # Plot an event display directly from dataloader to verify things look correct
         inputs, targets = cld_event
