@@ -15,32 +15,28 @@ class TestTrackMLEvent:
     @pytest.fixture
     def trackml_event(self):
         input_fields = {
-        "hit": [
-            "x",
-            "y",
-            "z",
-            "r",
-            "eta",
-            "phi",
-            "u",
-            "v",
-            "charge_frac",
-            "leta",
-            "lphi",
-            "lx",
-            "ly",
-            "lz",
-            "geta",
-            "gphi",
-        ]
+            "hit": [
+                "x",
+                "y",
+                "z",
+                "r",
+                "eta",
+                "phi",
+                "u",
+                "v",
+                "charge_frac",
+                "leta",
+                "lphi",
+                "lx",
+                "ly",
+                "lz",
+                "geta",
+                "gphi",
+            ]
         }
 
         target_fields = {
-            "particle": [
-                "pt",
-                "eta",
-                "phi"
-            ],
+            "particle": ["pt", "eta", "phi"],
         }
 
         dirpath = "/share/rcifdata/maxhart/data/trackml/raw/train/"
