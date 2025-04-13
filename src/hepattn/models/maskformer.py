@@ -71,7 +71,10 @@ class MaskFormer(nn.Module):
             # These slices can be used to pick out specific
             # objects after we have merged them all together
             # TODO: Clean this up
-            x[f"key_is_{input_name}"] = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name) for i in input_names], dim=-1)
+            device = inputs[input_name + "_valid"].device
+            x[f"key_is_{input_name}"] = torch.cat(
+                [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in input_names], dim=-1
+            )
 
         # Merge the input objects and he padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in input_names], dim=-2)
@@ -82,13 +85,11 @@ class MaskFormer(nn.Module):
             x[f"key_{self.input_sort_field}"] = torch.concatenate(
                 [inputs[input_name + "_" + self.input_sort_field] for input_name in input_names], dim=-1
             )
-        else:
-            x[f"key_{self.input_sort_field}"] = None
 
         # Pass merged input hits through the encoder
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
-            x["key_embed"] = self.encoder(x["key_embed"], x[f"key_{self.input_sort_field}"])
+            x["key_embed"] = self.encoder(x["key_embed"], x.get(f"key_{self.input_sort_field}"))
 
         # Unmerge the updated features back into the separate input types
         # These are just views into the tensor that old all the merged hits

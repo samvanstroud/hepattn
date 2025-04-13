@@ -13,7 +13,7 @@ class TrackMLFilter(ModelWrapper):
     ):
         super().__init__(name, model, lrs_config, optimizer)
 
-    def log_compound_metrics(self, preds, targets, stage):
+    def log_custom_metrics(self, preds, targets, stage):
         pred = preds["final"]["hit_filter"]["hit_on_valid_particle"]
         true = targets["hit_on_valid_particle"]
 

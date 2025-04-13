@@ -14,7 +14,7 @@ class ITkTracker(ModelWrapper):
     ):
         super().__init__(name, model, lrs_config, optimizer, mtl)
 
-    def log_compound_metrics(self, preds, targets, stage):  # noqa: PLR0914
+    def log_custom_metrics(self, preds, targets, stage):  # noqa: PLR0914
         # Just log predictions from the final layer
         preds = preds["final"]
 

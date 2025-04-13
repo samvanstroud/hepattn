@@ -40,13 +40,13 @@ class ModelWrapper(LightningModule):
         # Log the losses from each task from each layer
         for layer_name, layer_losses in losses.items():
             for task_name, task_losses in layer_losses.items():
-                task_losses = layer_losses[task_name]
                 for loss_name, loss_value in task_losses.items():
                     self.log(f"{stage}/{layer_name}_{task_name}_{loss_name}", loss_value)
                 total_loss += loss_value
 
         # Log the total loss
         self.log(f"{stage}/loss", total_loss)
+        return total_loss
 
     def log_task_metrics(self, preds, targets, stage):
         # Log any task specific metrics
@@ -66,11 +66,9 @@ class ModelWrapper(LightningModule):
         # First log any task metrics
         self.log_task_metrics(preds, targets, stage)
 
-        # If the superclass has implemented some compound metrics that
-        # depend on the outputs of multiple tasks, log those too
-        # TODO: Probably a better way of doing this will callbacks or something
-        if hasattr(self, "log_compound_metrics"):
-            self.log_compound_metrics(preds, targets, stage)
+        # log custom metrics implemented by subclass
+        if hasattr(self, "log_custom_metrics"):
+            self.log_custom_metrics(preds, targets, stage)
 
     def training_step(self, batch, batch_idx):
         inputs, targets = batch
@@ -78,51 +76,21 @@ class ModelWrapper(LightningModule):
         # Get the model outputs
         outputs = self.model(inputs)
 
-        # Get the losses from all of the tasks
+        # Compute and log losses
         losses = self.model.loss(outputs, targets)
+        total_loss = self.log_losses(losses, "train")
 
-        self.log_losses(losses, "train")
-
-        if batch_idx % self.trainer.log_every_n_steps == 0:
-            # If we want to log metrics we go ahead and compute the actual predictions
+        # Get the predictions from the model
+        if batch_idx % self.trainer.log_every_n_steps == 0:  # avoid calling predict if possible
             preds = self.predict(outputs)
             self.log_metrics(preds, targets, "train")
 
-        # Here we choose which strategy to use to weight/handle the different layers and tasks
         # Use Jacobian Descent for Multi Task Learning https://arxiv.org/abs/2406.16232
         if self.mtl:
-            opt = self.optimizers()
-            opt.zero_grad()
+            self.mlt_opt(losses, outputs)
+            return None
 
-            for layer_name, layer_losses in losses.items():
-                # Get a list of the features that are used by all of the tasks
-                layer_features = []
-                for task in self.model.tasks:
-                    layer_features.extend(outputs[layer_name][input_feature] for input_feature in task.input_features)
-
-                # Remove any duplicate features that are used by multiple tasks
-                layer_features = list(set(layer_features))
-
-                # Perform the backward pass for this layer
-                layer_losses = [sum(losses[layer_name][task.name]) for task in self.model.tasks]
-                mtl_backward(losses=layer_losses, features=layer_features, aggregator=UPGrad())
-
-            opt.step()
-
-        # Default multi-task strategy is to just add up all the losses
-        else:
-            losses_flat = {}
-
-            # Unpack the nested losses into a single flat dictionary
-            for layer_name, layer_losses in losses.items():
-                for task_name, task_losses in layer_losses.items():
-                    for loss_name, loss in task_losses.items():
-                        losses_flat[f"{layer_name}_{task_name}_{loss_name}"] = loss
-
-            total_loss = sum(losses_flat.values())
-
-            return total_loss
-        return None
+        return total_loss
 
     def validation_step(self, batch):
         inputs, targets = batch
@@ -130,26 +98,24 @@ class ModelWrapper(LightningModule):
         # Get the raw model outputs
         outputs = self.model(inputs)
 
-        # Note we have to compute the losses for the validation step also so
-        # the metrics are correct as the loss calculation is where we do the
-        # permutation of the predictions to match the targets
+        # Compute and log losses
         losses = self.model.loss(outputs, targets)
-        self.log_losses(losses, "val")
+        total_loss = self.log_losses(losses, "val")
 
-        # Use the outputs to produce actual usable predictions
+        # Get the predictions from the model
         preds = self.model.predict(outputs)
-
-        # Evaluate the predictions on the
         self.log_metrics(preds, targets, "val")
 
-        return preds
+        return total_loss
 
     def test_step(self, batch):
         inputs, targets = batch
         outputs = self.model(inputs)
 
-        # Like in validation step, we have to calculate the losses first
+        # Calculate loss to also run matching
         losses = self.model.loss(outputs, targets)
+
+        # Get the predictions from the model
         preds = self.model.predict(outputs)
 
         return outputs, preds, losses
@@ -188,3 +154,22 @@ class ModelWrapper(LightningModule):
             return [opt], [sch]
         print("Skipping learning rate scheduler.")
         return opt
+
+    def mlt_opt(self, losses, outputs):
+        opt = self.optimizers()
+        opt.zero_grad()
+
+        for layer_name, layer_losses in losses.items():
+            # Get a list of the features that are used by all of the tasks
+            layer_features = []
+            for task in self.model.tasks:
+                layer_features.extend(outputs[layer_name][input_feature] for input_feature in task.input_features)
+
+            # Remove any duplicate features that are used by multiple tasks
+            layer_features = list(set(layer_features))
+
+            # Perform the backward pass for this layer
+            layer_losses = [sum(losses[layer_name][task.name]) for task in self.model.tasks]
+            mtl_backward(losses=layer_losses, features=layer_features, aggregator=UPGrad())
+
+        opt.step()

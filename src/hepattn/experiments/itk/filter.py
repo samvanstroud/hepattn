@@ -14,7 +14,7 @@ class ITkFilter(ModelWrapper):
     ):
         super().__init__(name, model, lrs_config, optimizer)
 
-    def log_compound_metrics(self, preds, targets, stage):
+    def log_custom_metrics(self, preds, targets, stage):
         # Get the final predictions from the hit filter task
         # Calculate metrics for the combined hits also
 
