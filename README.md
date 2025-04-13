@@ -39,6 +39,15 @@ In order to install it, first install the package as above, then uncomment the
 `flash-attn` requirement, and rerun the installation. This is because `flash-attn`
 depends on `torch` in order to be installed.
 
+## Contributing
+
+If you would like to contribute, please set up pre-commit hooks with
+
+```shell
+pre-commit install
+```
+
+
 
 ## Activing the environment
 

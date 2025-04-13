@@ -99,7 +99,7 @@ def visualize_attention_scores(
 
     suffix_title = f"Batch {batch_idx}, Head {head_idx}" if batch_idx != 0 or head_idx != 0 else ""
 
-    fig, ax = plt.subplots(figsize=(12, 10))
+    fig, ax = plt.subplots(figsize=(12, 10), constrained_layout=True)
     color = "viridis" if score_mod is not None else "cividis"
     im = ax.imshow(scores_viz.cpu().detach()[0, 0, :, :], aspect="auto", cmap=color)
     fig.colorbar(im)
@@ -127,7 +127,6 @@ def visualize_attention_scores(
         ax.set_yticks(np.arange(-0.5, num_query_tokens, 1), minor=True)
         ax.grid(which="minor", color="black", linestyle="-", linewidth=2)
 
-    plt.tight_layout()
     plt.savefig(file_path, dpi=300, bbox_inches="tight")
     plt.close(fig)  # Close the figure to free up memory
 
