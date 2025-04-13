@@ -1,23 +1,23 @@
-import torch.nn as nn
 import torch
+from torch import nn
 
 from hepattn.models.wrapper import ModelWrapper
 
 
 class ITkFilter(ModelWrapper):
     def __init__(
-            self,
-            name: str,
-            model: nn.Module,
-            lrs_config: dict,
-            optimizer: str = "AdamW",
-        ):
+        self,
+        name: str,
+        model: nn.Module,
+        lrs_config: dict,
+        optimizer: str = "AdamW",
+    ):
         super().__init__(name, model, lrs_config, optimizer)
 
     def log_compound_metrics(self, preds, targets, stage):
         # Get the final predictions from the hit filter task
         # Calculate metrics for the combined hits also
-        
+
         preds_unpacked = {}
         targets_unpacked = {}
 
@@ -32,8 +32,8 @@ class ITkFilter(ModelWrapper):
         if "pixel" in preds_unpacked and "strip" in preds_unpacked:
             preds_unpacked["hit"] = torch.cat((preds_unpacked["pixel"], preds_unpacked["strip"]), dim=-1)
             targets_unpacked["hit"] = torch.cat([targets_unpacked["pixel"], targets_unpacked["strip"]], dim=-1)
-            
-        for hit in preds_unpacked.keys():
+
+        for hit in preds_unpacked:
             pred = preds_unpacked[hit]
             true = targets_unpacked[hit]
 
@@ -50,12 +50,11 @@ class ITkFilter(ModelWrapper):
                 "valid_post": (pred & true).float().sum(),
                 "noise_pre": (~true).float().sum(),
                 "noise_post": (pred & ~true).float().sum(),
-
                 # Standard binary classification metrics
                 "acc": (pred == true).half().mean(),
-                "valid_recall":  tp / true.sum(),
+                "valid_recall": tp / true.sum(),
                 "valid_precision": tp / pred.sum(),
-                "noise_recall":  tn / (~true).sum(),
+                "noise_recall": tn / (~true).sum(),
                 "noise_precision": tn / (~pred).sum(),
             }
 

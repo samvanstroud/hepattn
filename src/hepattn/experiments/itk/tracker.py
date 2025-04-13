@@ -1,17 +1,17 @@
-import torch.nn as nn
+from torch import nn
 
 from hepattn.models.wrapper import ModelWrapper
 
 
 class ITkTracker(ModelWrapper):
     def __init__(
-            self,
-            name: str,
-            model: nn.Module,
-            lrs_config: dict,
-            optimizer: str = "AdamW",
-            mtl: bool = False,
-        ):
+        self,
+        name: str,
+        model: nn.Module,
+        lrs_config: dict,
+        optimizer: str = "AdamW",
+        mtl: bool = False,
+    ):
         super().__init__(name, model, lrs_config, optimizer, mtl)
 
     def log_compound_metrics(self, preds, targets, stage):

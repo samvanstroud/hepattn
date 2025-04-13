@@ -3,10 +3,9 @@ import numpy as np
 
 from hepattn.experiments.trackml.data import TrackMLDataset
 
-
 plt.rcParams["text.usetex"] = False
 plt.rcParams["figure.dpi"] = 300
-plt.rcParams['figure.constrained_layout.use'] = True
+plt.rcParams["figure.constrained_layout.use"] = True
 
 
 def plot_trackml_kinematics(dataset: TrackMLDataset):
@@ -22,7 +21,7 @@ def plot_trackml_kinematics(dataset: TrackMLDataset):
         qtys_bins[f"num_particles_{pt_cut}gev"] = np.logspace(2, 4.2, 32)
 
     # Create the empty histograms that will be filled
-    hists = {qty: np.zeros(len(bins) - 1) for qty, bins in qtys_bins.items()} 
+    hists = {qty: np.zeros(len(bins) - 1) for qty, bins in qtys_bins.items()}
 
     # Fill te histogram from each event
     for event_idx in range(len(dataset)):
@@ -36,7 +35,7 @@ def plot_trackml_kinematics(dataset: TrackMLDataset):
         }
 
         for pt_cut in pt_cuts:
-            event_qtys[f"num_particles_{pt_cut}gev"] = (targets["particle_pt"][0] >= pt_cut).float().sum(-1),
+            event_qtys[f"num_particles_{pt_cut}gev"] = ((targets["particle_pt"][0] >= pt_cut).float().sum(-1),)
 
         # Fill the event info into the histograms
         for qty_name, qty_value in event_qtys.items():
@@ -44,11 +43,11 @@ def plot_trackml_kinematics(dataset: TrackMLDataset):
             hists[qty_name] += hist
 
         print(f"Done event {event_idx}")
-    
+
     # Specify which histograms we want to plot on which axes
     axes_spec = [
         (0, "pt", "Particle $p_T$", "black", None),
-        (1, "eta", "Particle $\eta$", "black", None),
+        (1, "eta", r"Particle $\eta$", "black", None),
         (2, "num_hits", "Number of Hits in Event", "black", None),
         (3, "num_particles_0.0gev", "Number of Particles in Event", "black", "All"),
         (3, "num_particles_1.0gev", "Number of Particles in Event", "mediumseagreen", "1 GeV"),

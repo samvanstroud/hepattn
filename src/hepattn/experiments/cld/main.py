@@ -1,10 +1,8 @@
-import pathlib
-import comet_ml 
-
 from lightning.pytorch.cli import ArgsType
-from hepattn.utils.cli import CLI
+
 from hepattn.experiments.cld.data import CLDDataModule
 from hepattn.experiments.cld.model import CLDReconstructor
+from hepattn.utils.cli import CLI
 
 
 def main(args: ArgsType = None) -> None:

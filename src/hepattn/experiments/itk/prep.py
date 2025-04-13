@@ -1,9 +1,8 @@
 from argparse import ArgumentParser
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
-
+import pandas as pd
 
 # A script for preprocessing ITk CSV files into parquet binary files
 
@@ -42,7 +41,7 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
 
         # Rename hit fields to be compatible with TrackML
         truth.rename(columns={"tgt_pid": "particle_id"}, inplace=True)
-        
+
         # Rename particle fields to be compatible with TrackML
         parts.rename(columns={"q": "charge", "particle_type": "pdgId", "nhits": "num_clusters"}, inplace=True)
 

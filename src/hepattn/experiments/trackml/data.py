@@ -1,13 +1,11 @@
+from pathlib import Path
+
+import h5py
 import numpy as np
 import pandas as pd
 import torch
-import h5py
-
-from torch.utils.data import DataLoader, Dataset
 from lightning import LightningDataModule
-from pathlib import Path
-
-import hepattn.experiments.trackml.cluster_features as cluster_features
+from torch.utils.data import DataLoader, Dataset
 
 
 def is_valid_file(path):
@@ -25,10 +23,10 @@ class TrackMLDataset(Dataset):
         hit_volume_ids: list | None = None,
         particle_min_pt: float = 1.0,
         particle_max_abs_eta: float = 2.5,
-        particle_min_num_hits = 3,
-        event_max_num_particles = 1000,
+        particle_min_num_hits=3,
+        event_max_num_particles=1000,
         hit_eval_path: str | None = None,
-        ):
+    ):
         super().__init__()
 
         # Set the global random sampling seed
@@ -47,7 +45,7 @@ class TrackMLDataset(Dataset):
 
         if num_events < 0:
             num_events = num_events_available
-        
+
         # Metadata
         self.dirpath = Path(dirpath)
         self.hit_eval_path = hit_eval_path
@@ -59,7 +57,7 @@ class TrackMLDataset(Dataset):
         # Setup hit eval file if specified
         if self.hit_eval_path:
             print(f"Using hit eval dataset {self.hit_eval_path}")
-        
+
         # Hit level cuts
         self.hit_volume_ids = hit_volume_ids
 
@@ -77,7 +75,7 @@ class TrackMLDataset(Dataset):
     def __getitem__(self, idx):
         inputs = {}
         targets = {}
-        
+
         # Load the event
         hits, particles = self.load_event(idx)
 
@@ -93,12 +91,12 @@ class TrackMLDataset(Dataset):
 
         # Build the targets for whether a particle slot is used or not
         targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
-        targets["particle_valid"][:len(particles)] = True
+        targets["particle_valid"][: len(particles)] = True
         targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
 
         # Build the particle regression targets
         particle_ids = torch.from_numpy(particles["particle_id"].values)
-        
+
         message = f"Event {idx} has {num_particles}, but limit is {self.event_max_num_particles}"
         assert len(particle_ids) <= self.event_max_num_particles, message
 
@@ -118,7 +116,7 @@ class TrackMLDataset(Dataset):
                 # Null target/particle slots are filled with nans
                 # This acts as a sanity check that we correctly mask out null slots in the loss
                 x = torch.full((self.event_max_num_particles,), torch.nan)
-                x[:num_particles] = torch.from_numpy(particles[field].to_numpy()[:self.event_max_num_particles])
+                x[:num_particles] = torch.from_numpy(particles[field].to_numpy()[: self.event_max_num_particles])
                 targets[f"particle_{field}"] = x.unsqueeze(0)
 
         return inputs, targets
@@ -128,7 +126,7 @@ class TrackMLDataset(Dataset):
 
         particles = pd.read_parquet(self.dirpath / Path(event_name + "-parts.parquet"))
         hits = pd.read_parquet(self.dirpath / Path(event_name + "-hits.parquet"))
-        
+
         # Make the detector volume selection
         if self.hit_volume_ids:
             hits = hits[hits["volume_id"].isin(self.hit_volume_ids)]
@@ -147,8 +145,8 @@ class TrackMLDataset(Dataset):
         hits["v"] = hits["y"] / (hits["x"] ** 2 + hits["y"] ** 2)
 
         # Add extra particle fields
-        particles["p"] = np.sqrt(particles["px"]**2 + particles["py"]**2 + particles["pz"]**2)
-        particles["pt"] = np.sqrt(particles["px"]**2 + particles["py"]**2)
+        particles["p"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2 + particles["pz"] ** 2)
+        particles["pt"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2)
         particles["qopt"] = particles["q"] / particles["pt"]
         particles["eta"] = np.arctanh(particles["pz"] / particles["p"])
         particles["theta"] = np.arccos(particles["pz"] / particles["p"])
@@ -231,7 +229,7 @@ class TrackMLDataModule(LightningDataModule):
                 num_events=self.num_train,
                 hit_eval_path=self.hit_eval_train,
                 **self.kwargs,
-                )
+            )
 
         if stage == "fit":
             self.val_dataset = TrackMLDataset(
@@ -239,7 +237,7 @@ class TrackMLDataModule(LightningDataModule):
                 num_events=self.num_val,
                 hit_eval_path=self.hit_eval_val,
                 **self.kwargs,
-                )
+            )
 
         # Only print train/val dataset details when actually training
         if stage == "fit" and self.trainer.is_global_zero:
@@ -254,7 +252,7 @@ class TrackMLDataModule(LightningDataModule):
                 num_events=self.num_test,
                 hit_eval_path=self.hit_eval_test,
                 **self.kwargs,
-                )
+            )
             print(f"Created test dataset with {len(self.test_dataset):,} events")
 
     def get_dataloader(self, stage: str, dataset: TrackMLDataset, shuffle: bool):  # noqa: ARG002

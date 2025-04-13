@@ -1,7 +1,6 @@
-import pytest
-import matplotlib.pyplot as plt
-
 from pathlib import Path
+
+import pytest
 
 from hepattn.experiments.trackml.data import TrackMLDataset
 from hepattn.experiments.trackml.plot_kinematics import plot_trackml_kinematics
@@ -11,22 +10,18 @@ class TestTrackMLEvent:
     @pytest.fixture
     def trackml_dataset(self):
         input_fields = {
-        "hit": [
-            "x",
-            "y",
-            "z",
-            "r",
-            "eta",
-            "phi",
-        ]
+            "hit": [
+                "x",
+                "y",
+                "z",
+                "r",
+                "eta",
+                "phi",
+            ]
         }
 
         target_fields = {
-            "particle": [
-                "pt",
-                "eta",
-                "phi"
-            ],
+            "particle": ["pt", "eta", "phi"],
         }
 
         dirpath = "/share/rcifdata/maxhart/data/trackml/prepped/train/"
@@ -50,7 +45,6 @@ class TestTrackMLEvent:
         )
 
         return dataset
-
 
     def test_trackml_plot_kinematics(self, trackml_dataset):
         fig = plot_trackml_kinematics(trackml_dataset)

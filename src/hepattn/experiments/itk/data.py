@@ -1,10 +1,10 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import torch
-
-from torch.utils.data import DataLoader, Dataset
 from lightning import LightningDataModule
-from pathlib import Path
+from torch.utils.data import DataLoader, Dataset
 
 
 def is_valid_file(path):
@@ -23,8 +23,8 @@ class ITkDataset(Dataset):
         particle_min_pt: float = 1.0,
         particle_max_abs_eta: float = 2.5,
         particle_min_num_hits: dict[str, int] = {"pixel": 3, "strip": 6},
-        event_max_num_particles = 1000,
-        ):
+        event_max_num_particles=1000,
+    ):
         super().__init__()
 
         # Set the global random sampling seed
@@ -43,7 +43,7 @@ class ITkDataset(Dataset):
 
         if num_events < 0:
             num_events = num_events_available
-        
+
         # Metadata
         self.dirpath = Path(dirpath)
         self.inputs = inputs
@@ -68,7 +68,7 @@ class ITkDataset(Dataset):
     def __getitem__(self, idx):
         inputs = {}
         targets = {}
-        
+
         # Load the event
         hits, particles = self.load_event(idx)
 
@@ -92,12 +92,12 @@ class ITkDataset(Dataset):
             # TODO: Check if mask target in config before doing this ?
             # Build the targets for whether a particle slot is used or not
             targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
-            targets["particle_valid"][:len(particles)] = True
+            targets["particle_valid"][: len(particles)] = True
             targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
 
             # Build the particle regression targets
             particle_ids = torch.from_numpy(particles["particle_id"].values).long()
-            
+
             message = f"Event {idx} has {num_particles}, but limit is {self.event_max_num_particles}"
             assert len(particle_ids) <= self.event_max_num_particles, message
 
@@ -112,11 +112,11 @@ class ITkDataset(Dataset):
                 # Null target/particle slots are filled with nans
                 # This acts as a sanity check that we correctly mask out null slots in the loss
                 x = torch.full((self.event_max_num_particles,), torch.nan)
-                x[:num_particles] = torch.from_numpy(particles[field].to_numpy()[:self.event_max_num_particles])
+                x[:num_particles] = torch.from_numpy(particles[field].to_numpy()[: self.event_max_num_particles])
                 targets[f"particle_{field}"] = x.unsqueeze(0)
 
         return inputs, targets
-    
+
     def load_event(self, idx):
         # Load in event data
         event_name = self.event_names[idx]
@@ -131,13 +131,8 @@ class ITkDataset(Dataset):
             hits[hit_name] = pd.read_parquet(self.dirpath / Path(f"{event_name}-{hit_name}.parquet"))
 
         cartesian_fields = {
-            "pixel": [
-                "x", "y", "z",
-                "cluster_x", "cluster_y", "cluster_z"],
-            "strip": [
-                "x", "y", "z", 
-                "cluster_x_1", "cluster_y_1", "cluster_z_1",
-                "cluster_x_2", "cluster_y_2", "cluster_z_2"],
+            "pixel": ["x", "y", "z", "cluster_x", "cluster_y", "cluster_z"],
+            "strip": ["x", "y", "z", "cluster_x_1", "cluster_y_1", "cluster_z_1", "cluster_x_2", "cluster_y_2", "cluster_z_2"],
         }
 
         # Scale the input coordinates to in meters so they are ~ 1
@@ -147,9 +142,9 @@ class ITkDataset(Dataset):
 
         charge_fields = {
             "pixel": ["charge_count"],
-            "strip": ["charge_count_1", "charge_count_2"], 
+            "strip": ["charge_count_1", "charge_count_2"],
         }
-        
+
         # Provide the logarithm of the charge as the raw charge can be O(several thousand)
         for hit in hit_names:
             for field in charge_fields[hit]:
@@ -161,7 +156,7 @@ class ITkDataset(Dataset):
             # Only include hits from the specified detector regions
             if self.hit_regions:
                 hits[k] = hits[k][hits[k]["region"].isin(self.hit_regions)]
-                
+
             # Add extra hit fields
             hits[k]["r"] = np.sqrt(hits[k]["x"] ** 2 + hits[k]["y"] ** 2)
             hits[k]["s"] = np.sqrt(hits[k]["x"] ** 2 + hits[k]["y"] ** 2 + hits[k]["z"] ** 2)
@@ -172,8 +167,8 @@ class ITkDataset(Dataset):
             hits[k]["v"] = hits[k]["y"] / (hits[k]["x"] ** 2 + hits[k]["y"] ** 2)
 
         # Add extra particle fields
-        particles["p"] = np.sqrt(particles["px"]**2 + particles["py"]**2 + particles["pz"]**2)
-        particles["pt"] = np.sqrt(particles["px"]**2 + particles["py"]**2)
+        particles["p"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2 + particles["pz"] ** 2)
+        particles["pt"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2)
         particles["qopt"] = particles["charge"] / particles["pt"]
         particles["eta"] = np.arctanh(particles["pz"] / particles["p"])
         particles["theta"] = np.arccos(particles["pz"] / particles["p"])
@@ -186,7 +181,7 @@ class ITkDataset(Dataset):
         # Apply particle level cuts based on particle fields
         particles = particles[particles["pt"] >= self.particle_min_pt]
         particles = particles[particles["eta"].abs() <= self.particle_max_abs_eta]
-        
+
         # Remove particles that have no truth link record
         particles = particles[particles["particle_id"] != 0]
 
@@ -244,10 +239,10 @@ class ITkDataModule(LightningDataModule):
 
     def setup(self, stage: str):
         if stage == "fit" or stage == "test":
-            self.train_dset = ITkDataset(dirpath=self.train_dir, num_events=self.num_train, **self.kwargs,)
+            self.train_dset = ITkDataset(dirpath=self.train_dir, num_events=self.num_train, **self.kwargs)
 
         if stage == "fit":
-            self.val_dset = ITkDataset(dirpath=self.val_dir, num_events=self.num_val, **self.kwargs,)
+            self.val_dset = ITkDataset(dirpath=self.val_dir, num_events=self.num_val, **self.kwargs)
 
         # Only print train/val dataset details when actually training
         if stage == "fit" and self.trainer.is_global_zero:
@@ -256,7 +251,7 @@ class ITkDataModule(LightningDataModule):
 
         if stage == "test":
             assert self.test_dir is not None, "No test file specified, see --data.test_dir"
-            self.test_dset = ITkDataset(dirpath=self.test_dir, num_events=self.num_test, trainer=self.trainer, **self.kwargs,)
+            self.test_dset = ITkDataset(dirpath=self.test_dir, num_events=self.num_test, trainer=self.trainer, **self.kwargs)
             print(f"Created test dataset with {len(self.test_dset):,} events")
 
     def get_dataloader(self, stage: str, dataset: ITkDataset, shuffle: bool):  # noqa: ARG002

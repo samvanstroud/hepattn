@@ -1,11 +1,12 @@
 from argparse import ArgumentParser
 from pathlib import Path
+
 import pandas as pd
 
-import hepattn.experiments.trackml.cluster_features as cluster_features
-
+from hepattn.experiments.trackml import cluster_features
 
 # A script for preprocessing TrackML CSV files into parquet binary files
+
 
 def is_valid_file(path):
     path = Path(path)
@@ -36,7 +37,7 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
         parts_in_path = Path(in_dir) / Path(event_name + "-particles.csv.gz")
         hits_in_path = Path(in_dir) / Path(event_name + "-hits.csv.gz")
         cells_in_path = Path(in_dir) / Path(event_name + "-cells.csv.gz")
-        
+
         # Check that all of the input files required exist, otherwise skip this event
         if not is_valid_file(truth_in_path):
             print(f"Skipping {event_name} as found no corresponding truth input file")
@@ -53,7 +54,7 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
         if not is_valid_file(cells_in_path):
             print(f"Skipping {event_name} as found no corresponding cells input file")
             continue
-        
+
         # Define the output file paths
         parts_out_path = Path(out_dir) / Path(event_name + "-parts.parquet")
         hits_out_path = Path(out_dir) / Path(event_name + "-hits.parquet")
@@ -77,7 +78,7 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
         # Add truth hit-particle intersection/momentum info
         for field in ["tx", "ty", "tz", "tpx", "tpy", "tpz", "weight"]:
             hits[field] = truth[field]
-        
+
         # Add the charge cluster info to the hits
         hits = cluster_features.append_cell_features(hits, cells, detector_config_path)
 

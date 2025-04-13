@@ -1,7 +1,8 @@
 from lightning.pytorch.cli import ArgsType
-from hepattn.utils.cli import CLI
+
 from hepattn.experiments.trackml.data import TrackMLDataModule
 from hepattn.experiments.trackml.filter import TrackMLFilter
+from hepattn.utils.cli import CLI
 
 
 def main(args: ArgsType = None) -> None:

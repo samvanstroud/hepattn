@@ -1,18 +1,18 @@
 import torch
-import torch.nn as nn
+from torch import nn
 
 from hepattn.models.wrapper import ModelWrapper
 
 
 class CLDReconstructor(ModelWrapper):
     def __init__(
-            self,
-            name: str,
-            model: nn.Module,
-            lrs_config: dict,
-            optimizer: str = "AdamW",
-            mtl: bool = False,
-        ):
+        self,
+        name: str,
+        model: nn.Module,
+        lrs_config: dict,
+        optimizer: str = "AdamW",
+        mtl: bool = False,
+    ):
         super().__init__(name, model, lrs_config, optimizer, mtl)
 
     def log_compound_metrics(self, preds, targets, stage):
@@ -20,7 +20,9 @@ class CLDReconstructor(ModelWrapper):
         preds = preds["final"]
 
         hits = [
-            "sihit", "ecal", "hcal",
+            "sihit",
+            "ecal",
+            "hcal",
         ]
 
         pred_valid = preds["flow_valid"]["flow_valid"]
@@ -74,4 +76,3 @@ class CLDReconstructor(ModelWrapper):
 
                 self.log(f"{stage}_num_pred_flows", torch.mean(pred_num_flows.float()))
                 self.log(f"{stage}_num_true_flows", torch.mean(true_num_flows.float()))
-

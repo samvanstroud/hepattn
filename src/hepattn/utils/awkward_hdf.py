@@ -1,7 +1,8 @@
+from pathlib import Path
+
 import awkward as ak
 import h5py
 import numpy as np
-from pathlib import Path
 
 
 def write_awkward_to_hdf(array: ak.Array, file_path: str | Path, group_name: str):

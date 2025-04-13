@@ -116,9 +116,9 @@ def visualize_attention_scores(
 
     # Add tick labels if the number of tokens is manageable
     num_query_tokens, num_kv_tokens = scores_viz.shape[-2:]
-    if num_query_tokens <= 32 and num_kv_tokens <= 32:  # noqa: PLR2004
+    if num_query_tokens <= 32 and num_kv_tokens <= 32:
         ax.set_xticks(range(num_kv_tokens))
-        rotation = 45 if num_kv_tokens > 12 else 0  # noqa: PLR2004
+        rotation = 45 if num_kv_tokens > 12 else 0
         ax.set_xticklabels([f"KV{i}" for i in range(num_kv_tokens)], fontsize=16, rotation=rotation)
         ax.set_yticks(range(num_query_tokens))
         ax.set_yticklabels([f"Q{i}" for i in range(num_query_tokens)], fontsize=16)

@@ -1,7 +1,8 @@
 from lightning.pytorch.cli import ArgsType
-from hepattn.utils.cli import CLI
+
 from hepattn.experiments.itk.data import ITkDataModule
 from hepattn.experiments.itk.tracker import ITkTracker
+from hepattn.utils.cli import CLI
 
 
 def main(args: ArgsType = None) -> None:

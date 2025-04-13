@@ -1,18 +1,18 @@
 import torch
-import torch.nn as nn
+from torch import nn
 
 from hepattn.models.wrapper import ModelWrapper
 
 
 class TrackMLTracker(ModelWrapper):
     def __init__(
-            self,
-            name: str,
-            model: nn.Module,
-            lrs_config: dict,
-            optimizer: str = "AdamW",
-            mtl: bool = False,
-        ):
+        self,
+        name: str,
+        model: nn.Module,
+        lrs_config: dict,
+        optimizer: str = "AdamW",
+        mtl: bool = False,
+    ):
         super().__init__(name, model, lrs_config, optimizer, mtl)
 
     def log_compound_metrics(self, preds, targets, stage):
@@ -56,7 +56,7 @@ class TrackMLTracker(ModelWrapper):
 
         true_num = true_valid.sum(-1)
         pred_num = pred_valid.sum(-1)
-        
+
         nh_per_true = true_hit_masks.sum(-1).float()[true_valid].mean()
         nh_per_pred = pred_hit_masks.sum(-1).float()[pred_valid].mean()
 
