@@ -30,15 +30,12 @@ class TestCLDEvent:
                 "otb",
                 "ote",
             ],
-            "ecal": [
-                "ecb",
-                "ece"
-            ],
+            "ecal": ["ecb", "ece"],
             "hcal": [
                 "hcb",
                 "hce",
                 "hco",
-            ]
+            ],
         }
 
         dataset = CLDDataset(
@@ -69,23 +66,25 @@ class TestCLDEvent:
         # Plot the full event with all subsytems
         axes_spec = [
             {
-            "x": "pos.x",
-            "y": "pos.y",
-            "input_names": [
-                "sihit",
-                "ecal",
-                "hcal",
-                "muon",
-            ]},
+                "x": "pos.x",
+                "y": "pos.y",
+                "input_names": [
+                    "sihit",
+                    "ecal",
+                    "hcal",
+                    "muon",
+                ],
+            },
             {
-            "x": "pos.z",
-            "y": "pos.y",
-            "input_names": [
-                "sihit",
-                "ecal",
-                "hcal",
-                "muon",
-            ]},
+                "x": "pos.z",
+                "y": "pos.y",
+                "input_names": [
+                    "sihit",
+                    "ecal",
+                    "hcal",
+                    "muon",
+                ],
+            },
         ]
 
         fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
@@ -94,17 +93,19 @@ class TestCLDEvent:
         # Plot just the si tracker
         axes_spec = [
             {
-            "x": "pos.x",
-            "y": "pos.y",
-            "input_names": [
-                "sihit",
-            ]},
+                "x": "pos.x",
+                "y": "pos.y",
+                "input_names": [
+                    "sihit",
+                ],
+            },
             {
-            "x": "pos.z",
-            "y": "pos.y",
-            "input_names": [
-                "sihit",
-            ]},
+                "x": "pos.z",
+                "y": "pos.y",
+                "input_names": [
+                    "sihit",
+                ],
+            },
         ]
 
         fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
@@ -118,33 +119,35 @@ class TestCLDEvent:
         axes_spec = [
             # Barrel view, so only plot barrel hits
             {
-            "x": "pos.x",
-            "y": "pos.y",
-            "input_names": [
-                "vtb",
-                "itb",
-                "otb",
-                "ecb",
-                "hcb",
-                "muon",
-            ]},
+                "x": "pos.x",
+                "y": "pos.y",
+                "input_names": [
+                    "vtb",
+                    "itb",
+                    "otb",
+                    "ecb",
+                    "hcb",
+                    "muon",
+                ],
+            },
             # Side view, so plot barrel and endcap hits
             {
-            "x": "pos.z",
-            "y": "pos.y",
-            "input_names": [
-                "vtb",
-                "vte",
-                "itb",
-                "ite",
-                "otb",
-                "ote",
-                "ecb",
-                "ece",
-                "hcb",
-                "hce",
-                "muon",
-            ]},
+                "x": "pos.z",
+                "y": "pos.y",
+                "input_names": [
+                    "vtb",
+                    "vte",
+                    "itb",
+                    "ite",
+                    "otb",
+                    "ote",
+                    "ecb",
+                    "ece",
+                    "hcb",
+                    "hce",
+                    "muon",
+                ],
+            },
         ]
 
         fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
@@ -153,24 +156,26 @@ class TestCLDEvent:
         # Now plot just the tracker systems
         axes_spec = [
             {
-            "x": "pos.x",
-            "y": "pos.y",
-            "input_names": [
-                "vtb",
-                "itb",
-                "otb",
-            ]},
+                "x": "pos.x",
+                "y": "pos.y",
+                "input_names": [
+                    "vtb",
+                    "itb",
+                    "otb",
+                ],
+            },
             {
-            "x": "pos.z",
-            "y": "pos.y",
-            "input_names": [
-                "vtb",
-                "vte",
-                "itb",
-                "ite",
-                "otb",
-                "ote",
-            ]},
+                "x": "pos.z",
+                "y": "pos.y",
+                "input_names": [
+                    "vtb",
+                    "vte",
+                    "itb",
+                    "ite",
+                    "otb",
+                    "ote",
+                ],
+            },
         ]
 
         fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
@@ -179,18 +184,20 @@ class TestCLDEvent:
         # Now plot just the vertex tracker detector
         axes_spec = [
             {
-            "x": "pos.x",
-            "y": "pos.y",
-            "input_names": [
-                "vtb",
-            ]},
+                "x": "pos.x",
+                "y": "pos.y",
+                "input_names": [
+                    "vtb",
+                ],
+            },
             {
-            "x": "pos.z",
-            "y": "pos.y",
-            "input_names": [
-                "vtb",
-                "vte",
-            ]},
+                "x": "pos.z",
+                "y": "pos.y",
+                "input_names": [
+                    "vtb",
+                    "vte",
+                ],
+            },
         ]
 
         fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)

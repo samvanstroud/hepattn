@@ -14,35 +14,30 @@ class TestITkEvent:
     @pytest.fixture
     def itk_event(self):
         input_fields = {
-        "pixel": [
-            "x",
-            "y",
-            "z",
-            "r",
-            "eta",
-            "phi",
-            "u",
-            "v",
-        ],
-
-        "strip": [
-            "x",
-            "y",
-            "z",
-            "r",
-            "eta",
-            "phi",
-            "u",
-            "v",
-        ]
+            "pixel": [
+                "x",
+                "y",
+                "z",
+                "r",
+                "eta",
+                "phi",
+                "u",
+                "v",
+            ],
+            "strip": [
+                "x",
+                "y",
+                "z",
+                "r",
+                "eta",
+                "phi",
+                "u",
+                "v",
+            ],
         }
 
         target_fields = {
-            "particle": [
-                "pt",
-                "eta",
-                "phi"
-            ],
+            "particle": ["pt", "eta", "phi"],
         }
 
         dirpath = "/share/rcifdata/maxhart/data/itk/val"

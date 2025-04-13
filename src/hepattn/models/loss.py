@@ -1,11 +1,5 @@
 import torch
-import numpy as np
-
-from typing import List, Dict
-from torch import Tensor, nn
-
 import torch.nn.functional as F
-
 
 eps = 1e-6
 
@@ -16,8 +10,9 @@ def object_ce_loss(pred_logits, true, mask=None, weight=None):
 
 
 def object_ce_costs(pred_logits, true):
-    losses = F.binary_cross_entropy_with_logits(pred_logits.unsqueeze(2).expand(-1, -1, true.shape[1]), 
-                                                true.unsqueeze(1).expand(-1, pred_logits.shape[1], -1), reduction="none")
+    losses = F.binary_cross_entropy_with_logits(
+        pred_logits.unsqueeze(2).expand(-1, -1, true.shape[1]), true.unsqueeze(1).expand(-1, pred_logits.shape[1], -1), reduction="none"
+    )
     return losses
 
 
@@ -44,7 +39,7 @@ def mask_dice_costs(pred_logits, true):
     return losses
 
 
-def mask_focal_loss(pred_logits, true, alpha = -1.0, gamma = 2.0, mask=None, weight=None):
+def mask_focal_loss(pred_logits, true, alpha=-1.0, gamma=2.0, mask=None, weight=None):
     pred = pred_logits.sigmoid()
     ce_loss = F.binary_cross_entropy_with_logits(pred_logits, true, reduction="none")
     p_t = pred * true + (1 - pred) * (1 - true)
@@ -63,7 +58,7 @@ def mask_focal_loss(pred_logits, true, alpha = -1.0, gamma = 2.0, mask=None, wei
     return losses.mean()
 
 
-def mask_focal_costs(pred_logits, true, alpha = -1.0, gamma = 2.0,):
+def mask_focal_costs(pred_logits, true, alpha=-1.0, gamma=2.0):
     pred = pred_logits.sigmoid()
     focal_pos = ((1 - pred) ** gamma) * F.binary_cross_entropy_with_logits(pred_logits, torch.ones_like(pred), reduction="none")
     focal_neg = (pred**gamma) * F.binary_cross_entropy_with_logits(pred_logits, torch.zeros_like(pred), reduction="none")
@@ -75,9 +70,8 @@ def mask_focal_costs(pred_logits, true, alpha = -1.0, gamma = 2.0,):
 
 
 def mask_ce_loss(pred_logits, true, mask=None, weight=None):
-
     losses = F.binary_cross_entropy_with_logits(pred_logits, true, weight=weight, reduction="none")
-    
+
     if mask is not None:
         losses = losses[mask]
 
@@ -98,11 +92,4 @@ cost_fns = {
     "mask_focal": mask_focal_costs,
 }
 
-loss_fns = {
-    "object_ce": object_ce_loss,
-    "mask_ce": mask_ce_loss,
-    "mask_dice": mask_dice_loss,
-    "mask_focal": mask_focal_loss
-}
-
-
+loss_fns = {"object_ce": object_ce_loss, "mask_ce": mask_ce_loss, "mask_dice": mask_dice_loss, "mask_focal": mask_focal_loss}

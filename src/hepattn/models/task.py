@@ -1,12 +1,9 @@
 import torch
-import numpy as np
-
-from typing import List, Dict
 from torch import Tensor, nn
 
-from hepattn.models.loss import loss_fns, cost_fns
 from hepattn.models.dense import Dense
-    
+from hepattn.models.loss import cost_fns, loss_fns
+
 
 class ObjectValidTask(nn.Module):
     def __init__(
@@ -20,7 +17,7 @@ class ObjectValidTask(nn.Module):
         embed_dim: int,
         null_weight: float = 1.0,
     ):
-        """ Task used for classifying whether object candidates / seeds should be
+        """Task used for classifying whether object candidates / seeds should be
         taken as reconstructed / pred objects or not.
 
         Parameters
@@ -28,7 +25,7 @@ class ObjectValidTask(nn.Module):
         name : str
             Name of the task - will be used as the key to separate task outputs.
         input_object : str
-            Name of the input object feature 
+            Name of the input object feature
         output_object : str
             Name of the output object feature which will denote if the predicted object slot is used or not.
         target_object: str
@@ -62,8 +59,8 @@ class ObjectValidTask(nn.Module):
         self.net = Dense(embed_dim, 1)
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        """ Yields a probability denoting whether the model thinks whether an object
-        slot should be used or not. 
+        """Yields a probability denoting whether the model thinks whether an object
+        slot should be used or not.
 
         Parameters
         ----------
@@ -79,10 +76,10 @@ class ObjectValidTask(nn.Module):
         """
         # Network projects the embedding down into a scalar
         x_logit = self.net(x[self.input_object + "_embed"])
-        return {self.output_object + "_logit": x_logit.squeeze(-1),}
+        return {self.output_object + "_logit": x_logit.squeeze(-1)}
 
     def predict(self, outputs, threshold=0.5):
-        """ Performs a cut on the output probability to predict whether the output
+        """Performs a cut on the output probability to predict whether the output
         object slot should be used or not.
 
         Parameters
@@ -102,7 +99,7 @@ class ObjectValidTask(nn.Module):
         return {self.output_object + "_valid": outputs[self.output_object + "_logit"].sigmoid() >= threshold}
 
     def cost(self, outputs, targets):
-        """ Produces a dict of cost matrices which consist of the loss between each possible
+        """Produces a dict of cost matrices which consist of the loss between each possible
         predicted and true object pair.
 
         Parameters
@@ -126,7 +123,7 @@ class ObjectValidTask(nn.Module):
         return costs
 
     def loss(self, outputs, targets):
-        """ Calculates the loss between a set of predicted and true objects.
+        """Calculates the loss between a set of predicted and true objects.
 
         Parameters
         ----------
@@ -147,7 +144,7 @@ class ObjectValidTask(nn.Module):
         for loss_fn, loss_weight in self.losses.items():
             losses[loss_fn] = loss_weight * loss_fns[loss_fn](outputs[self.output_object + "_logit"], target, mask=None, weight=weight)
         return losses
-    
+
 
 class HitFilterTask(nn.Module):
     def __init__(
@@ -158,7 +155,7 @@ class HitFilterTask(nn.Module):
         embed_dim: int,
         threshold: float = 0.1,
     ):
-        """ Task used for classifying whether hits belong to reconstructable objects or not. """
+        """Task used for classifying whether hits belong to reconstructable objects or not."""
         super().__init__()
 
         self.name = name
@@ -173,7 +170,7 @@ class HitFilterTask(nn.Module):
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         x_logit = self.net(x[f"{self.hit_name}_embed"])
-        return {f"{self.hit_name}_logit": x_logit.squeeze(-1),}
+        return {f"{self.hit_name}_logit": x_logit.squeeze(-1)}
 
     def predict(self, outputs: dict) -> dict:
         return {f"{self.hit_name}_{self.target_field}": outputs[f"{self.hit_name}_logit"].sigmoid() >= self.threshold}
@@ -202,7 +199,7 @@ class ObjectHitMaskTask(nn.Module):
         embed_dim: int,
         null_weight: float = 1.0,
     ):
-        """ Takes a set of input hits and input objects and classifies whether each
+        """Takes a set of input hits and input objects and classifies whether each
         hit and object pair is assocoiated to eachother or not. To do this it embeds
         each hit and object separately, and then takes the sigmoid of the dot product
         between each object-hit pair to produce a probability.
@@ -262,9 +259,9 @@ class ObjectHitMaskTask(nn.Module):
         object_hit_logit[~x[self.input_hit + "_valid"].unsqueeze(-2).expand_as(object_hit_logit)] = torch.finfo(object_hit_logit.dtype).min
 
         return {self.output_object_hit + "_logit": object_hit_logit}
-    
+
     def attn_mask(self, outputs, threshold=0.1):
-        attn_mask = (outputs[self.output_object_hit + "_logit"].detach().sigmoid() < threshold)
+        attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() < threshold
 
         # If the attn mask is completely padded for a given entry, unpad it - tested and is required (?)
         attn_mask[torch.where(torch.all(attn_mask, dim=-1))] = False
@@ -272,7 +269,7 @@ class ObjectHitMaskTask(nn.Module):
         return {self.input_hit: attn_mask}
 
     def predict(self, outputs, threshold=0.5):
-        """ Performs a cut on the output probability to predict whether each of the input objects should be 
+        """Performs a cut on the output probability to predict whether each of the input objects should be
         assigned to each of the input hits.
 
         Parameters
@@ -280,7 +277,7 @@ class ObjectHitMaskTask(nn.Module):
         outputs : dict[str, Tensor]
             Dictionary containing the outputs from the forward pass of the task.
         threshold : float
-            Float indicating the threshold value above which output probabilies 
+            Float indicating the threshold value above which output probabilies
             should imply a trach-hit assignment.
 
         Returns
@@ -295,22 +292,24 @@ class ObjectHitMaskTask(nn.Module):
     def cost(self, outputs, targets):
         costs = {}
         for cost_fn, cost_weight in self.costs.items():
-            costs[cost_fn] = cost_weight * cost_fns[cost_fn](outputs[self.output_object_hit + "_logit"], targets[self.target_object_hit + "_valid"].float())
+            costs[cost_fn] = cost_weight * cost_fns[cost_fn](
+                outputs[self.output_object_hit + "_logit"], targets[self.target_object_hit + "_valid"].float()
+            )
 
             # Set the costs of invalid objects to be (basically) inf
 
             costs[cost_fn][~targets[self.target_object + "_valid"].unsqueeze(-2).expand_as(costs[cost_fn])] = 1e6
         return costs
-        
+
     def loss(self, outputs, targets):
         target = targets[self.target_object_hit + "_valid"].float()
         # Build a padding mask for object-hit pairs
         hit_pad = targets[self.input_hit + "_valid"].unsqueeze(-2).expand_as(target)
         object_pad = targets[self.target_object + "_valid"].unsqueeze(-1).expand_as(target)
         # An object-hit is valid slot if both its object and hit are valid slots
-        # TODO: Maybe calling this a mask is confusing since true entries are 
+        # TODO: Maybe calling this a mask is confusing since true entries are
         object_hit_mask = object_pad & hit_pad
-        
+
         weight = target + self.null_weight * (1 - target)
 
         losses = {}

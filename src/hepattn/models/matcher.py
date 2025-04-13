@@ -1,10 +1,11 @@
-import torch
-import numpy as np
 import time
-import scipy
-import lap1015
 
+import numpy as np
+import scipy
+import torch
 from torch import nn
+
+import lap1015
 
 
 def solve_scipy(cost):
@@ -28,11 +29,12 @@ solvers = {
 
 
 class Matcher(nn.Module):
-    def __init__(self,
-                 default_solver: str = "scipy",
-                 adaptive_solver: bool = True,
-                 adaptive_check_interval: int = 100,
-                 ):
+    def __init__(
+        self,
+        default_solver: str = "scipy",
+        adaptive_solver: bool = True,
+        adaptive_check_interval: int = 100,
+    ):
         super().__init__()
         """ Used to match predictions to targets based on a given cost matrix.
 
@@ -55,7 +57,7 @@ class Matcher(nn.Module):
 
     def compute_matching(self, costs):
         pred_idxs = np.zeros(shape=(costs.shape[0], costs.shape[1]), dtype=int)
-        
+
         # Do the matching sequentially for each example in the batch
         for k in range(len(costs)):
             pred_idx = self.solver(costs[k])
@@ -72,7 +74,7 @@ class Matcher(nn.Module):
         device = costs.device
         costs = costs.detach().to(torch.float32).cpu().numpy()
         pred_idxs = self.compute_matching(costs)
-        
+
         self.step += 1
 
         if self.adaptive_solver:
@@ -83,14 +85,14 @@ class Matcher(nn.Module):
 
         # Convert back into a torch tensor and move it back onto the GPU
         return torch.from_numpy(pred_idxs).long().to(device)
-    
+
     def adapt_solver(self, costs):
         solver_times = {}
 
         # For each solver, compute the time to match the entire batch
         for solver_name, solver in solvers.items():
             # Switch to the solver we are testing
-            self.solver = solvers[solver_name]
+            self.solver = solver
             t_start = time.time()
             self.compute_matching(costs)
             solver_times[solver_name] = time.time() - t_start
@@ -100,15 +102,3 @@ class Matcher(nn.Module):
 
         # Set the new solver to be the solver with the fastest time for the cost batch
         self.solver = solvers[fastest_solver]
-
-
-
-
-
-    
-    
-
-
-
-    
-

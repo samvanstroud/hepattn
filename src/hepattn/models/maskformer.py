@@ -1,5 +1,3 @@
-
-import torch
 import torch
 from torch import Tensor, nn
 
@@ -8,61 +6,60 @@ from hepattn.models.decoder import MaskFormerDecoderLayer
 
 class MaskFormer(nn.Module):
     def __init__(
-            self,
-            input_nets: nn.ModuleList,
-            encoder: nn.Module,
-            decoder_layer_config: dict,
-            num_decoder_layers: int,
-            tasks: nn.ModuleList,
-            num_queries: int,
-            embed_dim: int,
-            matcher: None | nn.Module = None,
-            input_sort_field: str | None = None,
-            ):
-            """
-            Initializes the MaskFormer model, which is a modular transformer-style architecture designed
-            for multi-task object inference with attention-based decoding and optional encoder blocks.
+        self,
+        input_nets: nn.ModuleList,
+        encoder: nn.Module,
+        decoder_layer_config: dict,
+        num_decoder_layers: int,
+        tasks: nn.ModuleList,
+        num_queries: int,
+        embed_dim: int,
+        matcher: None | nn.Module = None,
+        input_sort_field: str | None = None,
+    ):
+        """
+        Initializes the MaskFormer model, which is a modular transformer-style architecture designed
+        for multi-task object inference with attention-based decoding and optional encoder blocks.
 
-            Parameters
-            ----------
-            input_nets : nn.ModuleList
-                A list of input modules, each responsible for embedding a specific input type.
-            encoder : nn.Module
-                An optional encoder module that processes merged input embeddings with optional sorting.
-            decoder_layer_config : dict
-                Configuration dictionary used to initialize each MaskFormerDecoderLayer.
-            num_decoder_layers : int
-                The number of decoder layers to stack.
-            tasks : nn.ModuleList
-                A list of task modules, each responsible for producing and processing predictions from decoder outputs.
-            matcher : nn.Module or None
-                A module used to match predictions to targets (e.g., using the Hungarian algorithm) for loss computation.
-            num_queries : int
-                The number of object-level queries to initialize and decode.
-            embed_dim : int
-                The dimensionality of the query and key embeddings.
-            input_sort_field : str or None, optional
-                An optional key used to sort the input objects (e.g., for windowed attention).
-            """
-            super().__init__()
+        Parameters
+        ----------
+        input_nets : nn.ModuleList
+            A list of input modules, each responsible for embedding a specific input type.
+        encoder : nn.Module
+            An optional encoder module that processes merged input embeddings with optional sorting.
+        decoder_layer_config : dict
+            Configuration dictionary used to initialize each MaskFormerDecoderLayer.
+        num_decoder_layers : int
+            The number of decoder layers to stack.
+        tasks : nn.ModuleList
+            A list of task modules, each responsible for producing and processing predictions from decoder outputs.
+        matcher : nn.Module or None
+            A module used to match predictions to targets (e.g., using the Hungarian algorithm) for loss computation.
+        num_queries : int
+            The number of object-level queries to initialize and decode.
+        embed_dim : int
+            The dimensionality of the query and key embeddings.
+        input_sort_field : str or None, optional
+            An optional key used to sort the input objects (e.g., for windowed attention).
+        """
+        super().__init__()
 
-            self.input_nets = input_nets
-            self.encoder = encoder
-            self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(**decoder_layer_config) for _ in range(num_decoder_layers)])
-            self.tasks = tasks
-            self.matcher = matcher
-            self.num_queries = num_queries
-            self.query_initial = nn.Parameter(torch.randn(num_queries, embed_dim))
-            self.input_sort_field = input_sort_field
-            
-            
+        self.input_nets = input_nets
+        self.encoder = encoder
+        self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(**decoder_layer_config) for _ in range(num_decoder_layers)])
+        self.tasks = tasks
+        self.matcher = matcher
+        self.num_queries = num_queries
+        self.query_initial = nn.Parameter(torch.randn(num_queries, embed_dim))
+        self.input_sort_field = input_sort_field
+
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
 
         assert "key" not in input_names, "'key' input name is reserved."
         assert "query" not in input_names, "'query' input name is reserved."
-    
+
         x = {}
 
         # Embed the input objects
@@ -74,10 +71,7 @@ class MaskFormer(nn.Module):
             # These slices can be used to pick out specific
             # objects after we have merged them all together
             # TODO: Clean this up
-            x[f"key_is_{input_name}"] = torch.cat([
-                torch.full((inputs[i + "_valid"].shape[-1],), i == input_name) 
-                for i in input_names
-                ], dim=-1)
+            x[f"key_is_{input_name}"] = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name) for i in input_names], dim=-1)
 
         # Merge the input objects and he padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in input_names], dim=-2)
@@ -85,11 +79,12 @@ class MaskFormer(nn.Module):
 
         # Also merge the field being used for sorting in window attention if requested
         if self.input_sort_field is not None:
-            x[f"key_{self.input_sort_field}"] = torch.concatenate([inputs[input_name + "_" + self.input_sort_field] 
-                                                                   for input_name in input_names], dim=-1)
+            x[f"key_{self.input_sort_field}"] = torch.concatenate(
+                [inputs[input_name + "_" + self.input_sort_field] for input_name in input_names], dim=-1
+            )
         else:
             x[f"key_{self.input_sort_field}"] = None
-        
+
         # Pass merged input hits through the encoder
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
@@ -98,7 +93,7 @@ class MaskFormer(nn.Module):
         # Unmerge the updated features back into the separate input types
         # These are just views into the tensor that old all the merged hits
         for input_name in input_names:
-            x[input_name + "_embed"] = x["key_embed"][...,x[f"key_is_{input_name}"],:]
+            x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
         # Generate the queries that represent objects
         batch_size = x["key_valid"].shape[0]
@@ -132,7 +127,7 @@ class MaskFormer(nn.Module):
                 attn_mask = torch.full((batch_size, self.num_queries, x["key_valid"].shape[-1]), False, device=x["key_embed"].device)
 
                 for input_name, input_attn_mask in attn_masks.items():
-                    attn_mask[...,x[f"key_is_{input_name}"]] = input_attn_mask
+                    attn_mask[..., x[f"key_is_{input_name}"]] = input_attn_mask
 
             # If no attention masks were specified, set it to none to avoid redundant masking
             else:
@@ -143,17 +138,17 @@ class MaskFormer(nn.Module):
 
             # Unmerge the updated features back into the separate input types
             for input_name in input_names:
-                x[input_name + "_embed"] = x["key_embed"][...,x[f"key_is_{input_name}"],:]
+                x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
         # Get the final outputs - we don't need to compute attention masks or update things here
         outputs["final"] = {}
         for task in self.tasks:
-           outputs["final"][task.name] = task(x)
+            outputs["final"][task.name] = task(x)
 
         return outputs
 
     def predict(self, outputs: dict) -> dict:
-        """ Takes the raw model outputs and produces a set of actual inferences / predictions.
+        """Takes the raw model outputs and produces a set of actual inferences / predictions.
         For example will take output probabilies and apply threshold cuts to prduce boolean predictions.
 
         Parameters
@@ -168,12 +163,12 @@ class MaskFormer(nn.Module):
             preds[layer_name] = {}
 
             for task in self.tasks:
-                preds[layer_name][task.name] = task.predict(outputs[layer_name][task.name])
-        
+                preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
+
         return preds
 
     def loss(self, outputs: dict, targets: dict) -> dict:
-        """ Computes the loss between the forward pass of the model and the data / targets.
+        """Computes the loss between the forward pass of the model and the data / targets.
         It first computes the cost / loss between each of the predicted and true tracks in each ROI
         and then uses the Hungarian algorihtm to perform an optimal bipartite matching. The model
         predictions are then permuted to match this optimal matching, after which the final loss
@@ -193,11 +188,12 @@ class MaskFormer(nn.Module):
             # Get the cost contribution from each of the tasks
             for task in self.tasks:
                 # If the task has no cost to contribute then skip it
-                if not hasattr(task, "cost"): continue
+                if not hasattr(task, "cost"):
+                    continue
 
                 # Only use the cost from the final set of predictions
-                task_costs = task.cost(outputs[layer_name][task.name], targets)
-                
+                task_costs = task.cost(layer_outputs[task.name], targets)
+
                 # Add the cost on to our running cost total, otherwise initialise a running cost matrix
                 for cost_name, cost in task_costs.items():
                     if layer_costs is not None:
@@ -208,7 +204,7 @@ class MaskFormer(nn.Module):
             costs[layer_name] = layer_costs.detach()
 
         # Permute the outputs for each output in each layer
-        for layer_name in outputs.keys():
+        for layer_name in outputs:
             # Get the indicies that can permute the predictions to yield their optimal matching
             pred_idxs = self.matcher(costs[layer_name])
             batch_idxs = torch.arange(costs[layer_name].shape[0]).unsqueeze(1).expand(-1, self.num_queries)
@@ -216,11 +212,11 @@ class MaskFormer(nn.Module):
             # Apply the permutation in place
             for task in self.tasks:
                 for output in task.outputs:
-                    outputs[layer_name][task.name][output] = outputs[layer_name][task.name][output][batch_idxs,pred_idxs]
+                    outputs[layer_name][task.name][output] = outputs[layer_name][task.name][output][batch_idxs, pred_idxs]
 
         # Compute the losses for each task in each block
         losses = {}
-        for layer_name in outputs.keys():
+        for layer_name in outputs:
             losses[layer_name] = {}
             for task in self.tasks:
                 losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
