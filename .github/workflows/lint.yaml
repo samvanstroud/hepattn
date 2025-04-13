@@ -1,5 +1,5 @@
 name: Lint
-on: [push, pull_request]
+on: [push]
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -10,7 +10,7 @@ jobs:
         uses: ResearchSoftwareActions/EnsureCleanNotebooksAction@1.1
 
       - name: Run Ruff
-      - uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@v3
         with:
           version: "0.8.0"
 
