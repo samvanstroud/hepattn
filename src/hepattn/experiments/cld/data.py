@@ -13,12 +13,14 @@ class CLDDataset(Dataset):
         dirpath: str,
         inputs: dict,
         targets: dict,
-        merge_inputs: dict[str, list[str]] = {},
+        merge_inputs: dict[str, list[str]] | None = None,
         num_events: int = -1,
         particle_min_pt: float = 0.1,
         event_max_num_particles: int = 1000,
         random_seed: int = 42,
     ):
+        if merge_inputs is None:
+            merge_inputs = {}
         super().__init__()
 
         self.dirpath = dirpath
@@ -89,7 +91,7 @@ class CLDDataset(Dataset):
             targets[f"{target_name}_valid"][:, : target_sizes[target_name]] = torch.from_numpy(target_valid).bool()
 
         # Create the masks that link particles to hits
-        for input_name in self.inputs.keys():
+        for input_name in self.inputs:
             num_hits = input_sizes[input_name]
             mask = np.full((num_hits, self.event_max_num_particles), False)
             # Get the mask indices that map from hits to particles
@@ -120,7 +122,7 @@ class CLDDataset(Dataset):
         def convert_mm_to_m(i, p):
             # Convert a spatial coordinate from mm to m inplace
             for coord in ["x", "y", "z"]:
-                event[f"{i}.{p}.{coord}"] = 0.001 * event[f"{i}.{p}.{coord}"]
+                event[f"{i}.{p}.{coord}"] *= 0.001
 
         def add_cylindrical_coords(i, p):
             # Add standard tracking cylindrical coordinates
@@ -168,9 +170,7 @@ class CLDDataset(Dataset):
 
                 # Now actually merge the fields of each input
                 for field in next(iter(merged_input_fields)):
-                    merged_fields_arrays = []
-                    for input_name in input_names:
-                        merged_fields_arrays.append(event[f"{input_name}.{field}"])
+                    merged_fields_arrays = [event[f"{input_name}.{field}"] for input_name in input_names]
 
                     # Concatenate the fields from all of the inputs that make the merged input
                     event[f"{merged_input_name}.{field}"] = ak.concatenate(merged_fields_arrays, axis=-1)

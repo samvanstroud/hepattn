@@ -7,10 +7,7 @@ def plot_cld_event_reconstruction(inputs, reconstruction, axes_spec):
     fig, ax = plt.subplots(1, num_axes)
     fig.set_size_inches(8 * num_axes, 8)
 
-    if num_axes == 1:
-        ax = [ax]
-    else:
-        ax = ax.flatten()
+    ax = [ax] if num_axes == 1 else ax.flatten()
 
     colormap = plt.cm.tab10
     cycler = [colormap(i) for i in range(colormap.N)]

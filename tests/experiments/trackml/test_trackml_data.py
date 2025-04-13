@@ -62,7 +62,7 @@ class TestTrackMLEvent:
         return dataset[0]
 
     def test_trackml_event_masks(self, trackml_event):
-        inputs, targets = trackml_event
+        _inputs, targets = trackml_event
 
         particle_valid = targets["particle_valid"]
         particle_hit_mask = targets["particle_hit_valid"]
@@ -79,7 +79,7 @@ class TestTrackMLEvent:
 
     def test_trackml_matcher(self, trackml_event):
         # Setup the matcher
-        matcher = Matcher(
+        Matcher(
             default_solver="scipy",
             adaptive_solver=False,
         )

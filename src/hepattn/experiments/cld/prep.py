@@ -389,7 +389,7 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool, min_pt: float = 10.0,
             namecodes[name] = code
 
         # Get the event numbers that will be used to identify each event
-        events_key = [k for k in file.keys() if "events" in k][0]
+        events_key = next(k for k in file if "events" in k)
         events = file[events_key]
         event_numbers = ak.to_numpy(ak.flatten(events["EventHeader/EventHeader.eventNumber"].array()))
 

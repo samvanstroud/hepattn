@@ -41,7 +41,7 @@ class Matcher(nn.Module):
         Parameters
         ----------
         default_solver: str
-            The default solving algorithm to use. 
+            The default solving algorithm to use.
         adaptive_solver: bool
             If true, then after every adaptive_check_interval calls of the solver,
             each solver algorithm is timed and used to determine the fastest solver, which

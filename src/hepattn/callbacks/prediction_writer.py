@@ -14,8 +14,10 @@ class TestEvalWriter(Callback):
         write_preds: bool,
         write_targets: bool,
         write_losses: bool,
-        write_layers: list[str] = ["final"],
+        write_layers: list[str] | None = None,
     ):
+        if write_layers is None:
+            write_layers = ["final"]
         super().__init__()
 
         self.write_inputs = write_inputs

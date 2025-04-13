@@ -64,7 +64,7 @@ class TestITkEvent:
 
     def test_itk_event_masks(self, itk_event):
         # Some basic sanity checks on the event data
-        inputs, targets = itk_event
+        _inputs, _targets = itk_event
 
         # Every valid particle should have a unique particle id
 
@@ -79,7 +79,7 @@ class TestITkEvent:
 
     def test_itk_matcher(self, itk_event):
         # Setup the matcher
-        matcher = Matcher(
+        Matcher(
             default_solver="scipy",
             adaptive_solver=False,
         )

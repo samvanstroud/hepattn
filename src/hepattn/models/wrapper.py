@@ -98,8 +98,7 @@ class ModelWrapper(LightningModule):
                 # Get a list of the features that are used by all of the tasks
                 layer_features = []
                 for task in self.model.tasks:
-                    for input_feature in task.input_features:
-                        layer_features.append(outputs[layer_name][input_feature])
+                    layer_features.extend(outputs[layer_name][input_feature] for input_feature in task.input_features)
 
                 # Remove any duplicate features that are used by multiple tasks
                 layer_features = list(set(layer_features))
@@ -123,6 +122,7 @@ class ModelWrapper(LightningModule):
             total_loss = sum(losses_flat.values())
 
             return total_loss
+        return None
 
     def validation_step(self, batch):
         inputs, targets = batch

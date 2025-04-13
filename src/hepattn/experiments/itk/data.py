@@ -22,9 +22,11 @@ class ITkDataset(Dataset):
         hit_regions: list | None = None,
         particle_min_pt: float = 1.0,
         particle_max_abs_eta: float = 2.5,
-        particle_min_num_hits: dict[str, int] = {"pixel": 3, "strip": 6},
+        particle_min_num_hits: dict[str, int] | None = None,
         event_max_num_particles=1000,
     ):
+        if particle_min_num_hits is None:
+            particle_min_num_hits = {"pixel": 3, "strip": 6}
         super().__init__()
 
         # Set the global random sampling seed

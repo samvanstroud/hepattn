@@ -59,6 +59,6 @@ class InputNet(nn.Module):
 
         # Perform an optional positional encoding using the positonal encoding fields
         if self.posenc is not None:
-            x = x + self.posenc(inputs)
+            x += self.posenc(inputs)
 
         return x

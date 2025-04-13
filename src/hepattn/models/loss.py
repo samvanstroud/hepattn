@@ -23,7 +23,7 @@ def mask_dice_loss(pred_logits, true, mask=None, weight=None):
     losses = 1 - (num + 1) / (den + 1)
 
     if weight is not None:
-        losses = losses * weight
+        losses *= weight
 
     if mask is not None:
         losses = losses[mask]
@@ -50,7 +50,7 @@ def mask_focal_loss(pred_logits, true, alpha=-1.0, gamma=2.0, mask=None, weight=
         losses = alpha_t * losses
 
     if weight is not None:
-        losses = losses * weight
+        losses *= weight
 
     if mask is not None:
         losses = losses[mask]
@@ -63,8 +63,8 @@ def mask_focal_costs(pred_logits, true, alpha=-1.0, gamma=2.0):
     focal_pos = ((1 - pred) ** gamma) * F.binary_cross_entropy_with_logits(pred_logits, torch.ones_like(pred), reduction="none")
     focal_neg = (pred**gamma) * F.binary_cross_entropy_with_logits(pred_logits, torch.zeros_like(pred), reduction="none")
     if alpha >= 0:
-        focal_pos = focal_pos * alpha
-        focal_neg = focal_neg * (1 - alpha)
+        focal_pos *= alpha
+        focal_neg *= 1 - alpha
     losses = torch.einsum("bnc,bmc->bnm", focal_pos, true) + torch.einsum("bnc,bmc->bnm", focal_neg, (1 - true))
     return losses
 

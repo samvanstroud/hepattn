@@ -9,7 +9,7 @@ def write_awkward_to_hdf(array: ak.Array, file_path: str | Path, group_name: str
     with h5py.File(file_path, "w") as file:
         group = file.create_group(group_name)
         packed = ak.to_packed(array)
-        form, length, container = ak.to_buffers(packed, container=group)
+        form, length, _container = ak.to_buffers(packed, container=group)
         group.attrs["__form"] = form.to_json()
         group.attrs["__length"] = length
 

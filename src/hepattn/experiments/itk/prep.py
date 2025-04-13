@@ -40,25 +40,25 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
         truth = pd.read_csv(truth_in_path, dtype={"tgt_id": np.int64})
 
         # Rename hit fields to be compatible with TrackML
-        truth.rename(columns={"tgt_pid": "particle_id"}, inplace=True)
+        truth = truth.rename(columns={"tgt_pid": "particle_id"})
 
         # Rename particle fields to be compatible with TrackML
-        parts.rename(columns={"q": "charge", "particle_type": "pdgId", "nhits": "num_clusters"}, inplace=True)
+        parts = parts.rename(columns={"q": "charge", "particle_type": "pdgId", "nhits": "num_clusters"})
 
         # ITk gives things in MeV, convert to GeV to be consistent with TrackML
         for field in ["px", "py", "pz", "pt"]:
-            parts[field] = parts[field] / 1000
+            parts[field] /= 1000
 
         # Separate out pixel and strip hits
         pixel = truth[truth["hardware"] == "PIXEL"].copy()
         strip = truth[truth["hardware"] == "STRIP"].copy()
 
         # Have to drop non-numeric fields
-        pixel.drop(columns=["hardware"], inplace=True)
-        strip.drop(columns=["hardware"], inplace=True)
+        pixel = pixel.drop(columns=["hardware"])
+        strip = strip.drop(columns=["hardware"])
 
         # Drop the duplicate pixel fields
-        pixel = pixel.drop(columns=list(filter(lambda col: col.endswith("_2"), pixel.columns)) + ["particle_id"])
+        pixel = pixel.drop(columns=[*list(filter(lambda col: col.endswith("_2"), pixel.columns)), "particle_id"])
         pixel = pixel.rename(columns={col: col.replace("_1", "") for col in filter(lambda col: col.endswith("_1"), pixel.columns)})
 
         # Save the output binary files

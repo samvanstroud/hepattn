@@ -52,7 +52,7 @@ class TestCLDEvent:
 
     def test_cld_event_masks(self, cld_event):
         # Some basic sanity checks on the event data
-        inputs, targets = cld_event
+        _inputs, _targets = cld_event
 
         # Every valid particle should have a unique particle id
 

@@ -118,7 +118,7 @@ class MaskFormer(nn.Module):
                         # We only want to mask an attention slot if every task agrees the slots should be masked
                         # so we only mask if both the existing and new attention mask are masked
                         if input_name in attn_masks:
-                            attn_masks[input_name] = attn_masks[input_name] & attn_mask
+                            attn_masks[input_name] &= attn_mask
                         else:
                             attn_masks[input_name] = attn_mask
 
@@ -195,7 +195,7 @@ class MaskFormer(nn.Module):
                 task_costs = task.cost(layer_outputs[task.name], targets)
 
                 # Add the cost on to our running cost total, otherwise initialise a running cost matrix
-                for cost_name, cost in task_costs.items():
+                for cost in task_costs.values():
                     if layer_costs is not None:
                         layer_costs += cost
                     else:
