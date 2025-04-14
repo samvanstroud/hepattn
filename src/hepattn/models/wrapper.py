@@ -1,3 +1,5 @@
+from typing import Literal
+
 import torch
 from lightning import LightningModule
 from lion_pytorch import Lion
@@ -13,7 +15,7 @@ class ModelWrapper(LightningModule):
         name: str,
         model: nn.Module,
         lrs_config: dict,
-        optimizer: str = "AdamW",
+        optimizer: Literal["AdamW", "Lion"] = "AdamW",
         mtl: bool = False,
     ):
         super().__init__()
@@ -137,8 +139,9 @@ class ModelWrapper(LightningModule):
             optimizer = Lion
         else:
             raise ValueError(f"Unknown optimizer: {self.opt_config['opt']}")
+
         opt = optimizer(self.model.parameters(), lr=self.lrs_config["initial"], weight_decay=self.lrs_config["weight_decay"])
-        print("self.trainer.estimated_stepping_batches", self.trainer.estimated_stepping_batches)
+
         if not self.lrs_config["skip_scheduler"]:
             # Configure the learning rate scheduler
             sch = torch.optim.lr_scheduler.OneCycleLR(
