@@ -15,19 +15,19 @@ dependencies = [
     "ruff==0.8.0",
     "pre-commit>=4.0.1,<5",
     "matplotlib==3.9.*",
-    "lightning>=2.4.0,<3",
+    "lightning==2.5.0.post0",
     "comet-ml>=3.47.3,<4",
     "pandas>=2.2.3,<3",
     "pyarrow>=17.0.0",
     "jsonargparse[signatures]>=4.34.0,<5",
     "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiTRUE-cp311-cp311-linux_x86_64.whl",
-    #"torch==2.6.0", # using nightly, see below
     "torchjd>=0.5.0",
     "lion-pytorch>=0.2.3,<0.3",
     "awkward>=2.8.1",
     "uproot>=5.6.0",
     "h5py>=3.13.0",
     "particle>=0.25.3",
+    "scikit-learn>=1.6.1,<2",
 ]
 
 [build-system]

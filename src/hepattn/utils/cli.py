@@ -50,7 +50,6 @@ def get_best_epoch(config_path: Path) -> Path:
 class CLI(LightningCLI):
     def add_arguments_to_parser(self, parser) -> None:
         parser.add_argument("--name", default="hepformer", help="Name for this training run.")
-        parser.add_argument("--compile", action="store_true", help="torch.compile.")
         parser.link_arguments("name", "trainer.logger.init_args.experiment_name")
         parser.link_arguments("name", "model.name")
         parser.link_arguments("trainer.default_root_dir", "trainer.logger.init_args.save_dir")

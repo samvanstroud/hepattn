@@ -70,6 +70,7 @@ trainer:
     class_path: lightning.pytorch.loggers.CometLogger
     init_args:
       project_name: trackml_filtering
+      display_summary_level: 0
 
   callbacks:
     - class_path: hepattn.callbacks.Compile

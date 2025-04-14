@@ -130,7 +130,6 @@ trainer:
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: validate/loss
-    - class_path: lightning.pytorch.callbacks.ModelSummary
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:

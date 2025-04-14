@@ -61,7 +61,7 @@ nvidia-smi
 echo "Running training script..."
 
 # train hit filter tracking model
-PYTORCH_CMD="python src/hepattn/experiments/trackml/hit_filter.py fit --config src/hepattn/experiments/trackml/hit_filter.yaml"
+PYTORCH_CMD="python src/hepattn/experiments/trackml/old/hit_filter.py fit --config src/hepattn/experiments/trackml/old/hit_filter.yaml"
 PIXI_CMD="pixi run $PYTORCH_CMD"
 APPTAINER_CMD="apptainer run --nv --bind /share/rcifdata/svanstroud /share/rcifdata/svanstroud/hepattn/pixi.sif $PIXI_CMD"
 

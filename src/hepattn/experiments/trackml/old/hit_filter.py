@@ -8,8 +8,8 @@ from lightning.pytorch.cli import ArgsType
 from lion_pytorch import Lion
 from torch import nn
 
-from hepattn.experiments.cli import CLI
-from hepattn.experiments.trackml.trackml import TrackMLDataModule
+from hepattn.experiments.trackml.old.trackml import TrackMLDataModule
+from hepattn.utils.cli import CLI
 
 config_dir = pathlib.Path(__file__).parent / "configs"
 
@@ -36,10 +36,6 @@ class HitFilter(LightningModule):
         self.times: list[float] = []
         self.num_hits: list[int] = []
         self.pos_enc = pos_enc
-
-    def on_train_start(self):
-        params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        self.logger.log_hyperparams({"trainable_params": params})
 
     def forward(self, x, labels=None, timing=False):  # noqa: ARG002
         if self.pos_enc:
@@ -79,8 +75,8 @@ class HitFilter(LightningModule):
 
     def validation_step(self, batch):
         preds, labels, loss = self.step(batch)
-        self.log_losses(loss, stage="validate")
-        self.log_metrics(preds, labels, stage="validate")
+        self.log_losses(loss, stage="val")
+        self.log_metrics(preds, labels, stage="val")
         return loss
 
     def test_step(self, batch):

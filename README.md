@@ -21,7 +21,7 @@ due to requirements of recent `torch` versions.
 We use `pixi`'s cuda image, which you can access with
 
 ```shell
-apptainer pull pixi.sif docker://ghcr.io/prefix-dev/pixi:noble-cuda-12.6.3
+apptainer pull pixi.sif docker://ghcr.io/prefix-dev/pixi:0.45.0-noble-cuda-12.6.3
 apptainer shell --nv pixi.sif
 ```
 
