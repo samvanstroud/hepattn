@@ -40,14 +40,15 @@ def mask_dice_costs(pred_logits, true):
     return losses
 
 
-def mask_focal_loss(pred_logits, true, alpha=-1.0, gamma=2.0, mask=None, weight=None):
+def focal_loss(pred_logits, targets, balance=True, gamma=2.0, mask=None, weight=None):
     pred = pred_logits.sigmoid()
-    ce_loss = F.binary_cross_entropy_with_logits(pred_logits, true, reduction="none")
-    p_t = pred * true + (1 - pred) * (1 - true)
+    ce_loss = F.binary_cross_entropy_with_logits(pred_logits, targets.type_as(pred_logits), reduction="none")
+    p_t = pred * targets + (1 - pred) * (1 - targets)
     losses = ce_loss * ((1 - p_t) ** gamma)
 
-    if alpha >= 0:
-        alpha_t = alpha * true + (1 - alpha) * (1 - true)
+    if balance:
+        alpha = 1 - targets.float().mean()
+        alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
         losses = alpha_t * losses
 
     if weight is not None:
@@ -93,4 +94,4 @@ cost_fns = {
     "mask_focal": mask_focal_costs,
 }
 
-loss_fns = {"object_ce": object_ce_loss, "mask_ce": mask_ce_loss, "mask_dice": mask_dice_loss, "mask_focal": mask_focal_loss}
+loss_fns = {"object_ce": object_ce_loss, "mask_ce": mask_ce_loss, "mask_dice": mask_dice_loss, "mask_focal": focal_loss}

@@ -1,8 +1,10 @@
+from typing import Literal
+
 import torch
 from torch import Tensor, nn
 
 from hepattn.models.dense import Dense
-from hepattn.models.loss import cost_fns, loss_fns
+from hepattn.models.loss import cost_fns, focal_loss, loss_fns
 
 
 class ObjectValidTask(nn.Module):
@@ -150,40 +152,48 @@ class HitFilterTask(nn.Module):
     def __init__(
         self,
         name: str,
-        hit_name: str,
+        input_object: str,
         target_field: str,
         embed_dim: int,
         threshold: float = 0.1,
+        loss_fn: Literal["bce", "focal"] = "bce",
     ):
         """Task used for classifying whether hits belong to reconstructable objects or not."""
         super().__init__()
 
         self.name = name
-        self.hit_name = hit_name
+        self.input_object = input_object
         self.target_field = target_field
         self.embed_dim = embed_dim
         self.threshold = threshold
+        self.loss_fn = loss_fn
 
         # Internal
-        self.input_features = [f"{hit_name}_embed"]
+        self.input_features = [f"{input_object}_embed"]
         self.net = Dense(embed_dim, 1)
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        x_logit = self.net(x[f"{self.hit_name}_embed"])
-        return {f"{self.hit_name}_logit": x_logit.squeeze(-1)}
+        x_logit = self.net(x[f"{self.input_object}_embed"])
+        return {f"{self.input_object}_logit": x_logit.squeeze(-1)}
 
     def predict(self, outputs: dict) -> dict:
-        return {f"{self.hit_name}_{self.target_field}": outputs[f"{self.hit_name}_logit"].sigmoid() >= self.threshold}
+        return {f"{self.input_object}_{self.target_field}": outputs[f"{self.input_object}_logit"].sigmoid() >= self.threshold}
 
     def loss(self, outputs: dict, targets: dict) -> dict:
         # Pick out the field that denotes whether a hit is on a reconstructable object or not
-        target = targets[f"{self.hit_name}_{self.target_field}"]
-        output = outputs[f"{self.hit_name}_logit"]
+        target = targets[f"{self.input_object}_{self.target_field}"]
+        output = outputs[f"{self.input_object}_logit"]
 
         # Calculate the BCE loss with class weighting
-        weight = 1 / target.float().mean()
-        loss = nn.functional.binary_cross_entropy_with_logits(output, target.type_as(output), pos_weight=weight)
-        return {f"{self.hit_name}_bce": loss}
+        if self.loss_fn == "bce":
+            weight = 1 / target.float().mean()
+            loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=weight)
+        elif self.loss_fn == "focal":
+            loss = focal_loss(output, target.type_as(output))
+        else:
+            raise ValueError(f"Unknown loss function: {self.loss_fn}")
+
+        return {f"{self.input_object}_{self.loss_fn}": loss}
 
 
 class ObjectHitMaskTask(nn.Module):
