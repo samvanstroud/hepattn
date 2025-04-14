@@ -37,8 +37,8 @@ class ITkFilter(ModelWrapper):
             pred = preds_unpacked[hit]
             true = targets_unpacked[hit]
 
-            tp = (pred * true).sum()
-            tn = ((~pred) * (~true)).sum()
+            tp = (pred & true).sum()
+            tn = ((~pred) & (~true)).sum()
 
             metrics = {
                 # Log quanties based on the number of hits

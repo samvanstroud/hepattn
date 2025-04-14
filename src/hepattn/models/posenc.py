@@ -121,17 +121,17 @@ class PositionEncoderRandom(nn.Module):
     see https://arxiv.org/abs/2006.10739
     """
 
-    def __init__(self, input_name: str, dim: int, variables: list[str], scale: float = 1) -> None:
+    def __init__(self, input_name: str, dim: int, fields: list[str], scale: float = 1) -> None:
         super().__init__()
         assert scale > 0
         assert dim % 2 == 0, "Dimension must be even"
         self.input_name = input_name
-        self.variables = variables
-        self.gaussian_matrix = torch.nn.parameter.Buffer(scale * torch.randn((len(variables), dim // 2)))
+        self.fields = fields
+        self.gaussian_matrix = torch.nn.parameter.Buffer(scale * torch.randn((len(fields), dim // 2)))
         self.pi = torch.tensor(math.pi)
 
     def forward(self, xs: dict[str, Tensor]) -> Tensor:
-        xs = torch.cat([xs[f"{self.input_name}_{f}"].unsqueeze(-1) for f in self.variables], dim=-1)
+        xs = torch.cat([xs[f"{self.input_name}_{f}"].unsqueeze(-1) for f in self.fields], dim=-1)
         xs = 2 * self.pi * xs
         xs @= self.gaussian_matrix
         return torch.cat([torch.sin(xs), torch.cos(xs)], dim=-1)

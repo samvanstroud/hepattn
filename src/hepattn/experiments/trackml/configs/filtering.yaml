@@ -7,7 +7,7 @@ data:
 
   num_workers: 10
   num_train: -1
-  num_test: 20
+  num_test: -1
   num_val: -1
   
   # Select only hits from these detector volumes
@@ -86,20 +86,19 @@ trainer:
         write_preds: true
         write_targets: false
         write_losses: false
-    - class_path: lightning.pytorch.callbacks.ModelSummary
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
         refresh_rate: 50
     
 model:
-  optimizer: adamw
+  optimizer: Lion
 
   # Learning rate scheduler config
   lrs_config:
-    initial: 5e-5
-    max: 1e-4
-    end: 1e-5
+    initial: 1e-5
+    max: 5e-5
+    end: 1e-6
     pct_start: 0.05
     skip_scheduler: false
     weight_decay: 1e-5
@@ -121,6 +120,7 @@ model:
                   - y
                   - z
                   - r
+                  - s
                   - eta
                   - phi
                   - u
@@ -136,29 +136,27 @@ model:
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
-                    input_size: 16
+                    input_size: 17
                     output_size: &embed_dim 256
                 posenc:
-                  class_path: hepattn.models.PositionEncoder
+                  class_path: hepattn.models.posenc.PositionEncoderRandom
                   init_args:
                     input_name: hit
                     fields:
                       - r
                       - eta
                       - phi
-                    sym_fields:
-                      - phi
                     dim: *embed_dim
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 12
+          num_layers: 8
           dim: *embed_dim
           attn_type: flash
           window_size: 1024
           window_wrap: true
           hybrid_norm: true
-          norm: RMSNorm
+          norm: LayerNorm
       tasks:
         class_path: torch.nn.ModuleList
         init_args:

@@ -1,6 +1,8 @@
 import torch
 from lightning import LightningModule
+from lion_pytorch import Lion
 from torch import nn
+from torch.optim import AdamW
 from torchjd import mtl_backward
 from torchjd.aggregation import UPGrad
 
@@ -129,23 +131,20 @@ class ModelWrapper(LightningModule):
                     param_group["lr"] = self.lrs_config["initial"]
 
     def configure_optimizers(self):
-        # Pick which optimizer we want to use
         if self.optimizer.lower() == "adamw":
-            from torch.optim import AdamW  # noqa: PLC0415
-
-            opt = AdamW(self.model.parameters(), lr=self.lrs_config["initial"], weight_decay=self.lrs_config["weight_decay"])
-        # https://arxiv.org/abs/2302.06675
+            optimizer = AdamW
         elif self.optimizer.lower() == "lion":
-            from lion_pytorch import Lion  # noqa: PLC0415
-
-            opt = Lion(self.model.parameters(), lr=self.lrs_config["initial"], weight_decay=self.lrs_config["weight_decay"])
-
+            optimizer = Lion
+        else:
+            raise ValueError(f"Unknown optimizer: {self.opt_config['opt']}")
+        opt = optimizer(self.model.parameters(), lr=self.lrs_config["initial"], weight_decay=self.lrs_config["weight_decay"])
+        print("self.trainer.estimated_stepping_batches", self.trainer.estimated_stepping_batches)
         if not self.lrs_config["skip_scheduler"]:
             # Configure the learning rate scheduler
             sch = torch.optim.lr_scheduler.OneCycleLR(
                 opt,
                 max_lr=self.lrs_config["max"],
-                total_steps=self.trainer.estimated_stepping_batches * 2,
+                total_steps=self.trainer.estimated_stepping_batches,
                 div_factor=self.lrs_config["max"] / self.lrs_config["initial"],
                 final_div_factor=self.lrs_config["initial"] / self.lrs_config["end"],
                 pct_start=float(self.lrs_config["pct_start"]),

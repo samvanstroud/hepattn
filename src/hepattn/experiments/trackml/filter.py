@@ -1,24 +1,21 @@
+from lightning.pytorch.cli import ArgsType
 from torch import nn
 
+from hepattn.experiments.trackml.data import TrackMLDataModule
 from hepattn.models.wrapper import ModelWrapper
+from hepattn.utils.cli import CLI
 
 
 class TrackMLFilter(ModelWrapper):
-    def __init__(
-        self,
-        name: str,
-        model: nn.Module,
-        lrs_config: dict,
-        optimizer: str = "AdamW",
-    ):
+    def __init__(self, name: str, model: nn.Module, lrs_config: dict, optimizer: str = "AdamW"):
         super().__init__(name, model, lrs_config, optimizer)
 
     def log_custom_metrics(self, preds, targets, stage):
         pred = preds["final"]["hit_filter"]["hit_on_valid_particle"]
         true = targets["hit_on_valid_particle"]
 
-        tp = (pred * true).sum()
-        tn = ((~pred) * (~true)).sum()
+        tp = (pred & true).sum()
+        tn = ((~pred) & (~true)).sum()
 
         metrics = {
             # Log quanties based on the number of hits
@@ -41,3 +38,16 @@ class TrackMLFilter(ModelWrapper):
         # Now actually log the metrics
         for metric_name, metric_value in metrics.items():
             self.log(f"{stage}/{metric_name}", metric_value, sync_dist=True, batch_size=1)
+
+
+def main(args: ArgsType = None) -> None:
+    CLI(
+        model_class=TrackMLFilter,
+        datamodule_class=TrackMLDataModule,
+        args=args,
+        parser_kwargs={"default_env": True},
+    )
+
+
+if __name__ == "__main__":
+    main()
