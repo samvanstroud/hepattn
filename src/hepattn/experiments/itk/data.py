@@ -42,7 +42,9 @@ class ITkDataset(Dataset):
         if num_events > num_events_available:
             msg = f"Requested {num_events} events, but only {num_events_available} are available in the directory {dirpath}."
             raise ValueError(msg)
-
+        if num_events_available == 0:
+            msg = f"No events found in {dirpath}"
+            raise ValueError(msg)
         if num_events < 0:
             num_events = num_events_available
 
