@@ -269,7 +269,7 @@ class TrackMLDataModule(LightningDataModule):
         )
 
     def train_dataloader(self):
-        return self.get_dataloader(dataset=self.train_dataset, stage="fit", shuffle=False)
+        return self.get_dataloader(dataset=self.train_dataset, stage="fit", shuffle=True)
 
     def val_dataloader(self):
         return self.get_dataloader(dataset=self.val_dataset, stage="test", shuffle=False)
