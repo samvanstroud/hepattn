@@ -133,6 +133,9 @@ class Attention(nn.Module):
         if self.attn_type == "flex":
             out = self.attn(q, k, v, block_mask=attn_mask, score_mod=score_mod)
         elif self.attn_type == "torch":
+            # Have to expand the attention mask so that it is broadcasted over the head dimension
+            if attn_mask is not None:
+                attn_mask = attn_mask.unsqueeze(-3)
             out = self.attn(q, k, v, attn_mask=attn_mask)
         elif self.attn_type == "flash":
             out = self.attn(q, k, v, window_size=self.window_size)

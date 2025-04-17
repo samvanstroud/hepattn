@@ -12,13 +12,13 @@ class Metadata(Callback):
     def __init__(self) -> None:
         super().__init__()
 
-    def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
+    def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:  # noqa: ARG002
         if trainer.is_global_zero:
             print("-" * 80)
-            print(f"log dir:\n{trainer.log_dir}")
+            print(f"log dir: {trainer.log_dir!r}")
             print("-" * 80)
 
-    def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:  # noqa: ARG002
+    def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self.trainer = trainer
         if not trainer.is_global_zero:
             return
@@ -26,12 +26,12 @@ class Metadata(Callback):
             return
 
         log_dir = Path(trainer.log_dir)
-        self.save_metadata(log_dir)
+        self.save_metadata(log_dir, pl_module)
         if isinstance(self.trainer.logger, CometLogger):
             for file in log_dir.glob("*.yaml"):
                 self.trainer.logger.experiment.log_asset(file)
 
-    def save_metadata(self, log_dir: Path) -> None:
+    def save_metadata(self, log_dir: Path, pl_module: LightningModule) -> None:
         trainer = self.trainer
         logger = trainer.logger
         datamodule = trainer.datamodule
@@ -53,6 +53,9 @@ class Metadata(Callback):
         }
         if hasattr(trainer, "timestamp"):
             meta["timestamp"] = trainer.timestamp
+
+        if logger := pl_module.logger:
+            logger.log_hyperparams(meta)
 
         meta_path = log_dir / "metadata.yaml"
         with meta_path.open("w") as file:

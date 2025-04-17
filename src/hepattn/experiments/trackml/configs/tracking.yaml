@@ -1,0 +1,195 @@
+name: trackml_tracking
+
+data:
+  train_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
+  val_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
+  test_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
+
+  hit_eval_train: /share/rcifdata/maxhart/hepattn-test/hepattn/logs/ec_eta4_20250409-T184858/ckpts/epoch=029-val_loss=0.05526_train_eval.h5
+
+  num_workers: 10
+  num_train: -1
+  num_test: 10
+  num_val: 10
+  
+  # Select only hits from these detector volumes
+  # pix barrel: 8, pix endcap: 7, 9 
+  # See: https://competitions.codalab.org/competitions/20112
+  hit_volume_ids: [7, 8, 9]
+
+  # Minimum pt for a particle to be deemed reconstructible
+  particle_min_pt: 1.0
+
+  # Maximum absolute eta for a particle to be deemed reconstructible
+  particle_max_abs_eta: 4.0
+
+  # Minimum number of true hits for a particle to be deemed reconstructible
+  particle_min_num_hits: 3
+
+  # Maximum number of reconstructable particles allowed in an event
+  event_max_num_particles: 2000
+  
+  # Define which inputs will be available to the model
+  inputs:
+    hit:
+      # Global hit coords
+      - x
+      - y
+      - z
+      - r
+      - s
+      - eta
+      - phi
+      - u
+      - v
+      # Hit local charge information
+      - charge_frac
+      - leta
+      - lphi
+      - lx
+      - ly
+      - lz
+      - geta
+      - gphi
+    
+  targets:
+    particle:
+      - pt
+      - eta
+      - phi
+
+trainer:
+  # Training stuff here
+  max_epochs: 30
+  accelerator: gpu
+  devices: 1
+  precision: bf16-mixed
+  log_every_n_steps: 10
+  default_root_dir: logs
+  gradient_clip_val: 0.1
+  enable_progress_bar: True
+
+  # Specify loggers here
+  logger:
+    class_path: lightning.pytorch.loggers.CometLogger
+    init_args:
+      project_name: trackml_tracking
+
+model:
+  optimizer: adamw
+
+  # Learning rate scheduler config
+  lrs_config:
+    initial: 5e-5
+    max: 1e-4
+    end: 1e-5
+    pct_start: 0.05
+    skip_scheduler: false
+    weight_decay: 1e-5
+
+  # Whether to use multi task learning or not  
+  mtl: false
+
+  model:
+    class_path: hepattn.models.MaskFormer
+    init_args:
+      embed_dim: &embed_dim 256
+      num_queries: 2000
+      input_sort_field: phi
+      input_nets:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: hit
+                # Which fields will be used to construct this input type
+                fields:
+                  - x
+                  - y
+                  - z
+                  - r
+                  - eta
+                  - phi
+                  - u
+                  - v
+                  - charge_frac
+                  - leta
+                  - lphi
+                  - lx
+                  - ly
+                  - lz
+                  - geta
+                  - gphi
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 16
+                    output_size: *embed_dim
+                posenc:
+                  class_path: hepattn.models.PositionEncoder
+                  init_args:
+                    input_name: hit
+                    fields:
+                      - r
+                      - eta
+                      - phi
+                    sym_fields:
+                      - phi
+                    dim: *embed_dim
+      encoder:
+        class_path: hepattn.models.Encoder
+        init_args:
+          num_layers: 12
+          dim: *embed_dim
+          attn_type: flash
+          window_size: 512
+          window_wrap: true
+      num_decoder_layers: 8
+      decoder_layer_config:
+        dim: *embed_dim
+        mask_attention: true
+      tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.ObjectValidTask
+              init_args:
+                # Task name - can be anything
+                name: track_valid
+                input_object: query
+                output_object: track
+                target_object: particle
+                losses:
+                  object_ce: 1.0
+                costs:
+                  object_ce: 1.0
+                embed_dim: *embed_dim
+                null_weight: 1.0
+            - class_path: hepattn.models.task.ObjectHitMaskTask
+              init_args:
+                # Task name - can be anything
+                name: track_hit_valid
+                input_hit: hit
+                input_object: query
+                output_object: track
+                target_object: particle
+                losses:
+                  mask_ce: 100.0
+                  #mask_dice: 2.0
+                  #mask_focal: 50.0
+                costs:
+                  mask_ce: 100.0
+                  #mask_dice: 2.0
+                  #mask_focal: 50.0
+                embed_dim: *embed_dim
+                null_weight: 1.0
+      matcher:
+        class_path: hepattn.models.matcher.Matcher
+        init_args:
+          default_solver: scipy
+          adaptive_solver: false
+          adaptive_check_interval: 1000
+
+
+      

@@ -21,7 +21,7 @@ due to requirements of recent `torch` versions.
 We use `pixi`'s cuda image, which you can access with
 
 ```shell
-apptainer pull pixi.sif docker://ghcr.io/prefix-dev/pixi:noble-cuda-12.6.3
+apptainer pull pixi.sif docker://ghcr.io/prefix-dev/pixi:0.45.0-noble-cuda-12.6.3
 apptainer shell --nv pixi.sif
 ```
 
@@ -38,6 +38,15 @@ Note that `flash-attn` is commented out in the [`pyproject.toml`](pyproject.toml
 In order to install it, first install the package as above, then uncomment the 
 `flash-attn` requirement, and rerun the installation. This is because `flash-attn`
 depends on `torch` in order to be installed.
+
+## Contributing
+
+If you would like to contribute, please set up pre-commit hooks with
+
+```shell
+pre-commit install
+```
+
 
 
 ## Activing the environment

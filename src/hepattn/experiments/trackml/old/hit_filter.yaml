@@ -1,5 +1,5 @@
 seed_everything: 42
-name: HF-test-lion
+name: HF-ftest-1024ws-8layer-rPE0.1-hybridnorm
 
 model:
   opt_config:
@@ -17,23 +17,25 @@ model:
       output_size: &dim 256
       norm_input: true
 
-  #pos_enc:
-  #  class_path: hepattn.models.PositionEncoder
-  #  init_args:
-  #    variables: [phi, theta]
-  #    dim: *dim
+  pos_enc:
+    class_path: hepattn.models.PositionEncoderRandom
+    init_args:
+      variables: [phi, theta, r]
+      dim: *dim
+      scale: 0.1
 
   encoder:
     class_path: hepattn.models.Encoder
     init_args:
       dim: *dim
-      num_layers: 12
+      num_layers: 8
       attn_type: flash
       window_size: 1024
+      norm: LayerNorm
       hybrid_norm: true
-      #window_wrap: true
-      #score_mod: relative_position
+      window_wrap: true
       #value_residual: true
+      #score_mod: relative_position
       #layer_scale: 1e-4
       #drop_path: 0.1
 
@@ -46,13 +48,13 @@ model:
 
 data:
   use_exatrkx_inputs: true
-  minimum_pt: 0.75 # GeV
-  max_abs_eta: 2.5
+  minimum_pt: 1.0 # GeV
+  max_abs_eta: 4.0
 
   # use pixel barrel layers only
   # https://competitions.codalab.org/competitions/20112
-  #volume_ids: [7, 8, 9]
-  volume_ids: [8]
+  volume_ids: [7, 8, 9]
+  #volume_ids: [8]
 
   inputs:
     hit:
@@ -77,6 +79,9 @@ data:
   labels:
     hit:
       - particle_id
+      - eta
+      - phi
+      - r
     truth:
       - particle_id
       - particle_type
@@ -90,12 +95,12 @@ data:
   #val_dir: /share/lustre/svanstroud/data/trackml/data/val/
   #train_dir: /unix/atlastracking/svanstroud/trackml/data
   #val_dir: /unix/atlastracking/svanstroud/trackml/data
-  train_dir: /home/xucapsva/data/trackml/train/
-  val_dir: /home/xucapsva/data/trackml/val/
-  test_dir: /home/xucapsva/data/trackml/test/
-  #train_dir: /share/rcifdata/svanstroud/data/trackml/train/
-  #val_dir: /share/rcifdata/svanstroud/data/trackml/val/
-  #test_dir: /share/rcifdata/svanstroud/data/trackml/test/
+  #train_dir: /home/xucapsva/data/trackml/train/
+  #val_dir: /home/xucapsva/data/trackml/val/
+  #test_dir: /home/xucapsva/data/trackml/test/
+  train_dir: /share/rcifdata/svanstroud/data/trackml/train/
+  val_dir: /share/rcifdata/svanstroud/data/trackml/val/
+  test_dir: /share/rcifdata/svanstroud/data/trackml/test/
 
   num_workers: 15
   num_train: -1
@@ -104,7 +109,7 @@ data:
 
 trainer:
   gradient_clip_val: 0.1
-  max_epochs: 10
+  max_epochs: 40
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
@@ -118,14 +123,13 @@ trainer:
       display_summary_level: 0
 
   callbacks:
-    #- class_path: hepattn.callbacks.MyThroughputMonitor
-    - class_path: hepattn.callbacks.Compile
+    #- class_path: hepattn.callbacks.MyThroughputMonitor # for some reason this will crash after 5 epochs
     - class_path: hepattn.callbacks.InferenceTimer
+    - class_path: hepattn.callbacks.Compile
     - class_path: hepattn.callbacks.Metadata
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: validate/loss
-    - class_path: lightning.pytorch.callbacks.ModelSummary
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:

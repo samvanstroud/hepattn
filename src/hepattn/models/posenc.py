@@ -1,5 +1,7 @@
+import math
+
 import torch
-from torch import nn
+from torch import Tensor, nn
 
 
 def get_omegas(alpha, dim, **kwargs):
@@ -61,23 +63,32 @@ def pos_enc(xs, dim, alpha=1000):
 
 
 class PositionEncoder(nn.Module):
-    def __init__(self, variables: list[str], dim: int, alpha=1000):
+    def __init__(self, input_name: str, fields: list[str], dim: int, sym_fields: list[str] | None = None, alpha=1000):
         """Positional encoder.
 
         Parameters
         ----------
-        variables : list[str]
-            List of variables to apply the positional encoding to.
+        input_name : str
+            The name of the input object that will be encoded.
+        fields : list[str]
+            List of fields belonging to the object to apply the positional encoding to.
+        fields : list[str]
+            List of fields that should use a rotationally symmetric positional encoding.
+        dim : int
+            Dimension to project the positional encoding into.
+        alpha : float
+            Scaling factor hyperparamater for the positional encoding.
         """
         super().__init__()
 
-        self.variables = variables
+        self.input_name = input_name
+        self.fields = fields
+        self.sym_fields = sym_fields or []
         self.dim = dim
         self.alpha = alpha
-        self.SYM_VARS = {"phi"}
 
-        self.per_input_dim = self.dim // len(self.variables)
-        self.remainder_dim = self.dim % len(self.variables)
+        self.per_input_dim = self.dim // len(self.fields)
+        self.remainder_dim = self.dim % len(self.fields)
 
     def forward(self, inputs: dict):
         """Apply positional encoding to the inputs.
@@ -93,10 +104,34 @@ class PositionEncoder(nn.Module):
             Positional encoding of the input variables.
         """
         encodings = []
-        for var in self.variables:
-            pos_enc_fn = pos_enc_symmetric if var in self.SYM_VARS else pos_enc
-            encodings.append(pos_enc_fn(inputs[var], self.per_input_dim, self.alpha))
+        for field in self.fields:
+            pos_enc_fn = pos_enc_symmetric if field in self.sym_fields else pos_enc
+            encodings.append(pos_enc_fn(inputs[f"{self.input_name}_{field}"], self.per_input_dim, self.alpha))
         if self.remainder_dim:
-            encodings.append(torch.zeros_like(encodings[0])[:, : self.remainder_dim])
+            encodings.append(torch.zeros_like(encodings[0])[..., : self.remainder_dim])
         encodings = torch.cat(encodings, dim=-1)
         return encodings
+
+
+class PositionEncoderRandom(nn.Module):
+    """
+    An implementation of Gaussian Fourier positional encoding.
+
+    "Fourier Features Let Networks Learn High Frequency Functions in Low Dimensional Domains"
+    see https://arxiv.org/abs/2006.10739
+    """
+
+    def __init__(self, input_name: str, dim: int, fields: list[str], scale: float = 1) -> None:
+        super().__init__()
+        assert scale > 0
+        assert dim % 2 == 0, "Dimension must be even"
+        self.input_name = input_name
+        self.fields = fields
+        self.gaussian_matrix = torch.nn.parameter.Buffer(scale * torch.randn((len(fields), dim // 2)))
+        self.pi = torch.tensor(math.pi)
+
+    def forward(self, xs: dict[str, Tensor]) -> Tensor:
+        xs = torch.cat([xs[f"{self.input_name}_{f}"].unsqueeze(-1) for f in self.fields], dim=-1)
+        xs = 2 * self.pi * xs
+        xs @= self.gaussian_matrix
+        return torch.cat([torch.sin(xs), torch.cos(xs)], dim=-1)

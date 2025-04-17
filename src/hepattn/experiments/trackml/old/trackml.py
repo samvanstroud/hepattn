@@ -109,7 +109,10 @@ class TrackMLDataset(Dataset):
             tgt[: len(particles)] = torch.from_numpy(particles[label].to_numpy()[: self.num_objects])
             labels[label] = tgt.unsqueeze(0)
 
-        labels["phi"] = torch.from_numpy(hits["phi"].values).unsqueeze(0).half()
+        # for pos enc
+        inputs["phi"] = torch.from_numpy(hits["phi"].values).unsqueeze(0).half()
+        inputs["theta"] = torch.from_numpy(hits["theta"].values).unsqueeze(0).half()
+        inputs["r"] = torch.from_numpy(hits["r"].values).unsqueeze(0).half()
 
         # target for hit classifier, don't change name or things will break
         labels["hit"] = {}
@@ -257,7 +260,7 @@ class TrackMLDataModule(L.LightningDataModule):
         num_val: int,
         num_test: int,
         test_dir: str | None = None,
-        pin_memory: bool = True,
+        pin_memory: bool = False,
         hit_eval_train: str | None = None,
         hit_eval_val: str | None = None,
         hit_eval_test: str | None = None,

@@ -15,14 +15,19 @@ dependencies = [
     "ruff==0.8.0",
     "pre-commit>=4.0.1,<5",
     "matplotlib==3.9.*",
-    "lightning>=2.4.0,<3",
+    "lightning==2.5.0.post0",
     "comet-ml>=3.47.3,<4",
     "pandas>=2.2.3,<3",
     "pyarrow>=17.0.0",
     "jsonargparse[signatures]>=4.34.0,<5",
-    #"flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiTRUE-cp311-cp311-linux_x86_64.whl",
-    #"torch==2.6.0", # using nightly, see below
-    "lion-pytorch>=0.2.3,<0.3"
+    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiTRUE-cp311-cp311-linux_x86_64.whl",
+    "torchjd>=0.5.0",
+    "lion-pytorch>=0.2.3,<0.3",
+    "awkward>=2.8.1",
+    "uproot>=5.6.0",
+    "h5py>=3.13.0",
+    "particle>=0.25.3",
+    "scikit-learn>=1.6.1,<2",
 ]
 
 [build-system]
@@ -39,11 +44,11 @@ platforms = ["linux-64"]
 
 [tool.pixi.pypi-dependencies]
 hepattn = { path = ".", editable = true }
-torch = { version = "==2.7.*", index = "https://download.pytorch.org/whl/nightly/cu124"}
+torch = { version = "==2.7.0", index = "https://download.pytorch.org/whl/test/cu126"}
 
 [tool.pixi.pypi-options]
 no-build-isolation = ["flash-attn"]
-extra-index-urls = ["https://download.pytorch.org/whl/nightly/cu124"]
+extra-index-urls = ["https://download.pytorch.org/whl/test/cu126"]
 
 [tool.pixi.system-requirements]
 linux = "3.10.0"
@@ -51,8 +56,6 @@ libc = "2.28"
 cuda = "12.2"
 
 [tool.pixi.dependencies]
-#gcc = "==12.3.0"
-#gxx = "==12.3.0"
 python = "3.11.*"
 ninja = "*"
 git = "*"
@@ -64,4 +67,9 @@ target-version = "py311"
 line-length = 150
 preview = true
 lint.select = ["ALL"]
-lint.ignore = ["G", "D", "DOC", "ANN", "PLW", "FBT", "EM", "PLR1714", "PLR2004", "PT018", "RET504", "COM812", "ISC001", "CPY001", "TRY003", "S101", "A003", "N812", "PLR0913", "PLR0917", "DOC201", "INP001", "PLR6301", "T201"]
+lint.ignore = ["G", "D", "DOC", "ANN", "PLW", "FBT", "EM", "PLR1714", "PLR2004", "PT018", "RET504", "COM812", "ISC001", "CPY001", "TRY003", "S101", "A003", "N812", "PLR0913", "PLR0917", "DOC201", "INP001", "PLR6301", "T201", "TD002", "TD003", "FIX002"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:.*distutils Version classes are deprecated. Use packaging.version instead.*:DeprecationWarning",
+]

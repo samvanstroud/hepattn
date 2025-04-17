@@ -1,7 +1,6 @@
 import pathlib
 
 import comet_ml  # noqa: F401
-import numpy as np
 import torch
 import torch.nn.functional as F
 from lightning import LightningModule
@@ -9,8 +8,8 @@ from lightning.pytorch.cli import ArgsType
 from lion_pytorch import Lion
 from torch import nn
 
-from hepattn.experiments.cli import CLI
-from hepattn.experiments.trackml.trackml import TrackMLDataModule
+from hepattn.experiments.trackml.old.trackml import TrackMLDataModule
+from hepattn.utils.cli import CLI
 
 config_dir = pathlib.Path(__file__).parent / "configs"
 
@@ -38,29 +37,17 @@ class HitFilter(LightningModule):
         self.num_hits: list[int] = []
         self.pos_enc = pos_enc
 
-    def on_train_start(self):
-        params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        self.logger.log_hyperparams({"trainable_params": params})
-
-    def forward(self, x, labels=None, timing=False):
-        if timing:
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
+    def forward(self, x, labels=None, timing=False):  # noqa: ARG002
+        if self.pos_enc:
+            pe = self.pos_enc(x)
 
         x = self.init(x["hit"])
 
         if self.pos_enc:
-            x += self.pos_enc(labels)
+            x += pe
 
         x = self.encoder(x)
         preds = self.dense(x).squeeze(-1)
-
-        if timing:
-            end.record()
-            torch.cuda.synchronize()
-            self.times.append(start.elapsed_time(end))
-            self.num_hits.append(x.shape[1])
 
         return {"hit_pred": preds}
 
@@ -88,8 +75,8 @@ class HitFilter(LightningModule):
 
     def validation_step(self, batch):
         preds, labels, loss = self.step(batch)
-        self.log_losses(loss, stage="validate")
-        self.log_metrics(preds, labels, stage="validate")
+        self.log_losses(loss, stage="val")
+        self.log_metrics(preds, labels, stage="val")
         return loss
 
     def test_step(self, batch):
@@ -126,18 +113,6 @@ class HitFilter(LightningModule):
         tn = ((~pred_true) * (~tgt)).sum()
         self.log(f"{stage}/noise_recall", tn / (~tgt).sum(), **kwargs)
         self.log(f"{stage}/noise_precision", tn / (~pred_true).sum(), **kwargs)
-
-    def on_test_epoch_end(self):
-        if self.times:
-            self.times = self.times[5:]
-            self.num_hits = self.num_hits[5:]
-            mean_time = sum(self.times) / len(self.times)
-            std_time = torch.tensor(self.times).std()
-            print(f"Average inference time: {mean_time:.2f} ms ± {std_time:.2f} ms")
-            print(len(self.times), len(self.num_hits))
-            np.save(f"times/{self.name}_times.npy", self.times)
-            np.save(f"times/{self.name}_num_hits.npy", self.num_hits)
-            print(f"Saved timing info to times/{self.name}_times.npy")
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam

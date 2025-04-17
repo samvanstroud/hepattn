@@ -1,0 +1,378 @@
+name: reg34_eta4_pt1_allvars
+
+data:
+  train_dir: /share/rcifdata/maxhart/data/itk/train/
+  val_dir: /share/rcifdata/maxhart/data/itk/val/
+  test_dir: /share/rcifdata/maxhart/data/itk/test/
+
+  num_workers: 0
+  num_train: -1
+  num_test: -1
+  num_val: -1
+
+  # Endcap, barrel, endcap
+  # Pixels: 1, 3, 5
+  # Strips: 2, 4, 6
+  hit_regions: [3, 4]
+
+  particle_min_pt: 1.0
+  particle_max_abs_eta: 4.0
+  particle_min_num_hits:
+    pixel: 3
+    strip: 3
+
+  event_max_num_particles: 2000
+  
+  inputs:
+    pixel:
+      # TrackML style global coordinates derived from x/y/z
+      - x
+      - y
+      - z
+      - r
+      - s
+      - eta
+      - phi
+      - u
+      - v
+
+      # Cluster x/y/z
+      - cluster_x
+      - cluster_y 
+      - cluster_z 
+
+      # Module info
+      - barrel_endcap
+      - layer_disk
+      - eta_module
+      - phi_module
+
+      # Per side info
+      - side
+      - norm_x
+      - norm_y
+      - norm_z
+
+      # Charge info
+      - count
+      - log_charge_count
+
+      # Local coord info
+      - loc_eta
+      - loc_phi
+      - localDir0
+      - localDir1
+      - localDir2
+      - lengthDir0
+      - lengthDir1
+      - lengthDir2
+
+      # Global coords
+      - glob_eta
+      - glob_phi
+      - eta_angle
+      - phi_angle
+
+      # TODO: See if this is a truth quantity or not
+      - SPisOverlap
+
+    strip:
+      # TrackML style global coordinates derived from x/y/z
+      - x
+      - y
+      - z
+      - r
+      - s
+      - eta
+      - phi
+      - u
+      - v
+
+      # Cluster x/y/z
+      - cluster_x_1  
+      - cluster_x_2  
+      - cluster_y_1  
+      - cluster_y_2  
+      - cluster_z_1  
+      - cluster_z_2  
+
+      # Per module info
+      - barrel_endcap  
+      - layer_disk  
+      - eta_module  
+      - phi_module 
+
+      # Per side info
+      - side_1  
+      - side_2  
+      - norm_x_1  
+      - norm_x_2  
+      - norm_y_1  
+      - norm_y_2  
+      - norm_z_1  
+      - norm_z_2  
+
+      # Charge info
+      - count_1  
+      - count_2  
+      - log_charge_count_1  
+      - log_charge_count_2  
+
+      # Local coord info (related to charge info?)
+      - loc_eta_1  
+      - loc_eta_2  
+      - loc_phi_1  
+      - loc_phi_2  
+
+      - localDir0_1  
+      - localDir0_2  
+      - localDir1_1  
+      - localDir1_2  
+      - localDir2_1  
+      - localDir2_2  
+
+      - lengthDir0_1  
+      - lengthDir0_2  
+      - lengthDir1_1  
+      - lengthDir1_2  
+      - lengthDir2_1  
+      - lengthDir2_2  
+
+      # Global coords
+      - glob_eta_1  
+      - glob_eta_2  
+      - glob_phi_1  
+      - glob_phi_2  
+      - eta_angle_1  
+      - eta_angle_2  
+      - phi_angle_1  
+      - phi_angle_2  
+
+      # TODO: See if this is a truth quantity or not
+      - SPisOverlap
+
+  targets:
+    pixel:
+      - on_valid_particle
+    
+    strip:
+      - on_valid_particle
+
+trainer:
+  # Training stuff here
+  max_epochs: 30
+  accelerator: gpu
+  devices: 1
+  precision: bf16-mixed
+  log_every_n_steps: 10
+  default_root_dir: logs
+  gradient_clip_val: 0.1
+  enable_progress_bar: True
+
+  # Specify loggers here
+  logger:
+    class_path: lightning.pytorch.loggers.CometLogger
+    init_args:
+      project_name: itk_filtering
+
+  callbacks:
+    - class_path: hepattn.callbacks.Compile
+    - class_path: hepattn.callbacks.InferenceTimer
+    - class_path: hepattn.callbacks.Metadata
+    - class_path: hepattn.callbacks.Checkpoint
+      init_args:
+        monitor: val/loss
+    - class_path: hepattn.callbacks.TestEvalWriter
+      init_args:
+        write_inputs: false
+        write_outputs: false
+        write_preds: true
+        write_targets: false
+        write_losses: false
+    - class_path: lightning.pytorch.callbacks.ModelSummary
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    - class_path: lightning.pytorch.callbacks.TQDMProgressBar
+      init_args:
+        refresh_rate: 50
+    
+model:
+  optimizer: adamw
+
+  # Learning rate scheduler config
+  lrs_config:
+    initial: 5e-5
+    max: 1e-4
+    end: 1e-5
+    pct_start: 0.05
+    skip_scheduler: false
+    weight_decay: 1e-5
+
+  model:
+    class_path: hepattn.models.HitFilter
+    init_args:
+      input_sort_field: phi
+      input_nets:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: pixel
+                fields:
+                  - x
+                  - y
+                  - z
+                  - r
+                  - s
+                  - eta
+                  - phi
+                  - u
+                  - v
+                  - cluster_x
+                  - cluster_y 
+                  - cluster_z 
+                  - barrel_endcap
+                  - layer_disk
+                  - eta_module
+                  - phi_module
+                  - side
+                  - norm_x
+                  - norm_y
+                  - norm_z
+                  - count
+                  - log_charge_count
+                  - loc_eta
+                  - loc_phi
+                  - localDir0
+                  - localDir1
+                  - localDir2
+                  - lengthDir0
+                  - lengthDir1
+                  - lengthDir2
+                  - glob_eta
+                  - glob_phi
+                  - eta_angle
+                  - phi_angle
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 34
+                    output_size: &embed_dim 256
+                posenc:
+                  class_path: hepattn.models.PositionEncoder
+                  init_args:
+                    input_name: pixel
+                    fields:
+                      - r
+                      - eta
+                      - phi
+                    sym_fields:
+                      - phi
+                    dim: *embed_dim
+
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: strip
+                fields:
+                  - x
+                  - y
+                  - z
+                  - r
+                  - s
+                  - eta
+                  - phi
+                  - u
+                  - v
+                  - cluster_x_1  
+                  - cluster_x_2  
+                  - cluster_y_1  
+                  - cluster_y_2  
+                  - cluster_z_1  
+                  - cluster_z_2  
+                  - barrel_endcap  
+                  - layer_disk  
+                  - eta_module  
+                  - phi_module 
+                  - side_1  
+                  - side_2  
+                  - norm_x_1  
+                  - norm_x_2  
+                  - norm_y_1  
+                  - norm_y_2  
+                  - norm_z_1  
+                  - norm_z_2  
+                  - count_1  
+                  - count_2  
+                  - log_charge_count_1  
+                  - log_charge_count_2  
+                  - loc_eta_1  
+                  - loc_eta_2  
+                  - loc_phi_1  
+                  - loc_phi_2  
+                  - localDir0_1  
+                  - localDir0_2  
+                  - localDir1_1  
+                  - localDir1_2  
+                  - localDir2_1  
+                  - localDir2_2  
+                  - lengthDir0_1  
+                  - lengthDir0_2  
+                  - lengthDir1_1  
+                  - lengthDir1_2  
+                  - lengthDir2_1  
+                  - lengthDir2_2  
+                  - glob_eta_1  
+                  - glob_eta_2  
+                  - glob_phi_1  
+                  - glob_phi_2  
+                  - eta_angle_1  
+                  - eta_angle_2  
+                  - phi_angle_1  
+                  - phi_angle_2  
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 55
+                    output_size: *embed_dim
+                posenc:
+                  class_path: hepattn.models.PositionEncoder
+                  init_args:
+                    input_name: strip
+                    fields:
+                      - r
+                      - eta
+                      - phi
+                    sym_fields:
+                      - phi
+                    dim: *embed_dim
+
+      encoder:
+        class_path: hepattn.models.Encoder
+        init_args:
+          num_layers: 12
+          dim: *embed_dim
+          attn_type: flash
+          window_size: 1024
+          window_wrap: true
+          hybrid_norm: true
+          norm: RMSNorm
+
+      tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.HitFilterTask
+              init_args:
+                name: pixel_filter
+                hit_name: pixel
+                target_field: on_valid_particle
+                embed_dim: *embed_dim
+                threshold: 0.1
+            
+            - class_path: hepattn.models.task.HitFilterTask
+              init_args:
+                name: strip_filter
+                hit_name: strip
+                target_field: on_valid_particle
+                embed_dim: *embed_dim
+                threshold: 0.1

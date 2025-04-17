@@ -8,6 +8,7 @@ from hepattn.flex import relative_position, relative_position_wrapped
 from hepattn.flex.sliding_window import sliding_window_mask, sliding_window_mask_wrapped
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
+from hepattn.models.norm import LayerNorm
 
 create_block_mask = torch.compile(create_block_mask, dynamic=True)
 
@@ -73,10 +74,18 @@ class Residual(nn.Module):
         """
         super().__init__()
         self.fn = fn
-        self.norm = getattr(nn, norm)(dim, elementwise_affine=False) if norm is not None else nn.Identity()
         self.ls = LayerScale(dim, layer_scale) if layer_scale is not None else nn.Identity()
         self.dp = DropPath(drop_path) if drop_path else nn.Identity()
         self.post_norm = post_norm
+
+        if isinstance(norm, str):
+            self.norm = getattr(nn, norm)(dim, elementwise_affine=False)
+        elif norm is None:
+            self.norm = nn.Identity()
+        else:
+            # TODO: Find whatever is passing type args instead of str
+            self.norm = LayerNorm(dim)
+            print(f"Got unrecognised norm layer {norm}, defaulting to {self.norm}")
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
         if self.post_norm:
@@ -89,7 +98,7 @@ class EncoderLayer(nn.Module):
     def __init__(
         self,
         dim: int,
-        depth: int,
+        depth: int = 0,
         norm: str | None = None,
         layer_scale: float | None = None,
         drop_path: float = 0.0,
@@ -200,10 +209,12 @@ class Encoder(nn.Module):
 
         self.layers = torch.nn.ModuleList([EncoderLayer(dim=dim, depth=i, **layer_kwargs) for i in range(num_layers)])
 
-    def forward(self, x: Tensor, **kwargs) -> Tensor:
-        # Concatenate dictionary values
-        if isinstance(x, dict):
-            x = torch.cat(list(x.values()), dim=1)
+    def forward(self, x: Tensor, x_sort_value: Tensor | None = None, **kwargs) -> Tensor:
+        # If value to sort on is provided, use it to sort the tokens
+        # We don't need to use the stable sort assuming that the sort values are unique
+        if x_sort_value is not None:
+            x_sort_idx = torch.argsort(x_sort_value, axis=-1)
+            x = torch.gather(x, -2, x_sort_idx.unsqueeze(-1).expand_as(x))
 
         # Initialise sliding window mask
         if self.mask_mod is None and self.attn_type != "flash" and self.window_size:
@@ -233,5 +244,10 @@ class Encoder(nn.Module):
         # Remove wrapping for flash attention with sliding window
         if self.attn_type == "flash" and self.window_wrap:
             x = x[:, self.window_size // 2 : -self.window_size // 2]
+
+        # If we sorted the tokens, undo the sorting
+        if x_sort_value is not None:
+            x_unsort_idx = torch.argsort(x_sort_idx, axis=-1)
+            x = torch.gather(x, -2, x_unsort_idx.unsqueeze(-1).expand_as(x))
 
         return x

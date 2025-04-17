@@ -6,5 +6,7 @@
 *.sif
 *.pyc
 *.png
+*.pdf
+*.out
 
 logs/

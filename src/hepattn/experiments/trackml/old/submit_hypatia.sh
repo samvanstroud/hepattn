@@ -15,17 +15,17 @@
 
 # requesting 4 V100 GPU
 # (remove the "v100:" if you don't care what GPU)
-#SBATCH --gres=gpu:l40s:1
+#SBATCH --gres=gpu:a100:1
 
 # note! this needs to match --trainer.devices!
 #SBATCH --ntasks-per-node=1
 
 # number of cpus per task
 # useful if you don't have exclusive access to the node
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=15
 
 # request enough memory
-#SBATCH --mem=150G
+#SBATCH --mem=50G
 
 # mail on failures
 ##SBATCH --mail-user=sam.van.stroud@cern.ch
@@ -61,7 +61,7 @@ nvidia-smi
 echo "Running training script..."
 
 # train hit filter tracking model
-PYTORCH_CMD="python src/hepattn/experiments/trackml/hit_filter.py fit --config src/hepattn/experiments/trackml/hit_filter.yaml"
+PYTORCH_CMD="python src/hepattn/experiments/trackml/old/hit_filter.py fit --config src/hepattn/experiments/trackml/old/hit_filter.yaml"
 PIXI_CMD="pixi run $PYTORCH_CMD"
 APPTAINER_CMD="apptainer run --nv --bind /share/rcifdata/svanstroud /share/rcifdata/svanstroud/hepattn/pixi.sif $PIXI_CMD"
 
