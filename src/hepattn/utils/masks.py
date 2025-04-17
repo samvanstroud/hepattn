@@ -103,7 +103,9 @@ def indices_from_mask(mask: BoolTensor, noindex: int = -1) -> Tensor:
         raise ValueError("mask must be 2D for single sample or 3D for batch")
 
     # ensure indices start from 0
-    indices -= indices[indices >= 0].min()
+    valid_indices = indices[indices >= 0]
+    if len(valid_indices) > 0:
+        indices -= valid_indices.min()
     indices[indices < 0] = noindex
 
     return indices

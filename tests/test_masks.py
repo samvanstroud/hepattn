@@ -73,7 +73,9 @@ def test_indices_from_mask_empty():
         [False, False],
     ])
     indices = indices_from_mask(mask)
-    assert torch.all(indices == torch.tensor([-2, -2]))
+    print(mask)
+    print(indices)
+    assert torch.all(indices == torch.tensor([-1, -1]))
 
 
 def test_indices_from_mask_with_non_mask_item():
@@ -82,4 +84,4 @@ def test_indices_from_mask_with_non_mask_item():
         [False, False, False, True, True, False],
     ])
     indices = indices_from_mask(mask)
-    assert torch.all(indices == torch.tensor([0, 0, 0, 1, 1, -2]))
+    assert torch.all(indices == torch.tensor([0, 0, 0, 1, 1, -1]))
