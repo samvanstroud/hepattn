@@ -38,10 +38,10 @@ nvidia-smi
 echo "Running training script..."
 
 # Python command that will be run
-PYTORCH_CMD="python src/hepattn/experiments/trackml/run_tracking.py fit --config src/hepattn/experiments/trackml/configs/tracking.yaml"
+# PYTORCH_CMD="python src/hepattn/experiments/trackml/run_tracking.py fit --config src/hepattn/experiments/trackml/configs/tracking.yaml"
 
 # To do filtering instead
-# PYTORCH_CMD="python src/hepattn/experiments/trackml/run_filtering.py fit --config src/hepattn/experiments/trackml/configs/filtering.yaml"
+PYTORCH_CMD="python src/hepattn/experiments/trackml/run_filtering.py fit --config src/hepattn/experiments/trackml/configs/filtering.yaml"
 
 # Do testing instead
 #PYTORCH_CMD="python src/hepattn/experiments/trackml/run_filtering.py test --config /share/rcifdata/maxhart/hepattn-test/hepattn/logs/ec_eta4_20250409-T184858/config.yaml --ckpt_path /share/rcifdata/maxhart/hepattn-test/hepattn/logs/ec_eta4_20250409-T184858/ckpts/epoch=029-val_loss=0.05526.ckpt"

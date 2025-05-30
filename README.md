@@ -79,15 +79,15 @@ python hit_filter.py fit --config hit_filter.yaml --trainer.fast_dev_run 10
 ```
 
 ## Todo
-
-- [ ] maskformer
-    - [ ] mask decoder
-    - [ ] matcher
-    - [ ] maskformer loss
-    - [ ] order queries by phi in decoder
+- [] move this list to github issues
+- [x] maskformer
+    - [x] mask decoder
+    - [x] matcher
+    - [x] maskformer loss
+    - [x] order queries by phi in decoder
 - [ ] pe
     - [x] positional embeddings from hepformer repo
-    - [ ] segment anything random positional embeddings
+    - [x] segment anything random positional embeddings
     - [ ] add pe to inputs and queries and check impact on mask attention pattern
 - [ ] flex
     - [x] Flex transformer
@@ -102,9 +102,9 @@ python hit_filter.py fit --config hit_filter.yaml --trainer.fast_dev_run 10
     - [x] gated dense network
     - [x] layerscale
     - [x] value residuals including learnable per token
-    - [ ] input pad mask
+    - [x] input pad mask
         - [ ] otherwise pad mask
-        - [ ] dispatch to flash varlen if flash
+        - [x] dispatch to flash varlen if flash
         - [ ] also support flex
     - [ ] alphafold2 attention gating
     - [ ] register tokens but interspersed for local attention

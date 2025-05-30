@@ -13,9 +13,11 @@ class MaskFormer(nn.Module):
         num_decoder_layers: int,
         tasks: nn.ModuleList,
         num_queries: int,
-        embed_dim: int,
+        dim: int,
         matcher: nn.Module | None = None,
         input_sort_field: str | None = None,
+        use_attn_masks: bool = True,
+        use_query_masks: bool = True,
     ):
         """
         Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -37,7 +39,7 @@ class MaskFormer(nn.Module):
             A module used to match predictions to targets (e.g., using the Hungarian algorithm) for loss computation.
         num_queries : int
             The number of object-level queries to initialize and decode.
-        embed_dim : int
+        dim : int
             The dimensionality of the query and key embeddings.
         input_sort_field : str or None, optional
             An optional key used to sort the input objects (e.g., for windowed attention).
@@ -50,10 +52,12 @@ class MaskFormer(nn.Module):
         self.tasks = tasks
         self.matcher = matcher
         self.num_queries = num_queries
-        self.query_initial = nn.Parameter(torch.randn(num_queries, embed_dim))
+        self.query_initial = nn.Parameter(torch.randn(num_queries, dim))
         self.input_sort_field = input_sort_field
+        self.use_attn_masks = use_attn_masks
+        self.use_query_masks = use_query_masks
 
-    def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:  # noqa: C901, PLR0912
+    def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
 
@@ -89,7 +93,7 @@ class MaskFormer(nn.Module):
         # Pass merged input hits through the encoder
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
-            x["key_embed"] = self.encoder(x["key_embed"], x.get(f"key_{self.input_sort_field}"))
+            x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x.get(f"key_{self.input_sort_field}"), kv_mask=x.get("key_valid"))
 
         # Unmerge the updated features back into the separate input types
         # These are just views into the tensor that old all the merged hits
@@ -107,25 +111,36 @@ class MaskFormer(nn.Module):
             outputs[f"layer_{layer_index}"] = {}
 
             attn_masks = {}
+            query_mask = None
+
             for task in self.tasks:
                 # Get the outputs of the task given the current embeddings and record them
                 task_outputs = task(x)
+
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
                 # Here we check if each task has an attention mask to contribute, then after
                 # we fill in any attention masks for any features that did not get an attention mask
-                if hasattr(task, "attn_mask"):
-                    for input_name, attn_mask in task.attn_mask(task_outputs).items():
-                        # We only want to mask an attention slot if every task agrees the slots should be masked
-                        # so we only mask if both the existing and new attention mask are masked
-                        if input_name in attn_masks:
-                            attn_masks[input_name] &= attn_mask
-                        else:
-                            attn_masks[input_name] = attn_mask
+                task_attn_masks = task.attn_mask(task_outputs)
+
+                for input_name, attn_mask in task_attn_masks.items():
+                    # We only want to mask an attention slot if every task agrees the slots should be masked
+                    # so we only mask if both the existing and new attention mask are masked, which means a slot is valid if
+                    # either current or new mask is valid
+                    if input_name in attn_masks:
+                        attn_masks[input_name] |= attn_mask
+                    else:
+                        attn_masks[input_name] = attn_mask
+
+                # Now do same but for query masks
+                task_query_mask = task.query_mask(task_outputs)
+
+                if task_query_mask is not None and self.use_query_masks:
+                    query_mask = query_mask | task_query_mask if query_mask is not None else task_query_mask
 
             # Fill in attention masks for features that did not get one specified by any task
-            if attn_masks:
-                attn_mask = torch.full((batch_size, self.num_queries, x["key_valid"].shape[-1]), False, device=x["key_embed"].device)
+            if attn_masks and self.use_attn_masks:
+                attn_mask = torch.full((batch_size, self.num_queries, x["key_valid"].shape[-1]), True, device=x["key_embed"].device)
 
                 for input_name, input_attn_mask in attn_masks.items():
                     attn_mask[..., x[f"key_is_{input_name}"]] = input_attn_mask
@@ -135,7 +150,9 @@ class MaskFormer(nn.Module):
                 attn_mask = None
 
             # Update the keys and queries
-            x["query_embed"], x["key_embed"] = decoder_layer(x["query_embed"], x["key_embed"], attn_mask=attn_mask)
+            x["query_embed"], x["key_embed"] = decoder_layer(
+                x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=x.get("key_valid")
+            )
 
             # Unmerge the updated features back into the separate input types
             for input_name in input_names:
@@ -168,7 +185,7 @@ class MaskFormer(nn.Module):
 
         return preds
 
-    def loss(self, outputs: dict, targets: dict) -> dict:  # noqa: C901
+    def loss(self, outputs: dict, targets: dict) -> dict:
         """Computes the loss between the forward pass of the model and the data / targets.
         It first computes the cost / loss between each of the predicted and true tracks in each ROI
         and then uses the Hungarian algorihtm to perform an optimal bipartite matching. The model
@@ -188,10 +205,6 @@ class MaskFormer(nn.Module):
             layer_costs = None
             # Get the cost contribution from each of the tasks
             for task in self.tasks:
-                # If the task has no cost to contribute then skip it
-                if not hasattr(task, "cost"):
-                    continue
-
                 # Only use the cost from the final set of predictions
                 task_costs = task.cost(layer_outputs[task.name], targets)
 
@@ -212,8 +225,8 @@ class MaskFormer(nn.Module):
 
             # Apply the permutation in place
             for task in self.tasks:
-                for output in task.outputs:
-                    outputs[layer_name][task.name][output] = outputs[layer_name][task.name][output][batch_idxs, pred_idxs]
+                for output_name in task.outputs:
+                    outputs[layer_name][task.name][output_name] = outputs[layer_name][task.name][output_name][batch_idxs, pred_idxs]
 
         # Compute the losses for each task in each block
         losses = {}

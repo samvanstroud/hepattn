@@ -24,7 +24,8 @@ echo "Running preprocessing script..."
 INPUT_DIR="/share/rcifdata/maxhart/data/itk/"
 
 # Select which dataset to download
-DATASET_NAME="ATLAS-P2-RUN4-03-00-00_Rel.24_ttbar_uncorr_pu200_dumpv5_acorn2.0.0_acorn_data_reading_output_trainset"
+#DATASET_NAME="ATLAS-P2-RUN4-03-00-00_Rel.24_ttbar_uncorr_pu200_dumpv5_acorn2.0.0_acorn_data_reading_output_trainset"
+DATASET_NAME="ATLAS-P2-RUN4-03-00-00_Rel.24_ttbar_uncorr_pu200_v9_acorn_data_reading_output_valset"
 DATASET_TAG="user.avallier:${DATASET_NAME}"
 
 cd $INPUT_DIR
@@ -48,6 +49,6 @@ eval "rucio download ${DATASET_TAG}"
 ssh-agent -k
 
 # Remove the uneeded .pyg files
-eval "rm -rf ${INPUT_DIR}${DATASET_NAME}/*.pyg"
+# eval "rm -rf ${INPUT_DIR}${DATASET_NAME}/*.pyg"
 
 echo "Done!"

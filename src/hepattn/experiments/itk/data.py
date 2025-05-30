@@ -1,10 +1,13 @@
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pandas as pd
 import torch
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
+
+from hepattn.utils.tensor_utils import pad_to_size
 
 
 def is_valid_file(path):
@@ -24,14 +27,22 @@ class ITkDataset(Dataset):
         particle_max_abs_eta: float = 2.5,
         particle_min_num_hits: dict[str, int] | None = None,
         event_max_num_particles=1000,
+        hit_eval_path: str | None = None,
+        append_hit_eval_output: bool = False,
+        apply_hit_eval_pred: bool = False,
     ):
         if particle_min_num_hits is None:
             particle_min_num_hits = {"pixel": 3, "strip": 6}
         super().__init__()
 
-        # Set the global random sampling seed
-        self.sampling_seed = 42
-        np.random.seed(self.sampling_seed)  # noqa: NPY002
+        if append_hit_eval_output:
+            assert hit_eval_path is not None, "A hit eval path must be specified to append hit filter outputs."
+
+        if apply_hit_eval_pred:
+            assert hit_eval_path is not None, "A hit eval path must be specified to apply hit filtering."
+
+        # Global random state initialisation
+        np.random.default_rng(42)
 
         # Get a list of event names
         event_names = [Path(file).stem.replace("-parts", "") for file in Path(dirpath).glob("*-parts.parquet")]
@@ -50,10 +61,22 @@ class ITkDataset(Dataset):
 
         # Metadata
         self.dirpath = Path(dirpath)
+        self.hit_eval_path = hit_eval_path
+        self.apply_hit_eval_pred = apply_hit_eval_pred
+        self.append_hit_eval_output = append_hit_eval_output
         self.inputs = inputs
         self.targets = targets
         self.num_events = num_events
         self.event_names = event_names[:num_events]
+
+        # Sample ID is an integer that can uniquely identify each event/sample, used for picking out events during eval etc
+        self.sample_ids = np.array([int(name.split("event")[-1]) for name in self.event_names], dtype=np.int64)
+        self.sample_ids_to_event_names = {self.sample_ids[i]: str(self.event_names[i]) for i in range(len(self.sample_ids))}
+        self.event_names_to_sample_ids = {v: k for k, v in self.sample_ids_to_event_names.items()}
+
+        # Setup hit eval file if specified
+        if self.hit_eval_path:
+            print(f"Using hit eval dataset {self.hit_eval_path}")
 
         # Hit level cuts
         self.hit_regions = hit_regions
@@ -69,61 +92,10 @@ class ITkDataset(Dataset):
     def __len__(self):
         return int(self.num_events)
 
-    def __getitem__(self, idx):
-        inputs = {}
-        targets = {}
+    def load_event(self, sample_id):
+        event_name = self.sample_ids_to_event_names[sample_id]
 
-        # Load the event
-        hits, particles = self.load_event(idx)
-
-        num_particles = len(particles)
-
-        # Build the input hits
-        for input_name, fields in self.inputs.items():
-            inputs[f"{input_name}_valid"] = torch.full((len(hits[input_name]),), True).unsqueeze(0)
-            targets[f"{input_name}_valid"] = inputs[f"{input_name}_valid"]
-
-            for field in fields:
-                inputs[f"{input_name}_{field}"] = torch.from_numpy(hits[input_name][field].values).unsqueeze(0).half()
-
-        # Make the hit filter targets if requested
-        for hit in ["pixel", "strip"]:
-            if hit in self.targets:
-                # Create the hit filter targets
-                targets[f"{hit}_on_valid_particle"] = torch.from_numpy(hits[hit]["on_valid_particle"].to_numpy()).unsqueeze(0)
-
-        if "particle" in self.targets:
-            # TODO: Check if mask target in config before doing this ?
-            # Build the targets for whether a particle slot is used or not
-            targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
-            targets["particle_valid"][: len(particles)] = True
-            targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
-
-            # Build the particle regression targets
-            particle_ids = torch.from_numpy(particles["particle_id"].values).long()
-
-            message = f"Event {idx} has {num_particles}, but limit is {self.event_max_num_particles}"
-            assert len(particle_ids) <= self.event_max_num_particles, message
-
-            # Create the mask targets and fill in empty slots with -1s and get the IDs of the particle on each hit
-            # Important! Make sure that the padding tensor is also a long or it can cause overflow issues
-            particle_ids = torch.cat([particle_ids, -1 * torch.ones(self.event_max_num_particles - len(particle_ids)).long()])
-            hit_particle_ids = torch.from_numpy(hits[hit]["particle_id"].values).long()
-            targets[f"particle_{hit}_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
-
-            # Build the regression targets
-            for field in self.targets["particle"]:
-                # Null target/particle slots are filled with nans
-                # This acts as a sanity check that we correctly mask out null slots in the loss
-                x = torch.full((self.event_max_num_particles,), torch.nan)
-                x[:num_particles] = torch.from_numpy(particles[field].to_numpy()[: self.event_max_num_particles])
-                targets[f"particle_{field}"] = x.unsqueeze(0)
-
-        return inputs, targets
-
-    def load_event(self, idx):
         # Load in event data
-        event_name = self.event_names[idx]
         hit_names = list(self.inputs.keys())
 
         # Load the particles
@@ -199,15 +171,92 @@ class ITkDataset(Dataset):
             # Mark which hits are on a valid / reconstructable particle, for the hit filter
             hits[hit]["on_valid_particle"] = hits[hit]["particle_id"].isin(particles["particle_id"])
 
-            # TODO: Add back in option to have truth based noise filtering
-            # hits[k] = hits[k][hits[k]["on_valid_particle"]]  # noqa: ERA001
+            # If a hit eval file was specified, read in the predictions from it
+            if self.hit_eval_path:
+                with h5py.File(self.hit_eval_path, "r") as hit_eval_file:
+                    # Append the hit filter logit scores if specified
+                    if self.append_hit_eval_output:
+                        hits[hit]["filter_logit"] = hit_eval_file[f"{sample_id}/outputs/final/{hit}_filter/{hit}_logit"][0]
 
-            assert len(hits[hit]) != 0, f"No {hit}s remaining, loosen selection"
+                    # If true, we drop hits based on the hit eval prediction, i.e. the pre-decided cut of the model
+                    if self.apply_hit_eval_pred:
+                        # The dataset has shape (1, num_hits)
+                        hit_filter_pred = hit_eval_file[f"{sample_id}/preds/final/{hit}_filter/{hit}_on_valid_particle"][0]
+                        hits[hit] = hits[hit][hit_filter_pred]
 
-        assert len(particles) != 0, "No particles remaining, loosen selection"
-        assert particles["particle_id"].nunique() == len(particles), "Non-unique particle ids"
+        # Pack everything togrther
+        # First the hit fields
+        inputs = {}
+        for hit, fields in self.inputs.items():
+            inputs[f"{hit}_valid"] = np.ones(len(hits[hit]), dtype=bool)
 
-        return hits, particles
+            for field in fields:
+                inputs[f"{hit}_{field}"] = hits[hit][field].to_numpy()
+
+        # Hit filter target
+        targets = {}
+        for hit in self.inputs:
+            targets[f"{hit}_valid"] = np.ones(len(hits[hit]), dtype=bool)
+            targets[f"{hit}_on_valid_particle"] = hits[hit]["on_valid_particle"].to_numpy(dtype=bool)
+
+        # Now build and add the masks
+        particle_ids = particles["particle_id"].to_numpy(dtype=np.int64)
+        for hit in self.inputs:
+            hit_particle_ids = hits[hit]["particle_id"].to_numpy(dtype=np.int64)
+            targets[f"particle_{hit}_valid"] = particle_ids[:, None] == hit_particle_ids[None, :]
+
+        # Now the particle fields
+        if "particle" in self.targets:
+            targets["particle_valid"] = particles["pt"].to_numpy() >= self.particle_min_pt
+            for field in self.targets["particle"]:
+                targets[f"particle_{field}"] = particles[field].to_numpy()
+
+        # Add metadata
+        targets["sample_id"] = sample_id
+
+        return inputs, targets
+
+    def __getitem__(self, idx):
+        sample_id = self.sample_ids[idx]
+        inputs, targets = self.load_event(sample_id)
+
+        # Convert to a torch tensor of the correct dtype and add the batch dimension
+        # First do the inputs / hits
+        inputs_out = {}
+        targets_out = {}
+        for input_name, fields in self.inputs.items():
+            inputs_out[f"{input_name}_valid"] = torch.from_numpy(inputs[f"{input_name}_valid"]).bool().unsqueeze(0)
+            # Some tasks might require to know hit padding info for loss masking
+            targets_out[f"{input_name}_valid"] = inputs_out[f"{input_name}_valid"]
+            for field in fields:
+                inputs_out[f"{input_name}_{field}"] = torch.from_numpy(inputs[f"{input_name}_{field}"]).half().unsqueeze(0)
+
+        # Now pack the targets
+        target_shapes = {
+            "pixel": (-1,),
+            "strip": (-1,),
+            "particle": (self.event_max_num_particles,),
+            "particle_pixel": (self.event_max_num_particles, -1),
+            "particle_strip": (self.event_max_num_particles, -1),
+        }
+
+        for target_name, fields in self.targets.items():
+            target_valid = torch.from_numpy(targets[f"{target_name}_valid"]).bool()
+            target_valid = pad_to_size(target_valid, target_shapes[target_name], False)
+            targets_out[f"{target_name}_valid"] = target_valid.unsqueeze(0)
+
+            for field in fields:
+                target_field = torch.from_numpy(targets[f"{target_name}_{field}"])
+                if torch.is_floating_point(target_field):
+                    target_field = pad_to_size(target_field, target_shapes[target_name], 0.0).half()
+                else:
+                    target_field = pad_to_size(target_field, target_shapes[target_name], False).bool()
+                targets_out[f"{target_name}_{field}"] = target_field.unsqueeze(0)
+
+        # Now the metadata
+        targets_out["sample_id"] = torch.tensor([targets["sample_id"]], dtype=torch.int64)
+
+        return inputs_out, targets_out
 
 
 class ITkDataModule(LightningDataModule):
@@ -243,10 +292,10 @@ class ITkDataModule(LightningDataModule):
 
     def setup(self, stage: str):
         if stage == "fit" or stage == "test":
-            self.train_dset = ITkDataset(dirpath=self.train_dir, num_events=self.num_train, **self.kwargs)
+            self.train_dset = ITkDataset(dirpath=self.train_dir, num_events=self.num_train, hit_eval_path=self.hit_eval_train, **self.kwargs)
 
         if stage == "fit":
-            self.val_dset = ITkDataset(dirpath=self.val_dir, num_events=self.num_val, **self.kwargs)
+            self.val_dset = ITkDataset(dirpath=self.val_dir, num_events=self.num_val, hit_eval_path=self.hit_eval_val, **self.kwargs)
 
         # Only print train/val dataset details when actually training
         if stage == "fit" and self.trainer.is_global_zero:
@@ -255,10 +304,10 @@ class ITkDataModule(LightningDataModule):
 
         if stage == "test":
             assert self.test_dir is not None, "No test file specified, see --data.test_dir"
-            self.test_dset = ITkDataset(dirpath=self.test_dir, num_events=self.num_test, trainer=self.trainer, **self.kwargs)
+            self.test_dset = ITkDataset(dirpath=self.test_dir, num_events=self.num_test, hit_eval_path=self.hit_eval_test, **self.kwargs)
             print(f"Created test dataset with {len(self.test_dset):,} events")
 
-    def get_dataloader(self, stage: str, dataset: ITkDataset, shuffle: bool):  # noqa: ARG002
+    def get_dataloader(self, stage: str, dataset: ITkDataset, shuffle: bool):
         return DataLoader(
             dataset=dataset,
             batch_size=None,

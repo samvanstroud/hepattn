@@ -11,9 +11,9 @@ data:
   num_train: -1
   num_test: 10
   num_val: 10
-  
+
   # Select only hits from these detector volumes
-  # pix barrel: 8, pix endcap: 7, 9 
+  # pix barrel: 8, pix endcap: 7, 9
   # See: https://competitions.codalab.org/competitions/20112
   hit_volume_ids: [7, 8, 9]
 
@@ -28,7 +28,7 @@ data:
 
   # Maximum number of reconstructable particles allowed in an event
   event_max_num_particles: 2000
-  
+
   # Define which inputs will be available to the model
   inputs:
     hit:
@@ -51,7 +51,7 @@ data:
       - lz
       - geta
       - gphi
-    
+
   targets:
     particle:
       - pt
@@ -75,6 +75,26 @@ trainer:
     init_args:
       project_name: trackml_tracking
 
+  callbacks:
+    - class_path: hepattn.callbacks.Compile
+    - class_path: hepattn.callbacks.InferenceTimer
+    - class_path: hepattn.callbacks.Metadata
+    - class_path: hepattn.callbacks.Checkpoint
+      init_args:
+        monitor: val/loss
+    - class_path: hepattn.callbacks.PredictionWriter
+      init_args:
+        write_inputs: false
+        write_outputs: true
+        write_preds: true
+        write_targets: true
+        write_losses: false
+    - class_path: lightning.pytorch.callbacks.ModelSummary
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    - class_path: lightning.pytorch.callbacks.TQDMProgressBar
+      init_args:
+        refresh_rate: 50
+
 model:
   optimizer: adamw
 
@@ -87,13 +107,13 @@ model:
     skip_scheduler: false
     weight_decay: 1e-5
 
-  # Whether to use multi task learning or not  
+  # Whether to use multi task learning or not
   mtl: false
 
   model:
     class_path: hepattn.models.MaskFormer
     init_args:
-      embed_dim: &embed_dim 256
+      dim: &dim 256
       num_queries: 2000
       input_sort_field: phi
       input_nets:
@@ -125,7 +145,7 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 16
-                    output_size: *embed_dim
+                    output_size: *dim
                 posenc:
                   class_path: hepattn.models.PositionEncoder
                   init_args:
@@ -136,18 +156,18 @@ model:
                       - phi
                     sym_fields:
                       - phi
-                    dim: *embed_dim
+                    dim: *dim
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
           num_layers: 12
-          dim: *embed_dim
+          dim: *dim
           attn_type: flash
           window_size: 512
           window_wrap: true
       num_decoder_layers: 8
       decoder_layer_config:
-        dim: *embed_dim
+        dim: *dim
         mask_attention: true
       tasks:
         class_path: torch.nn.ModuleList
@@ -164,7 +184,7 @@ model:
                   object_ce: 1.0
                 costs:
                   object_ce: 1.0
-                embed_dim: *embed_dim
+                dim: *dim
                 null_weight: 1.0
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
@@ -182,7 +202,7 @@ model:
                   mask_ce: 100.0
                   #mask_dice: 2.0
                   #mask_focal: 50.0
-                embed_dim: *embed_dim
+                dim: *dim
                 null_weight: 1.0
       matcher:
         class_path: hepattn.models.matcher.Matcher
@@ -190,6 +210,3 @@ model:
           default_solver: scipy
           adaptive_solver: false
           adaptive_check_interval: 1000
-
-
-      

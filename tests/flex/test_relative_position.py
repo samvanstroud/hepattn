@@ -19,10 +19,12 @@ def test_relative_position(device: str = "cpu"):
 
     q_len = torch.tensor([24])
     query = make_tensor(q_len[0])
-    out_dir = Path(__file__).parent / "out"
+    out_dir = Path(__file__).parent.parent / Path("outputs/flex")
     out_dir.mkdir(exist_ok=True)
+
     path = out_dir / "baseline.png"
     visualize_attention_scores(query, query, score_mod=identity, device=device, name="baseline", path=path)
+
     path = out_dir / "relative_position.png"
     visualize_attention_scores(query, query, score_mod=relative_position, device=device, name="relative_position", path=path)
 

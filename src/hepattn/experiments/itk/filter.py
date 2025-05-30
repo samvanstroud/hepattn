@@ -33,7 +33,7 @@ class ITkFilter(ModelWrapper):
             preds_unpacked["hit"] = torch.cat((preds_unpacked["pixel"], preds_unpacked["strip"]), dim=-1)
             targets_unpacked["hit"] = torch.cat([targets_unpacked["pixel"], targets_unpacked["strip"]], dim=-1)
 
-        for hit in preds_unpacked:  # noqa: PLC0206
+        for hit in preds_unpacked:
             pred = preds_unpacked[hit]
             true = targets_unpacked[hit]
 

@@ -70,7 +70,7 @@ class ModelWrapper(LightningModule):
         # First log any task metrics
         self.log_task_metrics(preds, targets, stage)
 
-        # log custom metrics implemented by subclass
+        # Log any custom metrics implemented by subclass
         if hasattr(self, "log_custom_metrics"):
             self.log_custom_metrics(preds, targets, stage)
 
@@ -163,15 +163,17 @@ class ModelWrapper(LightningModule):
 
         for layer_name, layer_losses in losses.items():
             # Get a list of the features that are used by all of the tasks
-            layer_features = []
+            layer_feature_names = set()
             for task in self.model.tasks:
-                layer_features.extend(outputs[layer_name][input_feature] for input_feature in task.input_features)
+                layer_feature_names.update(task.inputs)
 
             # Remove any duplicate features that are used by multiple tasks
-            layer_features = list(set(layer_features))
+            layer_features = [outputs[layer_name][feature_name] for feature_name in layer_feature_names]
 
             # Perform the backward pass for this layer
-            layer_losses = [sum(losses[layer_name][task.name]) for task in self.model.tasks]
+            # For each layer we sum the losses from each task, so we get one loss per task
+            layer_losses = [sum(losses[layer_name][task.name].values()) for task in self.model.tasks]
+
             mtl_backward(losses=layer_losses, features=layer_features, aggregator=UPGrad())
 
         opt.step()

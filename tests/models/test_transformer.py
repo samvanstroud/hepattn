@@ -63,7 +63,6 @@ def test_encoder_forward(input_tensor):
     model = Encoder(num_layers=3, dim=input_tensor.shape[-1]).cuda()
     output = model(input_tensor)
     assert isinstance(output, Tensor)
-    # assert isinstance(mask, BoolTensor)  # noqa: ERA001
     assert output.shape == input_tensor.shape
     assert output.sum() != 0
     assert not torch.isnan(output).any()

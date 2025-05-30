@@ -37,7 +37,7 @@ class HitFilter(LightningModule):
         self.num_hits: list[int] = []
         self.pos_enc = pos_enc
 
-    def forward(self, x, labels=None, timing=False):  # noqa: ARG002
+    def forward(self, x, labels=None, timing=False):
         if self.pos_enc:
             pe = self.pos_enc(x)
 

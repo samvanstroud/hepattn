@@ -7,10 +7,17 @@ import torch
 from jsonargparse.typing import register_type
 from lightning.pytorch.cli import LightningCLI
 
-torch.set_float32_matmul_precision("medium")
+
+# For info on why this is needed, see here
+# https://docs.pytorch.org/docs/stable/multiprocessing.html#file-system-file-system
+torch.multiprocessing.set_sharing_strategy("file_system")
+
+# Similarly, see here for this
+# https://docs.pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html
+torch.set_float32_matmul_precision("high")
 
 
-# add support for converting yaml lists to tensors
+# Add support for converting yaml lists to tensors
 def serializer(x: torch.Tensor) -> list:
     return x.tolist()
 
@@ -58,20 +65,20 @@ class CLI(LightningCLI):
         sc = self.config[self.subcommand]
 
         if self.subcommand == "fit":
-            # get timestamped output dir for this run
+            # Get timestamped output dir for this run
             timestamp = datetime.now().strftime("%Y%m%d-T%H%M%S")  # noqa: DTZ005
             log = "trainer.logger"
             name = sc["name"]
             log_dir = Path(sc["trainer.default_root_dir"])
 
-            # handle case where we re-use an existing config: use parent of timestampped dir
+            # Handle case where we re-use an existing config: use parent of timestampped dir
             try:
                 datetime.strptime(log_dir.name.split("_")[-1], "%Y%m%d-T%H%M%S")  # noqa: DTZ007
                 log_dir = log_dir.parent
             except ValueError:
                 pass
 
-            # set the timestampped dir
+            # Set the timestampped dir
             dirname = f"{name}_{timestamp}"
             log_dir_timestamp = str(Path(log_dir / dirname).resolve())
             sc["trainer.default_root_dir"] = log_dir_timestamp
@@ -79,21 +86,21 @@ class CLI(LightningCLI):
                 sc[f"{log}.init_args.save_dir"] = log_dir_timestamp
 
         if self.subcommand == "test":
-            # modify callbacks when testing
+            # Modify callbacks when testing
             self.save_config_callback = None
             sc["trainer.logger"] = False
             for c in sc["trainer.callbacks"]:
                 if hasattr(c, "init_args") and hasattr(c.init_args, "refresh_rate"):
                     c.init_args.refresh_rate = 1
 
-            # use the best epoch for testing
+            # Use the best epoch for testing
             if sc["ckpt_path"] is None:
                 config = sc["config"]
                 assert len(config) == 1
                 best_epoch_path = get_best_epoch(Path(config[0].rel_path))
                 sc["ckpt_path"] = best_epoch_path
 
-            # ensure only one device is used for testing
+            # Ensure only one device is used for testing
             n_devices = sc["trainer.devices"]
             if (isinstance(n_devices, str | int)) and int(n_devices) > 1:
                 print("Setting --trainer.devices=1")

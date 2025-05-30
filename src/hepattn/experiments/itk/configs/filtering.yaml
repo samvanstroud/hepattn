@@ -1,4 +1,4 @@
-name: reg34_eta4_pt1_allvars
+name: region34_eta4_pt1
 
 data:
   train_dir: /share/rcifdata/maxhart/data/itk/train/
@@ -22,7 +22,7 @@ data:
     strip: 3
 
   event_max_num_particles: 2000
-  
+
   inputs:
     pixel:
       # TrackML style global coordinates derived from x/y/z
@@ -38,8 +38,8 @@ data:
 
       # Cluster x/y/z
       - cluster_x
-      - cluster_y 
-      - cluster_z 
+      - cluster_y
+      - cluster_z
 
       # Module info
       - barrel_endcap
@@ -89,64 +89,64 @@ data:
       - v
 
       # Cluster x/y/z
-      - cluster_x_1  
-      - cluster_x_2  
-      - cluster_y_1  
-      - cluster_y_2  
-      - cluster_z_1  
-      - cluster_z_2  
+      - cluster_x_1
+      - cluster_x_2
+      - cluster_y_1
+      - cluster_y_2
+      - cluster_z_1
+      - cluster_z_2
 
       # Per module info
-      - barrel_endcap  
-      - layer_disk  
-      - eta_module  
-      - phi_module 
+      - barrel_endcap
+      - layer_disk
+      - eta_module
+      - phi_module
 
       # Per side info
-      - side_1  
-      - side_2  
-      - norm_x_1  
-      - norm_x_2  
-      - norm_y_1  
-      - norm_y_2  
-      - norm_z_1  
-      - norm_z_2  
+      - side_1
+      - side_2
+      - norm_x_1
+      - norm_x_2
+      - norm_y_1
+      - norm_y_2
+      - norm_z_1
+      - norm_z_2
 
       # Charge info
-      - count_1  
-      - count_2  
-      - log_charge_count_1  
-      - log_charge_count_2  
+      - count_1
+      - count_2
+      - log_charge_count_1
+      - log_charge_count_2
 
       # Local coord info (related to charge info?)
-      - loc_eta_1  
-      - loc_eta_2  
-      - loc_phi_1  
-      - loc_phi_2  
+      - loc_eta_1
+      - loc_eta_2
+      - loc_phi_1
+      - loc_phi_2
 
-      - localDir0_1  
-      - localDir0_2  
-      - localDir1_1  
-      - localDir1_2  
-      - localDir2_1  
-      - localDir2_2  
+      - localDir0_1
+      - localDir0_2
+      - localDir1_1
+      - localDir1_2
+      - localDir2_1
+      - localDir2_2
 
-      - lengthDir0_1  
-      - lengthDir0_2  
-      - lengthDir1_1  
-      - lengthDir1_2  
-      - lengthDir2_1  
-      - lengthDir2_2  
+      - lengthDir0_1
+      - lengthDir0_2
+      - lengthDir1_1
+      - lengthDir1_2
+      - lengthDir2_1
+      - lengthDir2_2
 
       # Global coords
-      - glob_eta_1  
-      - glob_eta_2  
-      - glob_phi_1  
-      - glob_phi_2  
-      - eta_angle_1  
-      - eta_angle_2  
-      - phi_angle_1  
-      - phi_angle_2  
+      - glob_eta_1
+      - glob_eta_2
+      - glob_phi_1
+      - glob_phi_2
+      - eta_angle_1
+      - eta_angle_2
+      - phi_angle_1
+      - phi_angle_2
 
       # TODO: See if this is a truth quantity or not
       - SPisOverlap
@@ -154,7 +154,7 @@ data:
   targets:
     pixel:
       - on_valid_particle
-    
+
     strip:
       - on_valid_particle
 
@@ -173,7 +173,7 @@ trainer:
   logger:
     class_path: lightning.pytorch.loggers.CometLogger
     init_args:
-      project_name: itk_filtering
+      project: itk_filtering
 
   callbacks:
     - class_path: hepattn.callbacks.Compile
@@ -182,7 +182,7 @@ trainer:
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
-    - class_path: hepattn.callbacks.TestEvalWriter
+    - class_path: hepattn.callbacks.PredictionWriter
       init_args:
         write_inputs: false
         write_outputs: false
@@ -194,7 +194,7 @@ trainer:
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
         refresh_rate: 50
-    
+
 model:
   optimizer: adamw
 
@@ -229,8 +229,8 @@ model:
                   - u
                   - v
                   - cluster_x
-                  - cluster_y 
-                  - cluster_z 
+                  - cluster_y
+                  - cluster_z
                   - barrel_endcap
                   - layer_disk
                   - eta_module
@@ -257,7 +257,7 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 34
-                    output_size: &embed_dim 256
+                    output_size: &dim 256
                 posenc:
                   class_path: hepattn.models.PositionEncoder
                   init_args:
@@ -268,7 +268,7 @@ model:
                       - phi
                     sym_fields:
                       - phi
-                    dim: *embed_dim
+                    dim: *dim
 
             - class_path: hepattn.models.InputNet
               init_args:
@@ -283,57 +283,57 @@ model:
                   - phi
                   - u
                   - v
-                  - cluster_x_1  
-                  - cluster_x_2  
-                  - cluster_y_1  
-                  - cluster_y_2  
-                  - cluster_z_1  
-                  - cluster_z_2  
-                  - barrel_endcap  
-                  - layer_disk  
-                  - eta_module  
-                  - phi_module 
-                  - side_1  
-                  - side_2  
-                  - norm_x_1  
-                  - norm_x_2  
-                  - norm_y_1  
-                  - norm_y_2  
-                  - norm_z_1  
-                  - norm_z_2  
-                  - count_1  
-                  - count_2  
-                  - log_charge_count_1  
-                  - log_charge_count_2  
-                  - loc_eta_1  
-                  - loc_eta_2  
-                  - loc_phi_1  
-                  - loc_phi_2  
-                  - localDir0_1  
-                  - localDir0_2  
-                  - localDir1_1  
-                  - localDir1_2  
-                  - localDir2_1  
-                  - localDir2_2  
-                  - lengthDir0_1  
-                  - lengthDir0_2  
-                  - lengthDir1_1  
-                  - lengthDir1_2  
-                  - lengthDir2_1  
-                  - lengthDir2_2  
-                  - glob_eta_1  
-                  - glob_eta_2  
-                  - glob_phi_1  
-                  - glob_phi_2  
-                  - eta_angle_1  
-                  - eta_angle_2  
-                  - phi_angle_1  
-                  - phi_angle_2  
+                  - cluster_x_1
+                  - cluster_x_2
+                  - cluster_y_1
+                  - cluster_y_2
+                  - cluster_z_1
+                  - cluster_z_2
+                  - barrel_endcap
+                  - layer_disk
+                  - eta_module
+                  - phi_module
+                  - side_1
+                  - side_2
+                  - norm_x_1
+                  - norm_x_2
+                  - norm_y_1
+                  - norm_y_2
+                  - norm_z_1
+                  - norm_z_2
+                  - count_1
+                  - count_2
+                  - log_charge_count_1
+                  - log_charge_count_2
+                  - loc_eta_1
+                  - loc_eta_2
+                  - loc_phi_1
+                  - loc_phi_2
+                  - localDir0_1
+                  - localDir0_2
+                  - localDir1_1
+                  - localDir1_2
+                  - localDir2_1
+                  - localDir2_2
+                  - lengthDir0_1
+                  - lengthDir0_2
+                  - lengthDir1_1
+                  - lengthDir1_2
+                  - lengthDir2_1
+                  - lengthDir2_2
+                  - glob_eta_1
+                  - glob_eta_2
+                  - glob_phi_1
+                  - glob_phi_2
+                  - eta_angle_1
+                  - eta_angle_2
+                  - phi_angle_1
+                  - phi_angle_2
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 55
-                    output_size: *embed_dim
+                    output_size: *dim
                 posenc:
                   class_path: hepattn.models.PositionEncoder
                   init_args:
@@ -344,13 +344,13 @@ model:
                       - phi
                     sym_fields:
                       - phi
-                    dim: *embed_dim
+                    dim: *dim
 
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
           num_layers: 12
-          dim: *embed_dim
+          dim: *dim
           attn_type: flash
           window_size: 1024
           window_wrap: true
@@ -366,13 +366,13 @@ model:
                 name: pixel_filter
                 hit_name: pixel
                 target_field: on_valid_particle
-                embed_dim: *embed_dim
+                dim: *dim
                 threshold: 0.1
-            
+
             - class_path: hepattn.models.task.HitFilterTask
               init_args:
                 name: strip_filter
                 hit_name: strip
                 target_field: on_valid_particle
-                embed_dim: *embed_dim
+                dim: *dim
                 threshold: 0.1

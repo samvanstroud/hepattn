@@ -19,7 +19,7 @@ class TrackMLDataset(Dataset):
         dirpath: str,
         inputs: dict,
         targets: dict,
-        num_samples: int = -1,
+        num_events: int = -1,
         hit_volume_ids: list | None = None,
         particle_min_pt: float = 1.0,
         particle_max_abs_eta: float = 2.5,
@@ -37,24 +37,22 @@ class TrackMLDataset(Dataset):
         event_names = [Path(file).stem.replace("-parts", "") for file in Path(dirpath).glob("event*-parts.parquet")]
 
         # Calculate the number of events that will actually be used
-        num_samples_available = len(event_names)
+        num_events_available = len(event_names)
 
-        if num_samples > num_samples_available:
-            msg = f"Requested {num_samples} events, but only {num_samples_available} are available in the directory {dirpath}"
+        if num_events > num_events_available:
+            msg = f"Requested {num_events} events, but only {num_events_available} are available in the directory {dirpath}."
             raise ValueError(msg)
-        if num_samples_available == 0:
-            msg = f"No events found in {dirpath}"
-            raise ValueError(msg)
-        if num_samples < 0:
-            num_samples = num_samples_available
+
+        if num_events < 0:
+            num_events = num_events_available
 
         # Metadata
         self.dirpath = Path(dirpath)
         self.hit_eval_path = hit_eval_path
         self.inputs = inputs
         self.targets = targets
-        self.num_samples = num_samples
-        self.event_names = event_names[:num_samples]
+        self.num_events = num_events
+        self.event_names = event_names[:num_events]
 
         # Setup hit eval file if specified
         if self.hit_eval_path:
@@ -72,7 +70,7 @@ class TrackMLDataset(Dataset):
         self.event_max_num_particles = event_max_num_particles
 
     def __len__(self):
-        return int(self.num_samples)
+        return int(self.num_events)
 
     def __getitem__(self, idx):
         inputs = {}
@@ -187,8 +185,8 @@ class TrackMLDataset(Dataset):
         # Check that all hits have different phi
         # This is necessary as the fast sorting algorithm used by pytorch can be non-stable
         # if two values are equal, which could cause subtle bugs
-        # msg = f"Only {hits['phi'].nunique()} of the {len(hits)} have unique phi"  # noqa: ERA001
-        # assert hits["phi"].nunique() == len(hits), msg  # noqa: ERA001
+        # msg = f"Only {hits['phi'].nunique()} of the {len(hits)} have unique phi"
+        # assert hits["phi"].nunique() == len(hits), msg
 
         return hits, particles
 
@@ -228,7 +226,7 @@ class TrackMLDataModule(LightningDataModule):
         if stage == "fit" or stage == "test":
             self.train_dataset = TrackMLDataset(
                 dirpath=self.train_dir,
-                num_samples=self.num_train,
+                num_events=self.num_train,
                 hit_eval_path=self.hit_eval_train,
                 **self.kwargs,
             )
@@ -236,7 +234,7 @@ class TrackMLDataModule(LightningDataModule):
         if stage == "fit":
             self.val_dataset = TrackMLDataset(
                 dirpath=self.val_dir,
-                num_samples=self.num_val,
+                num_events=self.num_val,
                 hit_eval_path=self.hit_eval_val,
                 **self.kwargs,
             )
@@ -251,13 +249,13 @@ class TrackMLDataModule(LightningDataModule):
 
             self.test_dataset = TrackMLDataset(
                 dirpath=self.test_dir,
-                num_samples=self.num_test,
+                num_events=self.num_test,
                 hit_eval_path=self.hit_eval_test,
                 **self.kwargs,
             )
             print(f"Created test dataset with {len(self.test_dataset):,} events")
 
-    def get_dataloader(self, stage: str, dataset: TrackMLDataset, shuffle: bool):  # noqa: ARG002
+    def get_dataloader(self, stage: str, dataset: TrackMLDataset, shuffle: bool):
         return DataLoader(
             dataset=dataset,
             batch_size=None,

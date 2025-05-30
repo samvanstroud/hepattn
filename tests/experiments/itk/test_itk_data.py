@@ -12,7 +12,7 @@ plt.rcParams["figure.dpi"] = 300
 
 class TestITkEvent:
     @pytest.fixture
-    def itk_event(self):
+    def itk_dataset(self):
         input_fields = {
             "pixel": [
                 "x",
@@ -38,11 +38,15 @@ class TestITkEvent:
 
         target_fields = {
             "particle": ["pt", "eta", "phi"],
+            "pixel": ["on_valid_particle"],
+            "strip": ["on_valid_particle"],
+            "particle_pixel": [],
+            "particle_strip": [],
         }
 
         dirpath = "/share/rcifdata/maxhart/data/itk/val"
         num_events = -1
-        hit_regions = [3, 4]
+        hit_regions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         particle_min_pt = 1.0
         particle_max_abs_eta = 1.0
         particle_min_num_hits = {"pixel": 3, "strip": 3}
@@ -60,15 +64,8 @@ class TestITkEvent:
             event_max_num_particles=event_max_num_particles,
         )
 
-        return dataset[0]
+        return dataset
 
-    def test_itk_event_masks(self, itk_event):
-        # Some basic sanity checks on the event data
-        _inputs, _targets = itk_event
-
-        # Every valid particle should have a unique particle id
-
-        # Particle id should be a long
 
     def test_itk_event_display(self, itk_event):
         # Plot an event display directly from dataloader to verify things look correct

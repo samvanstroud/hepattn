@@ -2,7 +2,7 @@ from lightning import Callback
 
 
 class Compile(Callback):
-    def setup(self, trainer, pl_module, stage):  # noqa: ARG002
+    def setup(self, trainer, pl_module, stage):
         self.compile(pl_module)
 
     def compile(self, module):

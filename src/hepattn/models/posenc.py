@@ -113,7 +113,7 @@ class PositionEncoder(nn.Module):
         return encodings
 
 
-class PositionEncoderRandom(nn.Module):
+class FourierPositionEncoder(nn.Module):
     """
     An implementation of Gaussian Fourier positional encoding.
 
@@ -127,11 +127,11 @@ class PositionEncoderRandom(nn.Module):
         assert dim % 2 == 0, "Dimension must be even"
         self.input_name = input_name
         self.fields = fields
-        self.gaussian_matrix = torch.nn.parameter.Buffer(scale * torch.randn((len(fields), dim // 2)))
+        self.B = torch.nn.parameter.Buffer(scale * torch.randn((len(fields), dim // 2)))
         self.pi = torch.tensor(math.pi)
 
     def forward(self, xs: dict[str, Tensor]) -> Tensor:
-        xs = torch.cat([xs[f"{self.input_name}_{f}"].unsqueeze(-1) for f in self.fields], dim=-1)
+        xs = torch.cat([xs[f"{self.input_name}_{field}"].unsqueeze(-1) for field in self.fields], dim=-1)
         xs = 2 * self.pi * xs
-        xs @= self.gaussian_matrix
+        xs @= self.B
         return torch.cat([torch.sin(xs), torch.cos(xs)], dim=-1)

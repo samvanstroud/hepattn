@@ -4,11 +4,11 @@
 #SBATCH -p GPU
 #SBATCH --nodes=1
 #SBATCH --export=ALL
-#SBATCH --gres=gpu:l40s:1
+#SBATCH --gres=gpu:a100:1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=12
 #SBATCH --mem=24G
-#SBATCH --output=/share/rcifdata/maxhart/hepattn-test/hepattn/src/hepattn/experiments/itk/slurm_logs/slurm-%j.%x.out
+#SBATCH --output=/share/rcifdata/maxhart/hepattn/src/hepattn/experiments/itk/slurm_logs/slurm-%j.%x.out
 
 
 # Comet variables
@@ -27,11 +27,11 @@ echo "nvidia-smi:"
 nvidia-smi
 
 # Move to workdir
-cd /share/rcifdata/maxhart/hepattn-test/hepattn/
+cd /share/rcifdata/maxhart/hepattn/
 echo "Moved dir, now in: ${PWD}"
 
 # Set tmpdir
-export TMPDIR=/share/rcifdata/maxhart/data/tmp
+export TMPDIR=/var/tmp/
 
 # Run the training
 echo "Running training script..."
@@ -41,11 +41,15 @@ echo "Running training script..."
 
 PYTORCH_CMD="python src/hepattn/experiments/itk/run_filtering.py fit --config src/hepattn/experiments/itk/configs/filtering_pixel.yaml"
 
+# PYTORCH_CMD="python src/hepattn/experiments/itk/run_filtering.py test --config /share/rcifdata/maxhart/hepattn/logs/ITk_pixel_region135_eta4_pt1_20250422-T132414/config.yaml --ckpt_path /share/rcifdata/maxhart/hepattn/logs/ITk_pixel_region135_eta4_pt1_20250422-T132414/ckpts/epoch=029-val_loss=0.40065.ckpt"
+
+# PYTORCH_CMD="python src/hepattn/experiments/itk/run_filtering.py fit --config /share/rcifdata/maxhart/hepattn/logs/pixel_region135_eta4_pt1_20250414-T145756/config.yaml --ckpt_path /share/rcifdata/maxhart/hepattn/logs/pixel_region135_eta4_pt1_20250414-T145756/ckpts/epoch=028-val_loss=0.40953.ckpt"
+
 # Pixi commnand that runs the python command inside the pixi env
 PIXI_CMD="pixi run $PYTORCH_CMD"
 
 # Apptainer command that runs the pixi command inside the pixi apptainer image
-APPTAINER_CMD="apptainer run --nv --bind /share/rcifdata/maxhart /share/rcifdata/maxhart/hepattn-test/hepattn/pixi.sif $PIXI_CMD"
+APPTAINER_CMD="apptainer run --nv --bind /share/rcifdata/maxhart /share/rcifdata/maxhart/hepattn/pixi.sif $PIXI_CMD"
 
 # Run the final command
 echo "Running command: $APPTAINER_CMD"

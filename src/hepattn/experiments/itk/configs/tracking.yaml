@@ -21,7 +21,7 @@ data:
     strip: 3
 
   event_max_num_particles: 1600
-  
+
   inputs:
     pixel:
       - x
@@ -33,7 +33,7 @@ data:
       - phi
       - u
       - v
-    
+
     strip:
       - x
       - y
@@ -44,12 +44,22 @@ data:
       - phi
       - u
       - v
-    
+
   targets:
     particle:
       - pt
       - eta
       - phi
+
+    # particle_pixel: []
+
+    # particle_strip: []
+
+    # pixel:
+    #   - on_valid_particle
+
+    # strip:
+    #   - on_valid_particle
 
 trainer:
   # Training stuff here
@@ -76,18 +86,18 @@ model:
     pct_start: 0.05
     skip_scheduler: false
     weight_decay: 1e-5
-  
+
   optimizer: adamw
-  
+
   mtl: false
 
   model:
     class_path: hepattn.models.MaskFormer
     init_args:
-      embed_dim: &embed_dim 256
+      dim: &dim 256
       num_queries: 1600
       input_sort_field: phi
-      
+
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -107,7 +117,7 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 6
-                    output_size: *embed_dim
+                    output_size: *dim
                 posenc:
                   class_path: hepattn.models.PositionEncoder
                   init_args:
@@ -118,7 +128,7 @@ model:
                       - phi
                     sym_fields:
                       - phi
-                    dim: *embed_dim
+                    dim: *dim
 
             - class_path: hepattn.models.InputNet
               init_args:
@@ -135,7 +145,7 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 6
-                    output_size: *embed_dim
+                    output_size: *dim
                 posenc:
                   class_path: hepattn.models.PositionEncoder
                   init_args:
@@ -146,20 +156,20 @@ model:
                       - phi
                     sym_fields:
                       - phi
-                    dim: *embed_dim
+                    dim: *dim
 
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
           num_layers: 8
-          dim: *embed_dim
+          dim: *dim
           attn_type: flash
           window_size: 512
           window_wrap: true
 
       num_decoder_layers: 8
       decoder_layer_config:
-        dim: *embed_dim
+        dim: *dim
         mask_attention: true
 
       matcher:
@@ -183,7 +193,7 @@ model:
                   object_ce: 1.0
                 costs:
                   object_ce: 1.0
-                embed_dim: *embed_dim
+                dim: *dim
                 null_weight: 1.0
 
             - class_path: hepattn.models.task.ObjectHitMaskTask
@@ -201,7 +211,7 @@ model:
                   mask_ce: 100.0
                   #mask_dice: 2.0
                   #mask_focal: 50.0
-                embed_dim: *embed_dim
+                dim: *dim
                 null_weight: 1.0
 
             - class_path: hepattn.models.task.ObjectHitMaskTask
@@ -219,9 +229,5 @@ model:
                   mask_ce: 100.0
                   #mask_dice: 2.0
                   #mask_focal: 50.0
-                embed_dim: *embed_dim
+                dim: *dim
                 null_weight: 1.0
-      
-
-
-      

@@ -320,7 +320,7 @@ class TrackMLDataModule(L.LightningDataModule):
         if self.trainer.is_global_zero:
             print("-" * 80, "\n")
 
-    def get_dataloader(self, stage: str, dataset: TrackMLDataset, shuffle: bool):  # noqa: ARG002
+    def get_dataloader(self, stage: str, dataset: TrackMLDataset, shuffle: bool):
         return DataLoader(
             dataset=dataset,
             batch_size=None,

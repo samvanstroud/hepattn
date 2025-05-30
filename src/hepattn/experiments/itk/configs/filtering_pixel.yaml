@@ -1,11 +1,13 @@
-name: pixel_r135_eta4_pt0p5_allvars
+name: ITk_pixel_region135_eta4_900mev
 
 data:
   train_dir: /share/rcifdata/maxhart/data/itk/train/
   val_dir: /share/rcifdata/maxhart/data/itk/val/
   test_dir: /share/rcifdata/maxhart/data/itk/test/
 
-  num_workers: 0
+  hit_eval_test: /share/rcifdata/maxhart/hepattn-test/hepattn/logs/ITk_pixel_region135_eta4_pt1_20250422-T132414/ckpts/epoch=029-val_loss=0.40065_test_eval.h5
+
+  num_workers: 10
   num_train: -1
   num_test: -1
   num_val: -1
@@ -15,13 +17,13 @@ data:
   # Strips: 2, 4, 6
   hit_regions: [1, 3, 5]
 
-  particle_min_pt: 0.5
+  particle_min_pt: 0.9
   particle_max_abs_eta: 4.0
   particle_min_num_hits:
     pixel: 3
 
   event_max_num_particles: 10000
-  
+
   inputs:
     pixel:
       # TrackML style global coordinates derived from x/y/z
@@ -37,8 +39,8 @@ data:
 
       # Cluster x/y/z
       - cluster_x
-      - cluster_y 
-      - cluster_z 
+      - cluster_y
+      - cluster_z
 
       # Module info
       - barrel_endcap
@@ -103,7 +105,7 @@ trainer:
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
-    - class_path: hepattn.callbacks.TestEvalWriter
+    - class_path: hepattn.callbacks.PredictionWriter
       init_args:
         write_inputs: false
         write_outputs: true
@@ -115,7 +117,7 @@ trainer:
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
         refresh_rate: 50
-    
+
 model:
   optimizer: adamw
 
@@ -150,8 +152,8 @@ model:
                   - u
                   - v
                   - cluster_x
-                  - cluster_y 
-                  - cluster_z 
+                  - cluster_y
+                  - cluster_z
                   - barrel_endcap
                   - layer_disk
                   - eta_module
@@ -178,7 +180,7 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 34
-                    output_size: &embed_dim 256
+                    output_size: &dim 256
                 posenc:
                   class_path: hepattn.models.PositionEncoder
                   init_args:
@@ -189,13 +191,13 @@ model:
                       - phi
                     sym_fields:
                       - phi
-                    dim: *embed_dim
+                    dim: *dim
 
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
           num_layers: 12
-          dim: *embed_dim
+          dim: *dim
           attn_type: flash
           window_size: 1024
           window_wrap: true
@@ -211,5 +213,5 @@ model:
                 name: pixel_filter
                 hit_name: pixel
                 target_field: on_valid_particle
-                embed_dim: *embed_dim
+                dim: *dim
                 threshold: 0.1

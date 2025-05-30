@@ -1,4 +1,4 @@
-name: ec_eta4
+name: layers12_dim256_regions789_eta4_pt1
 
 data:
   train_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
@@ -9,9 +9,9 @@ data:
   num_train: -1
   num_test: -1
   num_val: -1
-  
+
   # Select only hits from these detector volumes
-  # pix barrel: 8, pix endcap: 7, 9 
+  # pix barrel: 8, pix endcap: 7, 9
   # See: https://competitions.codalab.org/competitions/20112
   hit_volume_ids: [7, 8, 9]
 
@@ -26,7 +26,7 @@ data:
 
   # Maximum number of reconstructable particles allowed in an event
   event_max_num_particles: 2000
-  
+
   # Define which inputs will be available to the model
   inputs:
     hit:
@@ -49,7 +49,7 @@ data:
       - lz
       - geta
       - gphi
-    
+
   targets:
     hit:
       - on_valid_particle
@@ -70,7 +70,6 @@ trainer:
     class_path: lightning.pytorch.loggers.CometLogger
     init_args:
       project_name: trackml_filtering
-      display_summary_level: 0
 
   callbacks:
     - class_path: hepattn.callbacks.Compile
@@ -79,26 +78,27 @@ trainer:
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
-    - class_path: hepattn.callbacks.TestEvalWriter
+    - class_path: hepattn.callbacks.PredictionWriter
       init_args:
         write_inputs: false
         write_outputs: false
         write_preds: true
         write_targets: false
         write_losses: false
+    - class_path: lightning.pytorch.callbacks.ModelSummary
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
         refresh_rate: 50
-    
+
 model:
-  optimizer: Lion
+  optimizer: adamw
 
   # Learning rate scheduler config
   lrs_config:
-    initial: 1e-5
-    max: 5e-5
-    end: 1e-6
+    initial: 5e-5
+    max: 1e-4
+    end: 1e-5
     pct_start: 0.05
     skip_scheduler: false
     weight_decay: 1e-5
@@ -120,7 +120,6 @@ model:
                   - y
                   - z
                   - r
-                  - s
                   - eta
                   - phi
                   - u
@@ -136,27 +135,29 @@ model:
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
-                    input_size: 17
-                    output_size: &embed_dim 256
+                    input_size: 16
+                    output_size: &dim 256
                 posenc:
-                  class_path: hepattn.models.posenc.PositionEncoderRandom
+                  class_path: hepattn.models.PositionEncoder
                   init_args:
                     input_name: hit
                     fields:
                       - r
                       - eta
                       - phi
-                    dim: *embed_dim
+                    sym_fields:
+                      - phi
+                    dim: *dim
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 8
-          dim: *embed_dim
+          num_layers: 12
+          dim: *dim
           attn_type: flash
           window_size: 1024
           window_wrap: true
           hybrid_norm: true
-          norm: LayerNorm
+          norm: RMSNorm
       tasks:
         class_path: torch.nn.ModuleList
         init_args:
@@ -166,5 +167,5 @@ model:
                 name: hit_filter
                 hit_name: hit
                 target_field: on_valid_particle
-                embed_dim: *embed_dim
+                dim: *dim
                 threshold: 0.1

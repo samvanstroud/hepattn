@@ -1,0 +1,278 @@
+name: TIDE_1M_100_32trk_F32_pixel
+
+data:
+  batch_size: 100
+  train_dir: /share/rcifdata/maxhart/data/ambi_new/
+  val_dir: /share/rcifdata/maxhart/data/ambi_new/
+  test_dir: /share/rcifdata/maxhart/data/ambi_new/
+  num_workers: 1
+  num_train: 1000000
+  num_test: 10000
+  num_val: 10000
+  precision: single
+
+  track_min_pt: 0.0
+  track_max_d0: 100000.0
+
+  track_min_num_hits:
+    pix: 1
+    sct: 2
+
+  roi_max_num_tracks: &num_tracks 32
+
+  inputs:
+    pix:
+      # Coordinates in global frame
+      - r
+      - eta
+      - phi
+      - theta
+      - x
+      - y
+      - z
+      - s
+      # ROI axis location in detector coords
+      - roi_theta
+      - roi_eta
+      - roi_phi
+      - roi_vz
+      - roi_z0
+      # Coordinates in ROI frame
+      - dtheta
+      - deta
+      - dphi
+      # Module global orientation
+      - mod_norm_phi
+      - mod_norm_theta
+      # Module coordinates
+      - mod_r
+      - mod_theta
+      - mod_eta
+      - mod_phi
+      # Module local coordinates
+      #- mod_loc_x
+      #- mod_loc_y
+      # Pixel specific fields
+      - log_charge
+      - lshift
+      - pitches
+      - log_charge_matrix
+
+  targets:
+    sudo:
+      # Track paramaters in global frame
+      - pt
+      - eta
+      - phi
+      - theta
+      - vx
+      - vy
+      - vz
+      - z0
+      - d0
+      - q
+      - qop
+      # Track paramaters in ROI frame
+      - deta
+      - dphi
+      # Pseudotrack specific params
+      #- bhadpt
+
+    sisp:
+      # Track paramaters in global frame
+      - pt
+      - eta
+      - phi
+      - z0
+      - d0
+      - q
+      - qop
+      # Track paramaters in ROI frame
+      - deta
+      - dphi
+      - vx
+      - vy
+      - vz
+
+    reco:
+      # Track paramaters in global frame
+      - pt
+      - eta
+      - phi
+      - z0
+      - d0
+      - q
+      - qop
+      # Track paramaters in ROI frame
+      - deta
+      - dphi
+      - vx
+      - vy
+      - vz
+
+    roi:
+      - eta
+      - phi
+      - energy
+
+    sudo_pix:
+      - loc_x
+      - loc_y
+      - phi
+      - theta
+      - energy
+
+# Training stuff here
+trainer:
+  max_epochs: 10
+  accelerator: gpu
+  devices: 1
+  precision: 32
+  log_every_n_steps: 10
+  default_root_dir: logs
+  gradient_clip_val: 0.1
+  accumulate_grad_batches: 1
+  enable_progress_bar: True
+  val_check_interval: 1000
+
+  # Specify loggers here
+  logger:
+    class_path: lightning.pytorch.loggers.CometLogger
+    init_args:
+      project_name: tide
+      # We are not using conda and log manually anyway
+      log_env_details: false
+
+  # Specify any callback here
+  callbacks:
+    - class_path: hepattn.callbacks.Metadata
+    - class_path: hepattn.callbacks.Checkpoint
+      init_args:
+        monitor: train/loss
+        every_n_train_steps: 1000
+    - class_path: hepattn.callbacks.PredictionWriter
+      init_args:
+        write_inputs: false
+        write_outputs: false
+        write_preds: true
+        write_targets: false
+        write_losses: false
+    - class_path: lightning.pytorch.callbacks.ModelSummary
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    - class_path: lightning.pytorch.callbacks.TQDMProgressBar
+      init_args:
+        refresh_rate: 50
+
+model:
+  optimizer: lion
+
+  lrs_config:
+    initial: 1e-5
+    max: 3e-5
+    end: 1e-5
+    pct_start: 0.01
+    skip_scheduler: false
+    weight_decay: 1e-5
+
+  mtl: false
+
+  model:
+    class_path: hepattn.models.MaskFormer
+    init_args:
+      dim: &dim 256
+      num_queries: *num_tracks
+      input_sort_field: phi
+      record_intermediate_embeddings: false
+      use_attn_masks: true
+      use_query_masks: false
+
+      input_nets:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: pix
+                fields:
+                  # Coordinates in global frame
+                  - r
+                  - theta
+                  - phi
+                  # ROI axis location in detector coords
+                  - roi_theta
+                  - roi_phi
+                  - roi_z0
+                  # Module global orientation
+                  - mod_norm_phi
+                  - mod_norm_theta
+                  # Module coordinates
+                  - mod_r
+                  - mod_theta
+                  - mod_phi
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 11
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.FourierPositionEncoder
+                  init_args:
+                    input_name: pix
+                    dim: *dim
+                    fields:
+                      - r
+                      - theta
+                      - phi
+
+      encoder:
+        class_path: hepattn.models.Encoder
+        init_args:
+          num_layers: 8
+          dim: *dim
+          attn_type: torch
+          # window_size: 1024
+          # window_wrap: false
+
+      num_decoder_layers: 8
+      decoder_layer_config:
+        dim: *dim
+        mask_attention: true
+
+      matcher:
+        class_path: hepattn.models.matcher.Matcher
+        init_args:
+          default_solver: scipy
+          adaptive_solver: false
+          adaptive_check_interval: 1000
+
+      tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.ObjectValidTask
+              init_args:
+                name: pred_valid
+                input_object: query
+                output_object: pred
+                target_object: sudo
+                losses:
+                  object_ce: 1.0
+                costs:
+                  object_ce: 1.0
+                dim: *dim
+                null_weight: 1.0
+                mask_queries: false
+
+            - class_path: hepattn.models.task.ObjectHitMaskTask
+              init_args:
+                name: pred_pix_assignment
+                input_hit: pix
+                input_object: query
+                output_object: pred
+                target_object: sudo
+                losses:
+                  mask_ce: 1.0
+                costs:
+                  mask_ce: 1.0
+                dim: *dim
+                null_weight: 1.0

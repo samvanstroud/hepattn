@@ -14,7 +14,7 @@ class InferenceTimer(Callback):
         self.dims = []
         self.n_warm_start = 10
 
-    def on_test_start(self, trainer, pl_module):  # noqa: ARG002
+    def on_test_start(self, trainer, pl_module):
         model = pl_module
         if hasattr(model, "model"):
             model = model.model
@@ -44,7 +44,7 @@ class InferenceTimer(Callback):
         np.save(self.times_path / f"{pl_module.name}_times.npy", self.times)
         np.save(self.times_path / f"{pl_module.name}_dims.npy", self.dims)
 
-    def teardown(self, trainer, pl_module, stage):  # noqa: ARG002
+    def teardown(self, trainer, pl_module, stage):
         if len(self.times):
             print("-" * 80)
             print(f"Mean inference time: {self.mean_time:.2f} ± {self.std_time:.2f} ms")

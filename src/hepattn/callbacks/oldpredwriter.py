@@ -10,7 +10,7 @@ class HitPredictionWriter(Callback):
     def __init__(self) -> None:
         super().__init__()
 
-    def setup(self, trainer: Trainer, module: LightningModule, stage: str) -> None:  # noqa: ARG002
+    def setup(self, trainer: Trainer, module: LightningModule, stage: str) -> None:
         if stage != "test":
             return
 
@@ -26,10 +26,10 @@ class HitPredictionWriter(Callback):
         out_basename = str(Path(self.trainer.ckpt_path).stem)
         return Path(out_dir / f"{out_basename}__test.h5")
 
-    def on_test_start(self, trainer: Trainer, pl_module: LightningModule) -> None:  # noqa: ARG002
+    def on_test_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self.file = h5py.File(self.output_path, "w")
 
-    def on_test_batch_end(self, trainer, module, outputs, batch, batch_idx):  # noqa: ARG002
+    def on_test_batch_end(self, trainer, module, outputs, batch, batch_idx):
         preds = outputs
         targets = batch[1]
 
@@ -45,7 +45,7 @@ class HitPredictionWriter(Callback):
             else:
                 self.create_dataset(g, targets[i], "targets/" + i)
 
-    def on_test_epoch_end(self, trainer, module):  # noqa: ARG002
+    def on_test_epoch_end(self, trainer, module):
         self.file.close()
         print("Created output file", self.output_path)
         print("-" * 100, "\n")
