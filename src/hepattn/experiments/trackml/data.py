@@ -46,6 +46,9 @@ class TrackMLDataset(Dataset):
         if num_events < 0:
             num_events = num_events_available
 
+        if num_events == 0:
+            raise ValueError("num_events must be greater than 0")
+
         # Metadata
         self.dirpath = Path(dirpath)
         self.hit_eval_path = hit_eval_path
