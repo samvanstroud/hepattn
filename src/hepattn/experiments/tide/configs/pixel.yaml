@@ -145,7 +145,7 @@ trainer:
 
   # Specify any callback here
   callbacks:
-    - class_path: hepattn.callbacks.Metadata
+    - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: train/loss

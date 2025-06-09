@@ -9,33 +9,38 @@ from lightning import Callback, LightningModule, Trainer
 from lightning.pytorch.loggers import CometLogger
 
 
-class Metadata(Callback):
+class SaveConfig(Callback):
     def __init__(self) -> None:
         super().__init__()
+        self.already_saved = False
 
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
+        if self.already_saved or trainer.fast_dev_run or stage != "fit":
+            return
+
+        log_dir = trainer.log_dir  # this broadcasts the directory
+        assert log_dir is not None
+
         if trainer.is_global_zero:
             print("-" * 80)
-            print(f"log dir: {trainer.log_dir!r}")
+            print(f"log dir: {log_dir!r}")
             print("-" * 80)
 
-    def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        self.trainer = trainer
-        if not trainer.is_global_zero:
-            return
-        if not trainer.log_dir:
-            return
+            if log_dir:
+                log_dir = Path(log_dir)
+                log_dir.mkdir(parents=True, exist_ok=True)
+                self.save_metadata(trainer, log_dir, pl_module)
 
-        log_dir = Path(trainer.log_dir)
-        self.save_metadata(log_dir, pl_module)
+            if isinstance(trainer.logger, CometLogger):
+                for file in log_dir.glob("*.yaml"):
+                    trainer.logger.experiment.log_asset(file)
+                    
+            self.already_saved = True
 
-        # Log/upload the config and metadata yaml files to comet if we are using comet
-        if isinstance(self.trainer.logger, CometLogger):
-            for file in log_dir.glob("*.yaml"):
-                self.trainer.logger.experiment.log_asset(file)
+        self.already_saved = trainer.strategy.broadcast(self.already_saved, src=0)
 
-    def save_metadata(self, log_dir: Path, pl_module: LightningModule) -> None:
-        trainer = self.trainer
+
+    def save_metadata(self, trainer, log_dir: Path, pl_module: LightningModule) -> None:
         logger = trainer.logger
         datamodule = trainer.datamodule
 

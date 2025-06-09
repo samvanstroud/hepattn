@@ -126,7 +126,7 @@ trainer:
     #- class_path: hepattn.callbacks.MyThroughputMonitor # for some reason this will crash after 5 epochs
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.Compile
-    - class_path: hepattn.callbacks.Metadata
+    - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: validate/loss
