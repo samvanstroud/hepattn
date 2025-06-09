@@ -75,7 +75,7 @@ def projection_packed(
     kv: Tensor | None,
     weight: Tensor,
     bias: Tensor | None = None,
-) -> tuple:
+) -> tuple[Tensor, Tensor, Tensor]:
     """Efficient input projection for MHA when using a single linear layer.
 
     Essentially the same as torch.nn.functional._in_projection_packed.
@@ -88,7 +88,7 @@ def projection_packed(
     kv : Tensor | None
         The keys and values tensor of shape (batch, kv_len, dim).
     weight : Tensor
-        The packed weight tensor of the input lienar projection with shape (3 * dim, dim).
+        The packed weight tensor of the input linear projection with shape (3 * dim, dim).
     bias : Tensor | None
         The optional packed bias tensor of the input linear projection with shape (3 * dim).
 
