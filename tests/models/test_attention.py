@@ -157,12 +157,19 @@ def test_self_attention(batch_size, seq_len, dim, num_heads, bias, attn_type):
     attn = Attention(dim=dim, num_heads=num_heads, bias=bias, attn_type=attn_type).cuda().half()
     self_attn = Attention(dim=dim, num_heads=num_heads, bias=bias, attn_type=attn_type, self_attn=True).cuda().half()
 
+    # Synchronize weights for comparison
+    attn.in_proj_weight.data = self_attn.in_proj_weight
+    attn.out_proj.weight.data = self_attn.out_proj.weight
+    if bias:
+        attn.in_proj_bias.data = self_attn.in_proj_bias
+        attn.out_proj.bias.data = self_attn.out_proj.bias
+
     # Compute outputs
     out = attn(qkv, qkv)
     self_out = self_attn(qkv)
 
-    # Check output shape
-    assert out.shape == self_out.shape
+    # Check that outputs are consistent
+    torch.testing.assert_close(out, self_out, atol=1e-3, rtol=1e-3)
 
 
 @pytest.mark.parametrize("attn_type", ["torch", "flash", "flex", "flash-varlen"])
