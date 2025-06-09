@@ -34,7 +34,7 @@ class MaskFormerDecoderLayer(nn.Module):
 
         residual = partial(Residual, dim=dim, norm=LayerNorm)
         self.q_ca = residual(Attention(dim, **attn_kwargs))
-        self.q_sa = residual(Attention(dim, **attn_kwargs))
+        self.q_sa = residual(Attention(dim, self_attn=True, **attn_kwargs))
         self.q_dense = residual(Dense(dim, **dense_kwargs))
 
         if self.bidirectional_ca:
@@ -52,7 +52,7 @@ class MaskFormerDecoderLayer(nn.Module):
             attn_mask = None
 
         # Update query/object embeddings with the key/hit embeddings
-        q = self.q_ca(q, k=kv, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
+        q = self.q_ca(q, kv=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         q = self.q_sa(q, q_mask=q_mask)
         q = self.q_dense(q)
 
@@ -62,7 +62,18 @@ class MaskFormerDecoderLayer(nn.Module):
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask.transpose(-2, -1)
 
-            kv = self.kv_ca(kv, k=q, v=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
+            kv = self.kv_ca(kv, kv=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
             kv = self.kv_dense(kv)
 
         return q, kv
+
+    def set_backend(self, attn_type: str) -> None:
+        """
+        Set the backend for the attention layers.
+        This is useful for switching between different attention implementations.
+        """
+        self.q_ca.fn.set_backend(attn_type)
+        self.q_sa.fn.set_backend(attn_type)
+
+        if self.bidirectional_ca:
+            self.kv_ca.fn.set_backend(attn_type)

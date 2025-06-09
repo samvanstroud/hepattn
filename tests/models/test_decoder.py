@@ -54,7 +54,7 @@ class TestMaskFormerDecoderLayer:
     def test_forward_mask_attention_no_mask(self, decoder_layer, sample_data):
         """Test that mask_attention=True requires an attn_mask"""
         q, kv, _, kv_mask = sample_data
-        with pytest.raises(AssertionError, match="attn mask must be provided for mask attention"):
+        with pytest.raises(AssertionError, match="attn_mask must be provided for mask attention"):
             decoder_layer(q, kv, attn_mask=None, kv_mask=kv_mask)
 
     def test_forward_no_mask_attention(self, sample_data):

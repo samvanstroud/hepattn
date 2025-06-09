@@ -3,6 +3,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models import DropPath, Encoder, EncoderLayer, LayerNorm, LayerScale, Residual
+from hepattn.models.transformer import change_attn_backends
 
 
 # Fixtures for common inputs
@@ -68,7 +69,7 @@ def test_encoder_forward(input_tensor):
     assert not torch.isnan(output).any()
 
 
-def test_dyanmic_shape_block_mask():
+def test_dynamic_shape_block_mask():
     model = Encoder(num_layers=3, dim=128, window_size=10, attn_kwargs={"attn_type": "flex", "torch_compile": True}).cuda()
     xs = [torch.randn(8, i, 128, device="cuda") for i in range(100, 110)]
 
@@ -86,3 +87,25 @@ def test_value_residuals():
     assert out.shape == x.shape
     assert out.sum() != 0
     assert not torch.isnan(out).any()
+
+
+@pytest.mark.parametrize(
+    "attn_type, attn_type_new",
+    [
+        ("torch", "flash"),
+        ("flash", "flex"),
+        ("flex", "torch"),
+        ("flash-varlen", "torch"),
+        ("torch", "flash-varlen"),
+    ],
+)
+def test_encoder_change_backends(attn_type, attn_type_new):
+    model = Encoder(num_layers=3, dim=128, attn_type=attn_type).cuda().half()
+    x = torch.randn(8, 128, 128, device="cuda").half()
+    out = model(x)
+
+    # Change backend
+    change_attn_backends(model, attn_type_new)
+    out_new = model(x)
+    assert out_new.shape == x.shape
+    assert not torch.equal(out, out_new)  # Ensure outputs differ with backend change
