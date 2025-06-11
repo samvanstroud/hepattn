@@ -90,7 +90,7 @@ def test_value_residuals():
 
 
 @pytest.mark.parametrize(
-    ("attn_type, attn_type_new"),
+    ("attn_type", "attn_type_new"),
     [
         ("torch", "flash"),
         ("flash", "flex"),
