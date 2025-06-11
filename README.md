@@ -48,7 +48,6 @@ pre-commit install
 ```
 
 
-
 ## Activing the environment
 
 To run the installed environment, use
@@ -71,9 +70,6 @@ pytest
 
 ## Run experiments
 
-TrackML:
+See experiment directories for instructions on how to run experiments.
 
-```shell
-cd src/hepattn/experiments/trackml/
-python hit_filter.py fit --config hit_filter.yaml --trainer.fast_dev_run 10
-```
+- [TrackML](src/hepattn/experiments/trackml/README.md)

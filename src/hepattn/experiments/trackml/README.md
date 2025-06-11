@@ -3,7 +3,7 @@
 Setup
 
 ```shell
-srun --pty  --cpus-per-task 15  --gres gpu:l40s:2 --mem=100G -p GPU bash
+srun --pty  --cpus-per-task 15  --gres gpu:l40s:1 --mem=100G -p GPU bash
 apptainer shell --nv --bind /share/rcifdata/maxhart/data/trackml/ hepattn/pixi.sif
 cd hepattn && pixi shell
 cd hepattn/src/hepattn/experiments/trackml/
@@ -12,7 +12,11 @@ cd hepattn/src/hepattn/experiments/trackml/
 ## Hit Filter
 
 ```shell
-python run_filtering.py fit --config configs/filtering.yaml --trainer.fast_dev_run 10 --trainer.devices 2
+# train
+python run_filtering.py fit --config configs/filtering.yaml --trainer.fast_dev_run 10
+
+# test
+python run_filtering.py test --config PATH --trainer.callbacks+='{"class_path": "hepattn.callbacks.InferenceTimer"}'
 ```
 
 ## Tracking

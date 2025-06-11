@@ -203,8 +203,7 @@ class Encoder(nn.Module):
         attn_kwargs["attn_type"] = attn_type
         if value_residual:
             attn_kwargs["value_residual"] = True
-        if attn_type == "flash" and window_size is not None:
-            attn_kwargs["window_size"] = window_size
+        attn_kwargs["window_size"] = window_size
         layer_kwargs["attn_kwargs"] = attn_kwargs
 
         self.layers = torch.nn.ModuleList([EncoderLayer(dim=dim, depth=i, **layer_kwargs) for i in range(num_layers)])
