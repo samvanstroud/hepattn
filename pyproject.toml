@@ -4,7 +4,7 @@ description = "Attention for High Energy Physics"
 license = { text = "MIT" }
 readme = "README.md"
 name = "hepattn"
-requires-python = "== 3.11"
+requires-python = "== 3.12"
 version = "0.1.0"
 dependencies = [
     "packaging",
@@ -20,7 +20,7 @@ dependencies = [
     "pandas>=2.2.3,<3",
     "pyarrow>=17.0.0",
     "jsonargparse[signatures]>=4.34.0,<5",
-    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiTRUE-cp311-cp311-linux_x86_64.whl",
+    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiTRUE-cp312-cp312-linux_x86_64.whl",
     "torchjd>=0.5.0",
     "lion-pytorch>=0.2.3,<0.3",
     "awkward>=2.8.1",
@@ -59,7 +59,7 @@ libc = "2.28"
 cuda = "12.2"
 
 [tool.pixi.dependencies]
-python = "3.11.*"
+python = "3.12.*"
 ninja = "*"
 git = "*"
 cuda = "12.3.*"
@@ -67,7 +67,7 @@ cuda = "12.3.*"
 
 [tool.ruff]
 src = ["src"]
-target-version = "py311"
+target-version = "py312"
 line-length = 150
 preview = true
 lint.select = ["ALL"]
