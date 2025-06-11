@@ -46,7 +46,7 @@ class ModelWrapper(LightningModule):
             for task_name, task_losses in layer_losses.items():
                 for loss_name, loss_value in task_losses.items():
                     self.log(f"{stage}/{layer_name}_{task_name}_{loss_name}", loss_value, sync_dist=True)
-                total_loss += loss_value
+                    total_loss += loss_value
 
         # Log the total loss
         self.log(f"{stage}/loss", total_loss, sync_dist=True)
@@ -127,7 +127,7 @@ class ModelWrapper(LightningModule):
     def on_train_start(self):
         # Manually overwride the learning rate in case we are starting
         # from a checkpoint that had a LRS and now we want a flat LR
-        if self.lrs_config["skip_scheduler"]:
+        if self.lrs_config.get("skip_scheduler"):
             for optimizer in self.trainer.optimizers:
                 for param_group in optimizer.param_groups:
                     param_group["lr"] = self.lrs_config["initial"]
@@ -142,7 +142,7 @@ class ModelWrapper(LightningModule):
 
         opt = optimizer(self.model.parameters(), lr=self.lrs_config["initial"], weight_decay=self.lrs_config["weight_decay"])
 
-        if not self.lrs_config["skip_scheduler"]:
+        if not self.lrs_config.get("skip_scheduler"):
             # Configure the learning rate scheduler
             sch = torch.optim.lr_scheduler.OneCycleLR(
                 opt,
