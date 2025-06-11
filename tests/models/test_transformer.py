@@ -90,7 +90,7 @@ def test_value_residuals():
 
 
 @pytest.mark.parametrize(
-    "attn_type, attn_type_new",
+    ("attn_type, attn_type_new"),
     [
         ("torch", "flash"),
         ("flash", "flex"),
@@ -102,10 +102,11 @@ def test_value_residuals():
 def test_encoder_change_backends(attn_type, attn_type_new):
     model = Encoder(num_layers=3, dim=128, attn_type=attn_type).cuda().half()
     x = torch.randn(8, 128, 128, device="cuda").half()
-    out = model(x)
-
-    # Change backend
-    change_attn_backends(model, attn_type_new)
-    out_new = model(x)
+    with torch.no_grad():
+        out = model(x)
+        # Change backend
+        change_attn_backends(model, attn_type_new)
+        out_new = model(x)
     assert out_new.shape == x.shape
-    assert not torch.equal(out, out_new)  # Ensure outputs differ with backend change
+    # We allow this tolerance because of fp16 precision issues
+    torch.testing.assert_close(out, out_new, atol=5e-3, rtol=5e-3)

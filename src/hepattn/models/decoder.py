@@ -34,7 +34,7 @@ class MaskFormerDecoderLayer(nn.Module):
 
         residual = partial(Residual, dim=dim, norm=LayerNorm)
         self.q_ca = residual(Attention(dim, **attn_kwargs))
-        self.q_sa = residual(Attention(dim, self_attn=True, **attn_kwargs))
+        self.q_sa = residual(Attention(dim, **attn_kwargs))
         self.q_dense = residual(Dense(dim, **dense_kwargs))
 
         if self.bidirectional_ca:

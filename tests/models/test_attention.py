@@ -10,6 +10,15 @@ from hepattn.models.attention import ATTN_MASK_ATTN_TYPES, VARLEN_ATTN_TYPES
 torch.manual_seed(42)
 
 
+def copy_attention_weights(src: Attention, dst: Attention):
+    dst.in_proj_weight.data.copy_(src.in_proj_weight.data)
+    if src.in_proj_bias is not None:
+        dst.in_proj_bias.data.copy_(src.in_proj_bias.data)
+    dst.out_proj.weight.data.copy_(src.out_proj.weight.data)
+    if src.out_proj.bias is not None:
+        dst.out_proj.bias.data.copy_(src.out_proj.bias.data)
+
+
 # Choose primes so we don't get accidental broadcasting
 # NOTE: We need enough keys/queries such that it is improbable that an entire k/q slot is masked
 # if that happens then nans are produced
@@ -44,16 +53,11 @@ def test_attention_consistency(batch_size, dim, num_heads, bias, q_len, kv_len, 
         attn_mask = None
 
     # Initialize attention layers
-    attention_layer = Attention(dim=dim, num_heads=num_heads, bias=bias, attn_type=attn_type, self_attn=self_attn).cuda().half()
+    attention_layer = Attention(dim=dim, num_heads=num_heads, bias=bias, attn_type=attn_type).cuda().half()
     mha_layer = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, bias=bias, batch_first=True).cuda().half()
 
     # Synchronize weights for comparison
-    attention_layer.in_proj_weight.data = mha_layer.in_proj_weight
-    attention_layer.out_proj.weight.data = mha_layer.out_proj.weight
-
-    if bias:
-        attention_layer.in_proj_bias.data = mha_layer.in_proj_bias
-        attention_layer.out_proj.bias.data = mha_layer.out_proj.bias
+    copy_attention_weights(attention_layer, mha_layer)
 
     # Compute outputs
     custom_out = attention_layer(q, kv if not self_attn else None, kv_mask=kv_mask, attn_mask=attn_mask)
@@ -82,9 +86,8 @@ def test_nested_jagged_tensor():
 
     nq = torch.nested.nested_tensor(qs, layout=torch.jagged, device="cuda", requires_grad=True)
     nkv = torch.nested.nested_tensor(kvs, layout=torch.jagged, device="cuda", requires_grad=True)
-    print(nq.shape, nkv.shape)
     nt_out = attn_torch(nq, nkv)
-    # flex_out = attn_flex(nq, nk, nv)
+    # flex_out = attn_flex(nq, nkv)
 
     # do the same but looping over the list
     for i, (q, kv) in enumerate(zip(qs, kvs, strict=False)):
@@ -106,19 +109,14 @@ def test_local_attention():
     attn_flash = Attention(dim=128, num_heads=8, attn_type="flash", torch_compile=False, window_size=window_size, bias=False).cuda().half()
 
     # Synchronize weights for comparison
-    # attn_flex.q_proj.weight.data = attn_spda.q_proj.weight
-    # attn_flex.k_proj.weight.data = attn_spda.k_proj.weight
-    # attn_flex.v_proj.weight.data = attn_spda.v_proj.weight
-    # attn_flex.out_proj.weight.data = attn_spda.out_proj.weight
-    attn_spda.in_proj_weight = attn_flash.in_proj_weight
-    attn_spda.in_proj_bias = attn_flash.in_proj_bias
-    attn_flash.out_proj.weight.data = attn_spda.out_proj.weight
+    # copy_attention_weights(attn_spda, attn_flex)
+    copy_attention_weights(attn_spda, attn_flash)
 
     mask_mod = sliding_window_mask(window_size)
     q_len = q.shape[-2]
     # block_mask = create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=q_len, device=q.device)
     mask = create_mask(mask_mod, 1, None, q_len, q_len, device=q.device)
-    # out_flex = attn_flex(q, k, v, attn_mask=block_mask)
+    # out_flex = attn_flex(q, kv, attn_mask=block_mask)
     # Squeeze operation is required as for SPDA attention we assume mask is the same accross heads
     # TODO: Standardise this accross the different backends, both for whether it should brodcast the
     # shape over heads and whether it should assume masks are true for valid slots or not
@@ -155,14 +153,10 @@ def test_self_attention(batch_size, seq_len, dim, num_heads, bias, attn_type):
 
     # Initialize attention layers
     attn = Attention(dim=dim, num_heads=num_heads, bias=bias, attn_type=attn_type).cuda().half()
-    self_attn = Attention(dim=dim, num_heads=num_heads, bias=bias, attn_type=attn_type, self_attn=True).cuda().half()
+    self_attn = Attention(dim=dim, num_heads=num_heads, bias=bias, attn_type=attn_type).cuda().half()
 
     # Synchronize weights for comparison
-    attn.in_proj_weight.data = self_attn.in_proj_weight
-    attn.out_proj.weight.data = self_attn.out_proj.weight
-    if bias:
-        attn.in_proj_bias.data = self_attn.in_proj_bias
-        attn.out_proj.bias.data = self_attn.out_proj.bias
+    copy_attention_weights(attn, self_attn)
 
     # Compute outputs
     out = attn(qkv, qkv)
