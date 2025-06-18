@@ -89,7 +89,7 @@ class CLI(LightningCLI):
                 config = sc["config"]
                 assert len(config) == 1
                 best_epoch_path = get_best_epoch(Path(config[0].rel_path))
-                sc["ckpt_path"] = best_epoch_path
+                #sc["ckpt_path"] = best_epoch_path
 
             # Ensure only one device is used for testing
             n_devices = sc["trainer.devices"]
@@ -98,3 +98,7 @@ class CLI(LightningCLI):
                 sc["trainer.devices"] = "1"
             if isinstance(n_devices, list) and len(n_devices) > 1:
                 raise ValueError("Testing requires --trainer.devices=1")
+
+    def after_instantiate_classes(self) -> None:
+        if self.subcommand == "test":
+            self.trainer.ckpt_path = get_best_epoch(Path(self.config[self.subcommand]["config"][0].rel_path))
