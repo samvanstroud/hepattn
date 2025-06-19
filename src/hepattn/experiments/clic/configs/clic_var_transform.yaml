@@ -1,0 +1,111 @@
+# phi:
+#   type: std
+#   mean: 0.001
+#   std: 1.798
+#   min: -3.142
+#   max: 3.142
+
+eta:
+  type: min_max_sym
+  mean: -0.007
+  std: 1.384
+  min: -3.000
+  max: 3.000
+
+rho:
+  type: min_max_sym
+  mean: 1243.845
+  std: 503.220
+  min: 1.920
+  max: 3000
+
+e:
+  type: min_max_sym
+  fn: sqrt
+  mean: 1.728
+  std: 1.531
+  min: 0.020
+  max: 15.136
+
+pt:
+  type: min_max_sym
+  fn: sqrt
+  mean: 1.334
+  std: 1.101
+  min: 0.000
+  max: 13.570
+
+sigma_eta:
+  type: std
+  fn: sqrt
+  mean: 0.158
+  std: 0.083
+  min: 0.000
+  max: 0.941
+
+sigma_phi:
+  type: std
+  fn: sqrt
+  mean: 0.172
+  std: 0.097
+  min: 0.000
+  max: 1.446
+
+sigma_rho:
+  type: std
+  fn: sqrt
+  mean: 6.497
+  std: 3.263
+  min: 0.000
+  max: 41.808
+
+d0:
+  type: min_max_sym
+  mean: -0.002
+  std: 1.691
+  min: -25
+  max: 25
+
+z0:
+  type: min_max_sym
+  mean: -0.015
+  std: 2.254
+  min: -400
+  max: 400
+
+chi2:
+    type: min_max_sym
+    fn: sqrt
+    mean: 4.594
+    std: 2.435
+    min: 0.004
+    max: 100
+
+ndf:
+  type: min_max_sym
+  mean: 17.949
+  std: 7.345
+  min: 1.000
+  max: 51.000
+
+radiusofinnermosthit:
+  type: min_max_sym
+  fn: sqrt
+  mean: 6.105
+  std: 1.963
+  min: 5.583
+  max: 35.718
+
+tanlambda:
+  type: min_max_sym
+  mean: -0.002
+  std: 2.235
+  min: -5
+  max: 5
+
+omega:
+  type: std
+  mean: 0.000
+  std: 0.003
+  min: -0.033
+  max: 0.033

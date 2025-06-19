@@ -8,7 +8,7 @@ class MaskFormer(nn.Module):
     def __init__(
         self,
         input_nets: nn.ModuleList,
-        encoder: nn.Module,
+        encoder: nn.Module | None,
         decoder_layer_config: dict,
         num_decoder_layers: int,
         tasks: nn.ModuleList,
@@ -18,6 +18,7 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         use_attn_masks: bool = True,
         use_query_masks: bool = True,
+        raw_variables: list[str] | None = None,
         intermediate_losses: bool = True,
     ):
         """
@@ -48,11 +49,12 @@ class MaskFormer(nn.Module):
             If True, attention masks will be used to control which input objects are attended to.
         use_query_masks : bool, optional
             If True, query masks will be used to control which queries are valid during attention.
+        raw_variables : list[str] or None, optional
+            A list of variable names that passed to tasks without embedding.
         intermediate_losses : bool, optional
             If True, intermediate losses will be applied at each decoder layer.
         """
         super().__init__()
-
         self.input_nets = input_nets
         self.encoder = encoder
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(**decoder_layer_config) for _ in range(num_decoder_layers)])
@@ -63,6 +65,7 @@ class MaskFormer(nn.Module):
         self.input_sort_field = input_sort_field
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
+        self.raw_variables = raw_variables or []
         self.intermediate_losses = intermediate_losses
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -73,6 +76,11 @@ class MaskFormer(nn.Module):
         assert "query" not in input_names, "'query' input name is reserved."
 
         x = {}
+
+        for raw_var in self.raw_variables:
+            # If the raw variable is present in the inputs, add it directly to the output
+            if raw_var in inputs:
+                x[raw_var] = inputs[raw_var]
 
         # Embed the input objects
         for input_net in self.input_nets:
@@ -132,6 +140,13 @@ class MaskFormer(nn.Module):
                 # Get the outputs of the task given the current embeddings and record them
                 task_outputs = task(x)
 
+                # Need this for incidence-based regression task
+                if task.name == "incidence":
+                    # Assume that the incidence task has only one output
+                    x["incidence"] = task_outputs[task.outputs[0]].detach()
+                if task.name == "classification":
+                    # Assume that the classification task has only one output
+                    x["class_probs"] = task_outputs[task.outputs[0]].detach()
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
                 # Here we check if each task has an attention mask to contribute, then after
@@ -177,6 +192,14 @@ class MaskFormer(nn.Module):
         outputs["final"] = {}
         for task in self.tasks:
             outputs["final"][task.name] = task(x)
+
+            # Need this for incidence-based regression task
+            if task.name == "incidence":
+                # Assume that the incidence task has only one output
+                x["incidence"] = outputs["final"][task.name][task.outputs[0]].detach()
+            if task.name == "classification":
+                # Assume that the classification task has only one output
+                x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
 
         return outputs
 
@@ -235,14 +258,13 @@ class MaskFormer(nn.Module):
 
             costs[layer_name] = layer_costs.detach()
 
+        batch_idxs = torch.arange(targets["particle_valid"].shape[0]).unsqueeze(1)
         # Permute the outputs for each output in each layer
         for layer_name in outputs:
             if not self.intermediate_losses and layer_name != "final":
                 continue
             # Get the indicies that can permute the predictions to yield their optimal matching
-            pred_idxs = self.matcher(costs[layer_name])
-            batch_idxs = torch.arange(costs[layer_name].shape[0]).unsqueeze(1).expand(-1, self.num_queries)
-
+            pred_idxs = self.matcher(costs[layer_name], targets["particle_valid"])
             # Apply the permutation in place
             for task in self.tasks:
                 for output_name in task.outputs:
@@ -255,6 +277,6 @@ class MaskFormer(nn.Module):
                 continue
             losses[layer_name] = {}
             for task in self.tasks:
-                losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
+                losses[layer_name][task.name] = task.loss(outputs[layer_name], targets)
 
         return losses
