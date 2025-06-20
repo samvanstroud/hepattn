@@ -231,7 +231,7 @@ class ObjectHitMaskTask(Task):
         self.target_object_hit = target_object + "_" + input_hit
         self.inputs = [input_object + "_embed", input_hit + "_embed"]
         self.outputs = [self.output_object_hit + "_logit"]
-        # self.hit_net = Dense(dim, dim)
+        self.hit_net = Dense(dim, dim)
         # self.hit_net = nn.Identity()
         self.object_net = Dense(dim, dim)
 
@@ -678,7 +678,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
                 input_data = torch.cat([input_data, node_feats], dim=-1)
         else:
             input_data = x[self.input_object + "_embed"]
-            proxy_feats = torch.zeros_like(preds)
+            proxy_feats = torch.zeros_like(input_data[..., : len(self.fields)])
         preds = self.net(input_data)
         return {self.output_object + "_regr": preds, self.output_object + "_proxy_regr": proxy_feats}
 

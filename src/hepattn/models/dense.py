@@ -54,6 +54,9 @@ class Dense(nn.Module):
         self.output_size = output_size
         gate = isinstance(activation, SwiGLU)
 
+        self.activation = activation
+        self.final_activation = final_activation
+
         layers = []
         if norm_input:
             layers.append(nn.LayerNorm(input_size))
@@ -74,7 +77,7 @@ class Dense(nn.Module):
         # final projection and activation
         layers.append(nn.Linear(node_list[-1], output_size, bias=bias))
         if final_activation:
-            layers.append(final_activation())
+            layers.append(final_activation)
 
         # build the net
         self.net = nn.Sequential(*layers)

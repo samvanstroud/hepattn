@@ -1,3 +1,6 @@
+import operator
+from functools import reduce
+
 import numpy as np
 
 
@@ -55,3 +58,60 @@ def masked_angle_diff_last_axis(ax, ay, az, mask) -> np.ma.MaskedArray:
     theta = np.ma.arccos(costheta)
 
     return theta
+
+
+def join_structured_arrays(arrays: list):
+    """Join a list of structured numpy arrays. Taken from hepformer repo
+
+    See https://github.com/numpy/numpy/issues/7811
+
+    Parameters
+    ----------
+    arrays : list
+        List of structured numpy arrays to join
+
+    Returns
+    -------
+    np.array
+        A merged structured array
+    """
+    dtype: list = reduce(operator.add, (a.dtype.descr for a in arrays))
+    newrecarray = np.empty(arrays[0].shape, dtype=dtype)
+    for a in arrays:
+        for name in a.dtype.names:
+            newrecarray[name] = a[name]
+
+    return newrecarray
+
+
+def maybe_pad(x: np.ndarray, target_shape: tuple, pad_value: float = 0.0) -> np.ndarray:
+    """
+    numpy version of pad_to_size from hepattn.utils.tensor_utils
+    """
+    current_shape = x.shape
+    if len(target_shape) != x.ndim:
+        raise ValueError(f"Target shape must have the same number of dimensions as x: {current_shape} vs {target_shape}")
+
+    _target_shape = []
+
+    for i, (current, target) in enumerate(zip(current_shape, target_shape, strict=False)):
+        if target == -1:
+            target = current
+
+        if current > target:
+            raise ValueError(f"Cannot pad: dimension {i} of x is {current}, which is larger than target {target}.")
+
+        _target_shape.append(target)
+
+    target_shape = tuple(_target_shape)
+
+    if current_shape == target_shape:
+        return x
+
+    new_array = np.full(target_shape, pad_value, dtype=x.dtype)
+
+    index_slices = tuple(slice(0, cur) for cur in current_shape)
+
+    new_array[index_slices] = x
+
+    return new_array
