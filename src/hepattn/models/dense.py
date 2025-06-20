@@ -52,7 +52,7 @@ class Dense(nn.Module):
 
         self.input_size = input_size
         self.output_size = output_size
-        gate = activation == SwiGLU
+        gate = isinstance(activation, SwiGLU)
 
         self.activation = activation
         self.final_activation = final_activation
