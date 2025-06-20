@@ -1,8 +1,5 @@
 cmake_minimum_required(VERSION 3.15...3.26)
 
-SET(CMAKE_PREFIX_PATH "/srv01/agrp/dmitrykl/.local/lib/python3.11/site-packages/pybind11/share/cmake/pybind11")
-set(CMAKE_INSTALL_PREFIX "/srv01/agrp/dmitrykl/.local/lib/python3.11/site-packages/")
-
 project(
   ${SKBUILD_PROJECT_NAME}
   VERSION ${SKBUILD_PROJECT_VERSION}
@@ -11,6 +8,14 @@ project(
 SET(CMAKE_CXX_FLAGS "-Wall -O2 -Wfatal-errors -fstrict-aliasing -m64 -std=c++17 -fopenmp -flto -march=native -mfpmath=sse")
 
 find_package(Python 3.11 REQUIRED COMPONENTS Interpreter Development.Module)
+
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" -m pybind11 --cmakedir
+  OUTPUT_VARIABLE pybind11_cmake_dir
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+set(CMAKE_PREFIX_PATH "${pybind11_cmake_dir}")
+
 find_package(pybind11 CONFIG REQUIRED)
 
 python_add_library(_core MODULE src/lap1015/src/main.cpp WITH_SOABI)

@@ -1,16 +1,15 @@
-import os
 from pathlib import Path
 
-import h5py
-import uproot
 import awkward as ak
+import h5py
 import numpy as np
-
+import uproot
 from ftag.hdf5 import H5Writer
 from lightning import Callback, LightningModule, Trainer
+from numpy.lib.recfunctions import structured_to_unstructured as s2u
+from numpy.lib.recfunctions import unstructured_to_structured as u2s
 
-from numpy.lib.recfunctions import unstructured_to_structured as u2s, structured_to_unstructured as s2u
-from hepformer.utils.arrays import join_structured_arrays, maybe_pad
+from hepattn.utils.array_utils import join_structured_arrays, maybe_pad
 
 
 def load_convert_h5(filepath):
@@ -47,10 +46,7 @@ def load_convert_h5(filepath):
             axis=-1,
         )
 
-        if "Bin" in filepath:
-            pflow_indicator = pflow_class < 1
-        else:
-            pflow_indicator = (pflow_class < 5) & (np.abs(pflow_ptetaphi[..., 1]) < 4)
+        pflow_indicator = pflow_class < 1 if "Bin" in filepath else (pflow_class < 5) & (np.abs(pflow_ptetaphi[..., 1]) < 4)
 
         neutral_mask = (pflow_class < 5) & (pflow_class > 2)
         pflow_ptetaphi[neutral_mask][..., 0] = pflow_data[neutral_mask][..., 0] / np.cosh(pflow_ptetaphi[neutral_mask][..., 1])
@@ -94,8 +90,8 @@ class PflowPredictionWriter(Callback):
 
     def _write_batch_outputs(self, batch_outputs, pad_masks, batch_idx):
         to_write = {}
-        blow = batch_idx * self.batch_size
-        bhigh = (batch_idx + 1) * self.batch_size
+        # blow = batch_idx * self.batch_size
+        # bhigh = (batch_idx + 1) * self.batch_size
         for input_name, outputs in batch_outputs.items():
             this_outputs = []
             name = input_name
@@ -128,9 +124,9 @@ class PflowPredictionWriter(Callback):
             )
         self.writer.write(to_write)
 
-    def on_test_batch_end(self, trainer, module, test_step_outputs, batch, batch_idx):  # noqa: ARG002
-        inputs, targets = batch
-        outputs, preds, losses = test_step_outputs
+    def on_test_batch_end(self, trainer, module, test_step_outputs, batch, batch_idx):
+        _inputs, targets = batch
+        outputs, preds, _losses = test_step_outputs
         outputs = outputs["final"]
         preds = preds["final"]
         to_write = {}
@@ -181,7 +177,7 @@ class PflowPredictionWriter(Callback):
 
         # regression
         to_write["regression"] = {}
-        for i, t in enumerate(["e", "pt", "eta", "sinphi", "cosphi"]):
+        for _, t in enumerate(["e", "pt", "eta", "sinphi", "cosphi"]):
             truth_data = targets[f"particle_{t}"].cpu().float().unsqueeze(-1)
             pred_data = preds["regression"][f"pflow_{t}"].cpu().float().unsqueeze(-1)
             proxy_data = None
@@ -214,14 +210,14 @@ class PflowPredictionWriter(Callback):
         #         print(f"{key}: {value.shape}")
         self._write_batch_outputs(to_write, {}, batch_idx)
 
-    def on_test_end(self, trainer, module):  # noqa: ARG002
+    def on_test_end(self, trainer, module):
         self.output_path: Path
         if self.writer is not None:
             print(f"Wrote predictions to {self.output_path}")
             self.writer.close()
         print("Loading predictions...")
         event_number, pflow_class, pflow_ptetaphi, proxy_ptetaphi, pflow_indicator = load_convert_h5(self.output_path.as_posix())
-        root_path = os.path.splitext(self.output_path.as_posix())[0] + ".root"
+        root_path = self.output_path.with_suffix(".root").as_posix()
         print("Writing to ROOT file")
         with uproot.recreate(root_path) as f:
             f["event_tree"] = {
