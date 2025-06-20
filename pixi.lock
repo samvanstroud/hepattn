@@ -140,6 +140,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.5.0-h7b32b05_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.44-hc749103_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/perl-5.32.1-7_hd590300_perl5.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-2.13.6-pyhc790b64_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-global-2.13.6-pyh217bc35_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.12.11-h9e4cc4f_0_cpython.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.12-7_cp312.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/readline-8.2-h8c095d6_2.conda
@@ -152,6 +154,7 @@ environments:
       - pypi: https://download.pytorch.org/whl/test/aiohappyeyeballs-2.4.3-py3-none-any.whl
       - pypi: https://download.pytorch.org/whl/test/aiohttp-3.10.8-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://download.pytorch.org/whl/test/aiosignal-1.3.1-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/97/eb/b0cf4cf7769198b0ae2980b1ace769d71c01c7213ce09d88a69c53907907/atlas_ftag_tools-0.2.9-py3-none-any.whl
       - pypi: https://download.pytorch.org/whl/test/attrs-24.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d0/aa/c465e2d4d6430e8505264d9de999e19569416a85258733cb575ed39b94c8/awkward-2.8.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d3/55/32212854831ab59772fa612b0507d94dc9b56ea40123f8a63da040fd3564/awkward_cpp-45-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
@@ -166,12 +169,15 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/6f/5e/2d9fa4d310c9fa7b1db0ba9f27ea64f2975810bb18ba64f2c13e5e5728c9/cramjam-2.10.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/27/e7/56c6fea9afc1ff1a8abcd60a40a21370bea37b620902237045b5083b9044/cvxpy-1.6.5-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://download.pytorch.org/whl/test/cycler-0.12.1-py3-none-any.whl
+      - pypi: https://download.pytorch.org/whl/test/dill-0.3.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/91/a1/cf2472db20f7ce4a6be1253a81cfdf85ad9c7885ffbed7047fb72c24cf87/distlib-0.3.9-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d5/7c/e9fcff7623954d86bdc17782036cbf715ecab1bec4847c008557affe1ca8/docstring_parser-0.16-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fa/73/50ddf1f3ad592c2526cb34287f45b07ee6320b850efddda2917cc81ac651/dulwich-0.22.8-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/82/12/42f4d953f9284571726b085f99e13bfa84522bf63bf2e7a81460013b09e6/ecos-2.0.14-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/87/62/9773de14fe6c45c23649e98b83231fffd7b9892b6cf863251dc2afa73643/einops-0.8.1-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/b3/0c/6415d36ecfedc589f86b9c5eb55933dc0bda86341a370f6cd1d016d88783/energyflow-1.4.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/91/9a/d882fd7562208456236fb2e62b762bf16fbc9ecde842bb871f676ca0f7e1/everett-3.1.0-py2.py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/d0/e2/05627a38dc2d9f2cdd3162df7d5c5c6f3c98c5cd2e1a14379ce2a00b6763/fastjet-3.5.0.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://download.pytorch.org/whl/test/filelock-3.13.1-py3-none-any.whl
       - pypi: direct+https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/b8/25/155f9f080d5e4bc0082edfda032ea2bc2b8fab3f4d25d46c1e9dd22a1a89/flatbuffers-25.2.10-py2.py3-none-any.whl
@@ -201,6 +207,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl
       - pypi: https://download.pytorch.org/whl/test/mpmath-1.3.0-py3-none-any.whl
       - pypi: https://download.pytorch.org/whl/test/multidict-6.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://download.pytorch.org/whl/test/multiprocess-0.70.17-py312-none-any.whl
       - pypi: https://download.pytorch.org/whl/test/networkx-3.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d2/1d/1b658dbd2b9fa9c4c9f32accbfc0205d532c8c6194dc0f2a4c0428e7128a/nodeenv-1.9.1-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/9a/2d/e518df036feab381c23a624dac47f8445ac55686ec7f11083655eb707da3/numba-0.61.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
@@ -225,9 +232,12 @@ environments:
       - pypi: https://download.pytorch.org/whl/test/packaging-22.0-py3-none-any.whl
       - pypi: https://download.pytorch.org/whl/test/pandas-2.2.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/60/11/3e7465a6acb22fc143dd00af6500da6fc950694e72407f2b328c5603e107/particle-0.25.3-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/77/f6/a459cf58ff6b2d1c0a1961ee7084f4bb549d50e288f064e7e7be5ae3a7ab/pathos-0.3.3-py3-none-any.whl
       - pypi: https://download.pytorch.org/whl/test/pillow-11.0.0-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/fe/39/979e8e21520d4e47a0bbe349e2713c0aac6f3d853d0e5b34d76206c439aa/platformdirs-4.3.8-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/88/5f/e351af9a41f866ac3f1fac4ca0613908d9a41741cfcf2228f4ad853b697d/pluggy-1.5.0-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/0d/c2/6435789c26661bef699868ee54d2763aea636a1ed21ec8e350b1f9f65888/pox-0.3.6-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/5b/23/6aef7c24f4ee6f765aeaaaa3bf24cfdb0730a20336a02b1a061d227d84be/ppft-1.7.7-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/88/74/a88bf1b1efeae488a0c0b7bdf71429c313722d1fc0f377537fbe554e6180/pre_commit-4.2.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/28/50/1925de813499546bc8ab3ae857e3ec84efe7d2f19b34529d0c7c3d02d11d/protobuf-6.30.2-cp39-abi3-manylinux2014_x86_64.whl
       - pypi: https://download.pytorch.org/whl/test/psutil-6.0.0-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl
@@ -268,7 +278,9 @@ environments:
       - pypi: https://download.pytorch.org/whl/test/tzdata-2024.2-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/52/dd/4fae0b7c9fa5f746c7f4f40fa3148568472e633b7bfaae6ddfd553bb0639/uproot-5.6.1-py3-none-any.whl
       - pypi: https://download.pytorch.org/whl/test/urllib3-2.2.3-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/fd/e9/cbe9684d3162e901356a845038d6976813639de6fcb1b851975937e06e3b/vector-1.6.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f3/40/b1c265d4b2b62b58576588510fc4d1fe60a86319c8de99fd8e9fec617d2c/virtualenv-20.31.2-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/9f/20/e1ed79a7061c56924f49b1d1a40c3c5a2a6645314e11af82ad9fbd177529/Wasserstein-1.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/0b/2c/87f3254fd8ffd29e4c02732eee68a83a1d3c346ae39bc6822dcbcb697f2b/wheel-0.45.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2a/5a/04cde32b07a7431d4ed0553a76fdb7a61270e78c5fd5a603e190ac389f14/wrapt-1.17.2-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/9a/24/93ce54550a9dd3fd996ed477f00221f215bf6da3580397fbc138d6036e2e/wurlitzer-3.1.1-py3-none-any.whl
@@ -322,6 +334,22 @@ packages:
   requires_dist:
   - frozenlist>=1.1.0
   requires_python: '>=3.7'
+- pypi: https://files.pythonhosted.org/packages/97/eb/b0cf4cf7769198b0ae2980b1ace769d71c01c7213ce09d88a69c53907907/atlas_ftag_tools-0.2.9-py3-none-any.whl
+  name: atlas-ftag-tools
+  version: 0.2.9
+  sha256: 55e4f8327085b2c3232409149726fba4e440ac32efed406b00bb1b07678497df
+  requires_dist:
+  - h5py>=3.0
+  - numpy
+  - pyyaml>=5.1
+  - ruff==0.6.2 ; extra == 'dev'
+  - mypy==1.11.2 ; extra == 'dev'
+  - pre-commit==3.1.1 ; extra == 'dev'
+  - pytest==7.2.2 ; extra == 'dev'
+  - pytest-cov==4.0.0 ; extra == 'dev'
+  - pytest-notebook==0.10.0 ; extra == 'dev'
+  - ipykernel==6.21.3 ; extra == 'dev'
+  requires_python: '>=3.8,<3.12'
 - pypi: https://download.pytorch.org/whl/test/attrs-24.2.0-py3-none-any.whl
   name: attrs
   version: 24.2.0
@@ -1165,6 +1193,13 @@ packages:
   - pytest-cov ; extra == 'tests'
   - pytest-xdist ; extra == 'tests'
   requires_python: '>=3.8'
+- pypi: https://download.pytorch.org/whl/test/dill-0.3.9-py3-none-any.whl
+  name: dill
+  version: 0.3.9
+  requires_dist:
+  - objgraph>=1.7.2 ; extra == 'graph'
+  - gprof2dot>=2022.7.29 ; extra == 'profile'
+  requires_python: '>=3.8'
 - pypi: https://files.pythonhosted.org/packages/91/a1/cf2472db20f7ce4a6be1253a81cfdf85ad9c7885ffbed7047fb72c24cf87/distlib-0.3.9-py2.py3-none-any.whl
   name: distlib
   version: 0.3.9
@@ -1199,6 +1234,30 @@ packages:
   version: 0.8.1
   sha256: 919387eb55330f5757c6bea9165c5ff5cfe63a642682ea788a6d472576d81737
   requires_python: '>=3.8'
+- pypi: https://files.pythonhosted.org/packages/b3/0c/6415d36ecfedc589f86b9c5eb55933dc0bda86341a370f6cd1d016d88783/energyflow-1.4.0-py3-none-any.whl
+  name: energyflow
+  version: 1.4.0
+  sha256: 90ed6d8b8553c69226b9f28d45c1aa362c0ad918426e1264f0b73cfe5cdf33f6
+  requires_dist:
+  - h5py>=2.9.0,!=3.11.0
+  - importlib-metadata>=1.4.0 ; python_full_version < '3.8'
+  - numpy>=1.17.0
+  - wasserstein>=1.0.1
+  - igraph ; extra == 'all'
+  - scikit-learn ; extra == 'all'
+  - tensorflow>=2.5.0 ; extra == 'all'
+  - scikit-learn ; extra == 'archs'
+  - tensorflow>=2.5.0 ; extra == 'archs'
+  - matplotlib ; extra == 'examples'
+  - scikit-learn ; extra == 'examples'
+  - tensorflow>=2.5.0 ; extra == 'examples'
+  - igraph ; extra == 'generation'
+  - igraph ; extra == 'tests'
+  - pot>=0.8.0 ; extra == 'tests'
+  - pytest ; extra == 'tests'
+  - scikit-learn ; extra == 'tests'
+  - tensorflow>=2.5.0 ; extra == 'tests'
+  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/91/9a/d882fd7562208456236fb2e62b762bf16fbc9ecde842bb871f676ca0f7e1/everett-3.1.0-py2.py3-none-any.whl
   name: everett
   version: 3.1.0
@@ -1206,6 +1265,29 @@ packages:
   requires_dist:
   - configobj ; extra == 'ini'
   - pyyaml ; extra == 'yaml'
+- pypi: https://files.pythonhosted.org/packages/d0/e2/05627a38dc2d9f2cdd3162df7d5c5c6f3c98c5cd2e1a14379ce2a00b6763/fastjet-3.5.0.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+  name: fastjet
+  version: 3.5.0.1
+  sha256: 3c415d72848777a76696a497f59927392081ee2fd8d8758c06c2817196462dd4
+  requires_dist:
+  - awkward>=2
+  - numpy>=1.13.3
+  - vector
+  - scikit-build-core>=0.11 ; extra == 'local-build'
+  - setuptools-scm ; extra == 'local-build'
+  - dask>=2023.4.0 ; extra == 'dask'
+  - dask-awkward>=2023.4.2 ; extra == 'dask'
+  - pytest>=4.6 ; extra == 'dev'
+  - sphinx>=3.0.0 ; extra == 'docs'
+  - recommonmark>=0.5.0 ; extra == 'docs'
+  - sphinx-copybutton ; extra == 'docs'
+  - sphinx-rtd-theme>=0.5.0 ; extra == 'docs'
+  - pytest>=4.6 ; extra == 'test'
+  - uproot>=5 ; extra == 'test'
+  - dask>=2023.4.0 ; python_full_version >= '3.8' and extra == 'test'
+  - dask-awkward[test]>=2023.4.2 ; python_full_version >= '3.8' and extra == 'test'
+  - distributed>=2023.4.0 ; python_full_version >= '3.8' and extra == 'test'
+  requires_python: '>=3.9'
 - pypi: https://download.pytorch.org/whl/test/filelock-3.13.1-py3-none-any.whl
   name: filelock
   version: 3.13.1
@@ -1482,7 +1564,7 @@ packages:
 - pypi: .
   name: hepattn
   version: 0.1.0
-  sha256: ff2883ccbb3582802e7e8a228a633537c0f5066fd092bb3d731fbeb449fce97e
+  sha256: c48f23e10cb3efe65de6a4a64264029feb5c35f29bec70d632c0b6b69829695e
   requires_dist:
   - packaging
   - wheel
@@ -2663,6 +2745,12 @@ packages:
   requires_dist:
   - typing-extensions>=4.1.0 ; python_full_version < '3.11'
   requires_python: '>=3.8'
+- pypi: https://download.pytorch.org/whl/test/multiprocess-0.70.17-py312-none-any.whl
+  name: multiprocess
+  version: 0.70.17
+  requires_dist:
+  - dill>=0.3.9
+  requires_python: '>=3.8'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/ncurses-6.5-h2d0b736_3.conda
   sha256: 3fde293232fa3fca98635e1167de6b7c7fda83caf24b9d6c91ec9eefb4f4d586
   md5: 47e340acb35de30501a76c7c799c41d7
@@ -2994,6 +3082,16 @@ packages:
   - pytest>=6 ; extra == 'test'
   - tabulate ; extra == 'test'
   requires_python: '>=3.8'
+- pypi: https://files.pythonhosted.org/packages/77/f6/a459cf58ff6b2d1c0a1961ee7084f4bb549d50e288f064e7e7be5ae3a7ab/pathos-0.3.3-py3-none-any.whl
+  name: pathos
+  version: 0.3.3
+  sha256: e04616c6448608ad1f809360be22e3f2078d949a36a81e6991da6c2dd1f82513
+  requires_dist:
+  - ppft>=1.7.6.9
+  - dill>=0.3.9
+  - pox>=0.3.5
+  - multiprocess>=0.70.17
+  requires_python: '>=3.8'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.44-hc749103_2.conda
   sha256: 09717569649d89caafbf32f6cda1e65aef86e5a86c053d30e4ce77fca8d27b68
   md5: 31614c73d7b103ef76faa4d83d261d34
@@ -3069,6 +3167,18 @@ packages:
   - pytest ; extra == 'testing'
   - pytest-benchmark ; extra == 'testing'
   requires_python: '>=3.8'
+- pypi: https://files.pythonhosted.org/packages/0d/c2/6435789c26661bef699868ee54d2763aea636a1ed21ec8e350b1f9f65888/pox-0.3.6-py3-none-any.whl
+  name: pox
+  version: 0.3.6
+  sha256: d48654d0a3dca0c9c02dccae54a53c3870286a5217ad306b2bd94f84e008bc1b
+  requires_python: '>=3.8'
+- pypi: https://files.pythonhosted.org/packages/5b/23/6aef7c24f4ee6f765aeaaaa3bf24cfdb0730a20336a02b1a061d227d84be/ppft-1.7.7-py3-none-any.whl
+  name: ppft
+  version: 1.7.7
+  sha256: fb7524db110682de886b4bb5b08f7bf6a38940566074ef2f62521cbbd3864676
+  requires_dist:
+  - dill>=0.4.0 ; extra == 'dill'
+  requires_python: '>=3.8'
 - pypi: https://files.pythonhosted.org/packages/88/74/a88bf1b1efeae488a0c0b7bdf71429c313722d1fc0f377537fbe554e6180/pre_commit-4.2.0-py2.py3-none-any.whl
   name: pre-commit
   version: 4.2.0
@@ -3106,6 +3216,34 @@ packages:
   - pytz ; extra == 'test'
   - pandas ; extra == 'test'
   requires_python: '>=3.8'
+- conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-2.13.6-pyhc790b64_3.conda
+  sha256: d429f6f255fbe49f09b9ae1377aa8cbc4d9285b8b220c17ae2ad9c4894c91317
+  md5: 1594696beebf1ecb6d29a1136f859a74
+  depends:
+  - pybind11-global 2.13.6 *_3
+  - python >=3.9
+  constrains:
+  - pybind11-abi ==4
+  license: BSD-3-Clause
+  license_family: BSD
+  purls:
+  - pkg:pypi/pybind11?source=hash-mapping
+  size: 186821
+  timestamp: 1747935138653
+- conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-global-2.13.6-pyh217bc35_3.conda
+  sha256: c044cfcbe6ef0062d0960e9f9f0de5f8818cec84ed901219ff9994b9a9e57237
+  md5: 730a5284e26d6bdb73332dafb26aec82
+  depends:
+  - __unix
+  - python >=3.9
+  constrains:
+  - pybind11-abi ==4
+  license: BSD-3-Clause
+  license_family: BSD
+  purls:
+  - pkg:pypi/pybind11-global?source=hash-mapping
+  size: 180116
+  timestamp: 1747934418811
 - pypi: https://files.pythonhosted.org/packages/8a/0b/9fcc47d19c48b59121088dd6da2488a49d5f72dacf8262e2790a1d2c7d15/pygments-2.19.1-py3-none-any.whl
   name: pygments
   version: 2.19.1
@@ -3950,6 +4088,43 @@ packages:
   - pysocks>=1.5.6,!=1.5.7,<2.0 ; extra == 'socks'
   - zstandard>=0.18.0 ; extra == 'zstd'
   requires_python: '>=3.8'
+- pypi: https://files.pythonhosted.org/packages/fd/e9/cbe9684d3162e901356a845038d6976813639de6fcb1b851975937e06e3b/vector-1.6.2-py3-none-any.whl
+  name: vector
+  version: 1.6.2
+  sha256: 36c26777c3463d20cb3fbaaf8214b5a3d6883ceadd7202735223b08f68ee249d
+  requires_dist:
+  - numpy>=1.13.3
+  - packaging>=19
+  - awkward>=2 ; extra == 'awkward'
+  - awkward>=2 ; extra == 'dev'
+  - dask-awkward ; extra == 'dev'
+  - nox ; extra == 'dev'
+  - numba>=0.57 ; python_full_version < '3.13' and extra == 'dev'
+  - papermill>=2.4 ; extra == 'dev'
+  - pytest-cov>=3 ; extra == 'dev'
+  - pytest-doctestplus ; extra == 'dev'
+  - pytest>=6 ; extra == 'dev'
+  - sympy ; extra == 'dev'
+  - awkward>=2 ; extra == 'docs'
+  - ipykernel ; extra == 'docs'
+  - myst-parser>0.13 ; extra == 'docs'
+  - nbsphinx ; extra == 'docs'
+  - sphinx-book-theme>=0.0.42 ; extra == 'docs'
+  - sphinx-copybutton ; extra == 'docs'
+  - sphinx-math-dollar ; extra == 'docs'
+  - sphinx>=4 ; extra == 'docs'
+  - sympy ; extra == 'docs'
+  - numba>=0.57 ; python_full_version < '3.13' and extra == 'numba'
+  - sympy ; extra == 'sympy'
+  - nox ; extra == 'test'
+  - papermill>=2.4 ; extra == 'test'
+  - pytest-cov>=3 ; extra == 'test'
+  - pytest-doctestplus ; extra == 'test'
+  - pytest>=6 ; extra == 'test'
+  - dask-awkward ; extra == 'test-extras'
+  - spark-parser ; extra == 'test-extras'
+  - uncompyle6 ; python_full_version == '3.8.*' and extra == 'test-extras'
+  requires_python: '>=3.8'
 - pypi: https://files.pythonhosted.org/packages/f3/40/b1c265d4b2b62b58576588510fc4d1fe60a86319c8de99fd8e9fec617d2c/virtualenv-20.31.2-py3-none-any.whl
   name: virtualenv
   version: 20.31.2
@@ -3979,6 +4154,18 @@ packages:
   - setuptools>=68 ; extra == 'test'
   - time-machine>=2.10 ; platform_python_implementation == 'CPython' and extra == 'test'
   requires_python: '>=3.8'
+- pypi: https://files.pythonhosted.org/packages/9f/20/e1ed79a7061c56924f49b1d1a40c3c5a2a6645314e11af82ad9fbd177529/Wasserstein-1.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+  name: wasserstein
+  version: 1.1.0
+  sha256: 9cba6458eb85481d4395a67e7ea1cfa6ffea59ed84ee7ca8ba54b9be5e75a4b8
+  requires_dist:
+  - numpy>=1.12.0
+  - wurlitzer>=2.0.0
+  - energyflow ; extra == 'test'
+  - pot ; extra == 'test'
+  - pytest ; extra == 'test'
+  - coverage ; extra == 'test'
+  requires_python: '>=3.7'
 - pypi: https://files.pythonhosted.org/packages/0b/2c/87f3254fd8ffd29e4c02732eee68a83a1d3c346ae39bc6822dcbcb697f2b/wheel-0.45.1-py3-none-any.whl
   name: wheel
   version: 0.45.1
