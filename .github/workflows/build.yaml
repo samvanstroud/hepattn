@@ -1,0 +1,22 @@
+name: Build
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Check out the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      # Step 2: Set up Pixi
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.8.3
+        with:
+          pixi-version: v0.48.1
+          cache: true
+          locked: true
+      # Step 3: Run tests
+      - name: Test Pixi
+        run: |
+          pixi run python --version
+      - name: Run pytest defined in pyproject.toml
+        run: pixi run test-ci

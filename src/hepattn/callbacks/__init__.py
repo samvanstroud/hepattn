@@ -5,4 +5,4 @@ from hepattn.callbacks.prediction_writer import PredictionWriter
 from hepattn.callbacks.saveconfig import SaveConfig
 from hepattn.callbacks.throughput_monitor import MyThroughputMonitor
 
-__all__ = ["Checkpoint", "Compile", "InferenceTimer", "SaveConfig", "MyThroughputMonitor", "PredictionWriter"]
+__all__ = ["Checkpoint", "Compile", "InferenceTimer", "MyThroughputMonitor", "PredictionWriter", "SaveConfig"]

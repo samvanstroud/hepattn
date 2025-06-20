@@ -116,6 +116,7 @@ namespace lap
 #include "core/lap_direct_iterator.h"
 #include "core/lap_caching_iterator.h"
 #include "core/lap_solver.h"
+#include "core/lap_no_iterator.h"
 
 #ifdef LAP_OPENMP
 #include <omp.h>
@@ -123,6 +124,7 @@ namespace lap
 #include "core/omp/lap_direct_iterator.h"
 #include "core/omp/lap_caching_iterator.h"
 #include "core/omp/lap_solver.h"
+#include "core/omp/lap_no_iterator.h"
 #endif
 
 #ifdef LAP_CUDA

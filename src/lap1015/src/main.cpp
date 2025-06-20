@@ -5,7 +5,7 @@
 
 // enable OpenMP support
 #ifdef _OPENMP
-#  define LAP_OPENMP
+#define LAP_OPENMP
 #endif
 
 // the LFU cache is very slow due to the heap being used for storing the priority queue
@@ -13,8 +13,8 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
-
 #include "csrc/lap.h"
+#include <iostream>
 
 namespace py = pybind11;
 
@@ -42,7 +42,7 @@ void solveTable(TP &start_time, int N1, int N2, CF &get_cost, int *rowsol, bool 
 }
 
 
-py::array linear_sum_assignment(py::array_t<float> cost_matrix, bool omp = false, bool eps = false) {
+py::array_t<int> linear_sum_assignment(py::array_t<float> cost_matrix, bool omp = false, bool eps = false) {
     auto start_time = std::chrono::high_resolution_clock::now();
 
     // create a view of the array with dimension 2 that does not check index bounds, for speed
@@ -76,9 +76,8 @@ py::array linear_sum_assignment(py::array_t<float> cost_matrix, bool omp = false
     else {
         solveTable<float, float>(start_time, Nx, Ny, get_cost, rowsol, eps);
     }
-
     // convert the output to a numpy array
-    py::array_t<int> result(Ny);
+    py::array_t<int, py::array::c_style> result(Ny);
     auto r = result.mutable_unchecked<1>();
     for (py::ssize_t i = 0; i < result.shape(0); i++) {
         r(i) = rowsol[i];

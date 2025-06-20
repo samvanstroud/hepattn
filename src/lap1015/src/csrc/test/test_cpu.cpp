@@ -2,8 +2,8 @@
 #  define LAP_OPENMP
 #endif
 #define LAP_QUIET
-//#define LAP_DISPLAY_EVALUATED
-//#define LAP_DEBUG
+// #define LAP_DISPLAY_EVALUATED
+// #define LAP_DEBUG
 //#define LAP_NO_MEM_DEBUG
 //#define LAP_ROWS_SCANNED
 //#define LAP_VERIFY_RESULT
@@ -394,13 +394,15 @@ void testSanity(long long min_tab, long long max_tab, int runs, bool omp, bool e
 			{
 				solveTable<C, C>(start_time, N, N, get_cost, rowsol, epsilon);
 			}
-
+			
 			bool passed = true;
 			for (long long i = 0; (passed) && (i < N); i++)
 			{
 				passed &= (rowsol[i] == i);
 			}
 			std::stringstream ss;
+			// for (int i = 0; i < N; i++) ss << rowsol[i] << " ";
+			// ss << '\n';
 			if (passed) ss << "test passed: ";
 			else ss << "test failed: ";
 			C real_cost(0);

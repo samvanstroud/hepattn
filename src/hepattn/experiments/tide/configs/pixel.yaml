@@ -256,9 +256,9 @@ model:
                 output_object: pred
                 target_object: sudo
                 losses:
-                  object_ce: 1.0
+                  object_bce: 1.0
                 costs:
-                  object_ce: 1.0
+                  object_bce: 1.0
                 dim: *dim
                 null_weight: 1.0
                 mask_queries: false
@@ -271,8 +271,8 @@ model:
                 output_object: pred
                 target_object: sudo
                 losses:
-                  mask_ce: 1.0
+                  mask_bce: 1.0
                 costs:
-                  mask_ce: 1.0
+                  mask_bce: 1.0
                 dim: *dim
                 null_weight: 1.0

@@ -24,6 +24,7 @@ def cld_datamodule():
     return datamodule
 
 
+@pytest.mark.requiresdata
 def test_plot_cld_hit_coords(cld_datamodule):
     dataloader = cld_datamodule.train_dataloader()
     data_iterator = iter(dataloader)
@@ -68,6 +69,7 @@ def test_plot_cld_hit_coords(cld_datamodule):
     fig.savefig(Path("tests/outputs/cld/cld_hit_coords.png"))
 
 
+@pytest.mark.requiresdata
 def test_plot_cld_trkr_momentum(cld_datamodule):
     dataloader = cld_datamodule.train_dataloader()
     data_iterator = iter(dataloader)
@@ -132,6 +134,7 @@ def test_plot_cld_trkr_momentum(cld_datamodule):
     fig.savefig(Path("tests/outputs/cld/cld_particle_trkr_angle.png"))
 
 
+@pytest.mark.requiresdata
 def test_plot_cld_calo_energy(cld_datamodule):
     dataloader = cld_datamodule.train_dataloader()
     data_iterator = iter(dataloader)
@@ -248,6 +251,7 @@ def test_plot_cld_calo_energy(cld_datamodule):
     fig.savefig(Path("tests/outputs/cld/cld_calo_ratio_coords_cut.png"))
 
 
+@pytest.mark.requiresdata
 def test_plot_cld_hit_distance(cld_datamodule):
     dataloader = cld_datamodule.train_dataloader()
     data_iterator = iter(dataloader)
@@ -284,6 +288,7 @@ def test_plot_cld_hit_distance(cld_datamodule):
     fig.savefig(Path("tests/outputs/cld/cld_hit_dist.png"))
 
 
+@pytest.mark.requiresdata
 def test_plot_cld_hit_dr(cld_datamodule):
     dataloader = cld_datamodule.train_dataloader()
     data_iterator = iter(dataloader)

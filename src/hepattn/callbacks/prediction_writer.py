@@ -2,9 +2,10 @@ from pathlib import Path
 
 import h5py
 from lightning import Callback, LightningModule, Trainer
+from torch import Tensor
 
 from hepattn.utils.tensor_utils import tensor_to_numpy
-from torch import Tensor
+
 
 class PredictionWriter(Callback):
     def __init__(

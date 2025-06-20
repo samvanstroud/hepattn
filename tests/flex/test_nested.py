@@ -2,6 +2,7 @@
 import random
 from functools import lru_cache
 
+import pytest
 import torch
 import torch.nn.functional as F
 from torch.nn.attention.flex_attention import (
@@ -62,6 +63,7 @@ def causal_mask(b, h, q_idx, kv_idx):  # noqa: ARG001
     return q_idx >= kv_idx
 
 
+@pytest.mark.gpu
 def test_flex_nested():
     # Current limitation that the total combined sequence length must be divisible by 128
     sentence_lengths = [random.randint(1, 1024) for _ in range(batch_size - 1)]  # noqa: S311

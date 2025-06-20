@@ -18,7 +18,7 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         use_attn_masks: bool = True,
         use_query_masks: bool = True,
-        intermediate_losses: bool = True
+        intermediate_losses: bool = True,
     ):
         """
         Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -96,7 +96,7 @@ class MaskFormer(nn.Module):
         batch_size = x["key_valid"].shape[0]
         num_constituents = x["key_valid"].shape[-1]
 
-        # if all key_valid are true, then we can just set it to None 
+        # if all key_valid are true, then we can just set it to None
         if batch_size == 1 and x["key_valid"].all():
             x["key_valid"] = None
 

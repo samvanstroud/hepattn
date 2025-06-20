@@ -11,7 +11,6 @@ from torch import Tensor, nn
 
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
-from hepattn.models.norm import LayerNorm
 from hepattn.models.transformer import Residual
 
 
@@ -19,7 +18,7 @@ class MaskFormerDecoderLayer(nn.Module):
     def __init__(
         self,
         dim: int,
-        norm: str = 'LayerNorm',
+        norm: str = "LayerNorm",
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
         mask_attention: bool = True,

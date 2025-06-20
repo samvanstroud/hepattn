@@ -19,7 +19,7 @@ def test_combined_mods(device="cpu"):
     query = make_tensor(q_len[0])
 
     out_dir = Path(__file__).parent.parent / Path("outputs/flex")
-    out_dir.mkdir(exist_ok=True)
+    out_dir.mkdir(exist_ok=True, parents=True)
     path = out_dir / "combined.png"
 
     visualize_attention_scores(query, key, score_mod=score_mod, mask_mod=mask, device=device, name="combined", path=path)

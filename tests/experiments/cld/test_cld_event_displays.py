@@ -25,6 +25,7 @@ def cld_datamodule():
     return datamodule
 
 
+@pytest.mark.requiresdata
 def test_cld_event_display(cld_datamodule):
     # Plot an event display directly from dataloader with merged
     # inputs to verify things look correct

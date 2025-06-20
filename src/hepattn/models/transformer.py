@@ -8,7 +8,6 @@ from hepattn.flex import relative_position, relative_position_wrapped
 from hepattn.flex.sliding_window import sliding_window_mask, sliding_window_mask_wrapped
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
-from hepattn.models.norm import LayerNorm
 
 create_block_mask = torch.compile(create_block_mask, dynamic=True)
 
@@ -100,7 +99,7 @@ class EncoderLayer(nn.Module):
         self,
         dim: int,
         depth: int = 0,
-        norm: str = 'LayerNorm',
+        norm: str = "LayerNorm",
         layer_scale: float | None = None,
         drop_path: float = 0.0,
         value_residual: bool = False,

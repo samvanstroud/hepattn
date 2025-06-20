@@ -16,7 +16,7 @@ torch.manual_seed(42)
 class TestCLDDataModule:
     @pytest.fixture
     def cld_datamodule(self):
-        config_path = Path("src/hepattn/experiments/cld/configs/merged.yaml")
+        config_path = Path("src/hepattn/experiments/cld/configs/base.yaml")
         config = yaml.safe_load(config_path.read_text())["data"]
         config["num_workers"] = 0
 
@@ -25,6 +25,7 @@ class TestCLDDataModule:
 
         return datamodule
 
+    @pytest.mark.requiresdata
     def test_cld_masks(self, cld_datamodule):
         dataloader = cld_datamodule.train_dataloader()
         dataset = dataloader.dataset
@@ -36,8 +37,7 @@ class TestCLDDataModule:
             # Valid particles should have no nan fields
             for field in dataset.targets["particle"]:
                 assert torch.all(~torch.isnan(targets[f"particle_{field}"][targets["particle_valid"]]))
-
-            for hit in ["sihit", "ecal", "hcal", "muon"]:
+            for hit in ["trkr", "vtxd", "ecal", "hcal", "muon"]:
                 # Any invalid particle slot should have no mask entries
                 mask = targets[f"particle_{hit}_valid"]
                 particles_num_hits = mask.sum(-1)
@@ -64,6 +64,7 @@ class TestCLDDataModule:
 
                     # All valid hits
 
+    @pytest.mark.requiresdata
     def test_cld_event_display_merged_inputs(self, cld_datamodule):
         # Plot an event display directly from dataloader with merged
         # inputs to verify things look correct
@@ -98,36 +99,38 @@ class TestCLDDataModule:
                     "x": "pos.phi",
                     "y": "pos.eta",
                     "input_names": [
-                        "sihit",
+                        "trkr",
+                        "vtxd",
                     ],
                 },
             ]
 
             fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
-            fig.savefig(Path("tests/outputs/cld/cld_event_sihit_etaphi.png"))
+            fig.savefig(Path("tests/outputs/cld/cld_event_trkr_vtxd_etaphi.png"))
 
             axes_spec = [
                 {
                     "x": "pos.u",
                     "y": "pos.v",
                     "input_names": [
-                        "sihit",
+                        "trkr",
+                        "vtxd",
                     ],
                 },
             ]
 
             fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
-            fig.savefig(Path("tests/outputs/cld/cld_event_sihit_uv.png"))
+            fig.savefig(Path("tests/outputs/cld/cld_event_trkr_vtxd_uv.png"))
 
-            axes_spec = [{"x": "pos.c", "y": "pos.eta", "input_names": ["sihit"]}]
+            # axes_spec = [{"x": "pos.c", "y": "pos.eta", "input_names": ["trkr","vtxd"]}]
+
+            # fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
+            # fig.savefig(Path("tests/outputs/cld/cld_event_trkr_vtxd_ceta.png"))
+
+            axes_spec = [{"x": "pos.r", "y": "pos.eta", "input_names": ["trkr", "vtxd"]}]
 
             fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
-            fig.savefig(Path("tests/outputs/cld/cld_event_sihit_ceta.png"))
-
-            axes_spec = [{"x": "pos.r", "y": "pos.eta", "input_names": ["sihit"]}]
-
-            fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
-            fig.savefig(Path("tests/outputs/cld/cld_event_sihit_reta.png"))
+            fig.savefig(Path("tests/outputs/cld/cld_event_trkr_vtxd_reta.png"))
 
             # Plot the full event with all subsytems
             axes_spec = [
@@ -135,7 +138,8 @@ class TestCLDDataModule:
                     "x": "pos.x",
                     "y": "pos.y",
                     "input_names": [
-                        "sihit",
+                        "trkr",
+                        "vtxd",
                         "ecal",
                         "hcal",
                         "muon",
@@ -145,7 +149,8 @@ class TestCLDDataModule:
                     "x": "pos.z",
                     "y": "pos.y",
                     "input_names": [
-                        "sihit",
+                        "trkr",
+                        "vtxd",
                         "ecal",
                         "hcal",
                         "muon",
@@ -162,14 +167,16 @@ class TestCLDDataModule:
                     "x": "pos.x",
                     "y": "pos.y",
                     "input_names": [
-                        "sihit",
+                        "trkr",
+                        "vtxd",
                     ],
                 },
                 {
                     "x": "pos.z",
                     "y": "pos.y",
                     "input_names": [
-                        "sihit",
+                        "trkr",
+                        "vtxd",
                     ],
                 },
             ]

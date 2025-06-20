@@ -31,6 +31,7 @@ def copy_attention_weights(src: Attention, dst: Attention):
 @pytest.mark.parametrize("kv_masking", [False, True])
 @pytest.mark.parametrize("attn_masking", [False, True])
 @pytest.mark.parametrize("attn_type", ["torch", "flash", "flex", "flash-varlen"])
+@pytest.mark.gpu
 def test_attention_consistency(batch_size, dim, num_heads, bias, q_len, kv_len, attn_masking, kv_masking, attn_type):
     # Generate random input tensors
     q = torch.randn(batch_size, q_len, dim, dtype=torch.float16, device="cuda")
@@ -76,6 +77,7 @@ def test_attention_consistency(batch_size, dim, num_heads, bias, q_len, kv_len, 
 
 # NJT not working out of the box with flex, but can be done with a block mask
 # for now just test with SDPA
+@pytest.mark.gpu
 def test_nested_jagged_tensor():
     attn_torch = Attention(dim=128, num_heads=8, attn_type="torch", torch_compile=False).cuda().half()
     # attn_flex = Attention(dim=128, num_heads=8, attn_type="flex", torch_compile=True).cuda().half()
@@ -96,6 +98,7 @@ def test_nested_jagged_tensor():
         # torch.testing.assert_close(out, flex_out[i], atol=1e-3, rtol=1e-3)
 
 
+@pytest.mark.gpu
 def test_local_attention():
     window_size = 4
 
@@ -128,6 +131,7 @@ def test_local_attention():
     # torch.testing.assert_close(out_flex, out_flash, atol=1e-3, rtol=1e-3)
 
 
+@pytest.mark.gpu
 def test_flex_dynamic():
     # generate inputs
     xs = [torch.randn(1, i, 128, dtype=torch.float16, device="cuda") for i in range(100, 110)]
@@ -147,6 +151,7 @@ def test_flex_dynamic():
 @pytest.mark.parametrize("num_heads", [8])
 @pytest.mark.parametrize("bias", [False, True])
 @pytest.mark.parametrize("attn_type", ["torch", "flash", "flex", "flash-varlen"])
+@pytest.mark.gpu
 def test_self_attention(batch_size, seq_len, dim, num_heads, bias, attn_type):
     # Generate random input tensor
     qkv = torch.randn(batch_size, seq_len, dim, dtype=torch.float16, device="cuda")
@@ -167,6 +172,7 @@ def test_self_attention(batch_size, seq_len, dim, num_heads, bias, attn_type):
 
 
 @pytest.mark.parametrize("attn_type", ["torch", "flash", "flex", "flash-varlen"])
+@pytest.mark.gpu
 def test_cross_attention(attn_type):
     # Generate random input tensors
     q = torch.randn(1, 128, 128, dtype=torch.float16, device="cuda")
@@ -184,6 +190,7 @@ def test_cross_attention(attn_type):
 
 @pytest.mark.parametrize("attn_type", ["torch", "flash", "flex", "flash-varlen"])
 @pytest.mark.parametrize("attn_type_new", ["torch", "flash", "flex", "flash-varlen"])
+@pytest.mark.gpu
 def test_attention_change_backend(attn_type, attn_type_new):
     # Generate random input tensors
     q = torch.randn(1, 128, 128, dtype=torch.float16, device="cuda")

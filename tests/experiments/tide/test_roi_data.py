@@ -20,10 +20,11 @@ class TestROIDataModule:
         config["num_workers"] = 0
 
         datamodule = ROIDataModule(**config)
-        datamodule.setup(stage="test")
+        datamodule.setup(stage="fit")
 
         return datamodule
 
+    @pytest.mark.requiresdata
     def test_roi_data(self, roi_datamodule):
         dataloader = roi_datamodule.train_dataloader()
         data_iterator = iter(dataloader)

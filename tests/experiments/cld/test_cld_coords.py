@@ -23,6 +23,7 @@ def cld_datamodule():
     return datamodule
 
 
+@pytest.mark.requiresdata
 def test_plot_cld_hit_coords(cld_datamodule):
     dataloader = cld_datamodule.train_dataloader()
     data_iterator = iter(dataloader)

@@ -65,6 +65,12 @@ git = "*"
 cuda = "12.3.*"
 "ruamel.yaml" = ">=0.18.10,<0.19"
 
+[tool.pixi.tasks.test]
+cmd = "pytest -xsv"
+
+[tool.pixi.tasks.test-ci]
+cmd = "pytest -xsv -m 'not gpu and not requiresdata'"
+
 [tool.ruff]
 src = ["src"]
 target-version = "py312"
@@ -76,4 +82,8 @@ lint.ignore = ["G", "D", "DOC", "ANN", "PLW", "FBT", "EM", "PLR1714", "PLR2004",
 [tool.pytest.ini_options]
 filterwarnings = [
     "ignore:.*distutils Version classes are deprecated. Use packaging.version instead.*:DeprecationWarning",
+]
+markers = [
+    "gpu: mark test to run on GPU",
+    "requiresdata: mark test that requires data not present in the repository",
 ]

@@ -57,10 +57,28 @@ See the [`pixi shell` docs](https://pixi.sh/latest/reference/cli/pixi/shell/) fo
 
 ## Running tests
 
-Once inside the environemnt, just run 
+Once inside the environemnt, if a GPU and relevant external data are available just run 
 
 ```shell
 pytest
+```
+
+To test parts of the code that don't require a GPU, run
+
+```shell
+pytest -m 'not gpu'
+```
+
+To test parts of the code that don't require external input data, run
+
+```shell
+pytest -m 'not requiresdata'
+```
+
+Please note that the current CI only tests the parts of the code that don't require a GPU or external input data with
+
+```shell
+pytest -m 'not gpu and not requiresdata'
 ```
 
 ## Run experiments

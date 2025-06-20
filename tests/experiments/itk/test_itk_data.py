@@ -66,11 +66,14 @@ class TestITkEvent:
 
         return dataset
 
-    def test_itk_event_display(self, itk_event):
+    @pytest.mark.requiresdata
+    def test_itk_event_display(self, itk_dataset):
         # Plot an event display directly from dataloader to verify things look correct
-        inputs, targets = itk_event
+        inputs, targets = itk_dataset.load_event(itk_dataset.sample_ids[0])
 
         fig = plot_itk_event_reconstruction(inputs, targets)
+        out_dir = Path("tests/outputs/itk")
+        out_dir.mkdir(exist_ok=True, parents=True)
         fig.savefig(Path("tests/outputs/itk/itk_event.png"))
 
     def test_itk_matcher(self):

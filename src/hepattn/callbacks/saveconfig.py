@@ -34,11 +34,10 @@ class SaveConfig(Callback):
             if isinstance(trainer.logger, CometLogger):
                 for file in log_dir.glob("*.yaml"):
                     trainer.logger.experiment.log_asset(file)
-                    
+
             self.already_saved = True
 
         self.already_saved = trainer.strategy.broadcast(self.already_saved, src=0)
-
 
     def save_metadata(self, trainer, log_dir: Path, pl_module: LightningModule) -> None:
         logger = trainer.logger

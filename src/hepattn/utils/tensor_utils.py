@@ -35,10 +35,15 @@ def pad_to_size(x: torch.Tensor, target_shape: tuple, pad_value: float):
     right shape, returns x unchanged. If any dimension of x is bigger
     than target_shape, raises a ValueError.
 
-    Args:
-        x           (torch.Tensor): any shaped tensor
-        target_shape (tuple[int]):   desired shape (must have same length as x.dim())
-        pad_value    (float): default fill for the padded region
+    Parameters
+    ----------
+    x : torch.Tensor
+        The input tensor to pad.
+    target_shape : tuple of int
+        The desired shape of the output tensor. Must have the same number of dimensions as x.
+        A value of -1 indicates that the ith target dimension should match the ith dimension of the input shape.
+    pad_value : float or int
+        The constant value to use for padding.
 
     Returns:
         torch.Tensor of shape `target_shape`, where the upper left block is x
@@ -51,10 +56,20 @@ def pad_to_size(x: torch.Tensor, target_shape: tuple, pad_value: float):
     if len(target_shape) != x.dim():
         raise ValueError(f"Target shape must have the same number of dimensions as x: {current_shape} vs {target_shape}")
 
+    _target_shape = []
+
     # Check if any target dimension is smaller than x
-    for i, (cur, tgt) in enumerate(zip(current_shape, target_shape, strict=False)):
-        if cur > tgt:
-            raise ValueError(f"Cannot pad: dimension {i} of x is {cur}, which is larger than target {tgt}.")
+    for i, (current, target) in enumerate(zip(current_shape, target_shape, strict=False)):
+        # -1 indicates that the target dim should just be the input dim
+        if target == -1:
+            target = current
+
+        if current > target:
+            raise ValueError(f"Cannot pad: dimension {i} of x is {current}, which is larger than target {target}.")
+
+        _target_shape.append(target)
+
+    target_shape = tuple(_target_shape)
 
     # If x is already the correct shape, just return it
     if current_shape == target_shape:

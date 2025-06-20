@@ -187,9 +187,9 @@ model:
                 output_object: track
                 target_object: particle
                 losses:
-                  object_ce: 1.0
+                  object_bce: 1.0
                 costs:
-                  object_ce: 1.0
+                  object_bce: 1.0
                 dim: *dim
                 null_weight: 1.0
             - class_path: hepattn.models.task.ObjectHitMaskTask
@@ -200,11 +200,11 @@ model:
                 output_object: track
                 target_object: particle
                 losses:
-                  #mask_ce: 100.0
+                  #mask_bce: 100.0
                   mask_dice: 2.0
                   mask_focal: 50.0
                 costs:
-                  #mask_ce: 100.0
+                  #mask_bce: 100.0
                   mask_dice: 2.0
                   mask_focal: 50.0
                 dim: *dim

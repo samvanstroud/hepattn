@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #pragma once
 
 #include <chrono>
@@ -10,6 +11,23 @@
 #include <mutex>
 #endif
 #include <math.h>
+#include <vector>
+
+#ifndef lapInfo
+#define lapInfo std::cout
+#endif
+
+#ifndef lapDebug
+#define lapDebug std::cout
+#endif
+
+#ifndef lapAlloc
+#define lapAlloc lap::alloc
+#endif
+
+#ifndef lapFree
+#define lapFree lap::free
+#endif
 
 namespace lap
 {

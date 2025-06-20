@@ -89,3 +89,10 @@ def test_padding_from_zero_last_dim():
     expected = torch.full((2, 3), 7)
     assert torch.equal(padded, expected)
     assert padded.shape == torch.Size(d)
+
+
+def test_padding_no_pad_opt():
+    x = torch.ones((2, 3, 5))
+    d = (3, 4, -1)
+    padded = pad_to_size(x, d, pad_value=0)
+    assert padded.shape == (3, 4, 5)

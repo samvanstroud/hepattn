@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../lap_solver.h"
+#include <omp.h>
 
 namespace lap
 {
@@ -30,7 +31,6 @@ namespace lap
 			double greedy_bound = 0.0;
 
 			memset(picked, 0, sizeof(int) * dim2);
-
 #pragma omp parallel
 			{
 				int t = omp_get_thread_num();
@@ -41,7 +41,7 @@ namespace lap
 					int j_min = dim2;
 					if (i < dim)
 					{
-						const auto *tt = iterator.getRow(t, i);
+						const auto tt = iterator.getRow(t, i);
 						auto cost = [&tt](int j) -> SC { return (SC)tt[j]; };
 						getMinMaxBest(i - iterator.ws.part[t].first, min_cost_l, max_cost_l, picked_cost_l, j_min, cost, picked + iterator.ws.part[t].first, iterator.ws.part[t].second - iterator.ws.part[t].first);
 						if (j_min >= dim2) j_min = dim2; else j_min += iterator.ws.part[t].first;
@@ -147,7 +147,7 @@ namespace lap
 					int j_min = dim2;
 					if (i < dim)
 					{
-						const auto *tt = iterator.getRow(t, i);
+						const auto tt = iterator.getRow(t, i);
 						auto cost = [&tt, &v, &iterator, &t](int j) -> SC { return (SC)tt[j] - v[j + iterator.ws.part[t].first]; };
 						getMinSecondBest(min_cost_l, second_cost_l, picked_cost_l, j_min, cost, picked + iterator.ws.part[t].first, iterator.ws.part[t].second - iterator.ws.part[t].first);
 					}
@@ -230,7 +230,7 @@ namespace lap
 						SC min_cost, min_cost_real;
 						if (perm[i] < dim)
 						{
-							const auto* tt = iterator.getRow(t, perm[i]);
+							const auto tt = iterator.getRow(t, perm[i]);
 							auto cost = [&tt, &v, &iterator, &t](int j) -> SC { return (SC)tt[j] - v[j + iterator.ws.part[t].first]; };
 							getMinimalCost(j_min, min_cost, min_cost_real, cost, mod_v + iterator.ws.part[t].first, iterator.ws.part[t].second - iterator.ws.part[t].first);
 						}
@@ -292,7 +292,7 @@ namespace lap
 						int off = ((i & 1) == 0) ? 0 : 32;
 						if (perm[i] < dim)
 						{
-							const auto *tt = iterator.getRow(t, perm[i]);
+							const auto tt = iterator.getRow(t, perm[i]);
 							if ((picked[i] >= iterator.ws.part[t].first) && (picked[i] < iterator.ws.part[t].second))
 							{
 								merge_cost[off] = (SC)tt[picked[i] - iterator.ws.part[t].first] - v[picked[i]];
@@ -345,7 +345,7 @@ namespace lap
 						SC min_cost_real;
 						if (perm[i] < dim)
 						{
-							const auto* tt = iterator.getRow(t, perm[i]);
+							const auto tt = iterator.getRow(t, perm[i]);
 							if ((picked[i] >= iterator.ws.part[t].first) && (picked[i] < iterator.ws.part[t].second))
 							{
 								merge_cost[i + off] = (SC)tt[picked[i] - iterator.ws.part[t].first];
@@ -464,7 +464,7 @@ namespace lap
 			SC epsilon_lower;
 			SC **v;
 			int *perm;
-			decltype(iterator.getRow(0, 0))* tt;
+			// decltype(iterator.getRow(0, 0))* tt;
 
 			SC v_jmin_global;
 			SC tt_jmin_global;
@@ -480,7 +480,6 @@ namespace lap
 			lapAlloc(d, omp_get_max_threads(), __FILE__, __LINE__);
 			lapAlloc(v, omp_get_max_threads(), __FILE__, __LINE__);
 			lapAlloc(perm, dim2, __FILE__, __LINE__);
-			lapAlloc(tt, omp_get_max_threads(), __FILE__, __LINE__);
 
 
 #pragma omp parallel
@@ -613,7 +612,7 @@ namespace lap
 
 					memset(colsol_private, -1, count * sizeof(int));
 
-					int threads = omp_get_num_threads();
+					const int threads = omp_get_num_threads();
 
 					for (int fc = 0; fc < dim_limit; fc++)
 					{
@@ -623,12 +622,12 @@ namespace lap
 						bool unassignedfound_local;
 						if (f < dim)
 						{
-							tt[t] = iterator.getRow(t, f);
+							const auto tt = iterator.getRow(t, f);
 							for (int j = 0; j < count; j++)
 							{
 								colactive_private[j] = 1;
 								pred_private[j] = f;
-								SC h = d_private[j] = tt[t][j] - v_private[j];
+								SC h = d_private[j] = tt[j] - v_private[j];
 								if (h < min_local)
 								{
 									// better
@@ -661,8 +660,8 @@ namespace lap
 								else if ((h == min_local) && (colsol_private[jmin_local] >= 0) && (colsol_private[j] < 0)) jmin_local = j;
 							}
 						}
-						min_private[t] = min_local;
-						jmin_private[t] = jmin_local + start;
+						min_private[t << 4] = min_local;
+						jmin_private[t << 4] = jmin_local + start;
 #pragma omp barrier
 #ifndef LAP_QUIET
 						if (t == 0) { if (f < dim) total_rows++; else total_virtual++; }
@@ -677,18 +676,18 @@ namespace lap
 						bool taken = false;
 						min_local = min_private[0];
 						jmin_local = jmin_private[0];
-						for (int ii = 1; ii < omp_get_num_threads(); ii++)
+						for (int ii = 1; ii < threads; ii++)
 						{
-							if (min_private[ii] < min_local)
+							if (min_private[ii << 4] < min_local)
 							{
 								// better than previous
-								min_local = min_private[ii];
-								jmin_local = jmin_private[ii];
+								min_local = min_private[ii << 4];
+								jmin_local = jmin_private[ii << 4];
 								taken = (colsol[jmin_local] >= 0);
 							}
-							else if ((min_private[ii] == min_local) && (taken) && (colsol[jmin_private[ii]] < 0))
+							else if ((min_private[ii << 4] == min_local) && (taken) && (colsol[jmin_private[ii << 4]] < 0))
 							{
-								jmin_local = jmin_private[ii];
+								jmin_local = jmin_private[ii << 4];
 								taken = false;
 							}
 						}
@@ -714,11 +713,11 @@ namespace lap
 							SC min_n_local = std::numeric_limits<SC>::max();
 							if (i < dim)
 							{
-								tt[t] = iterator.getRow(t, i);
+								const auto tt = iterator.getRow(t, i);
 								if ((jmin_local >= start) && (jmin_local < end))
 								{
 									v_jmin_global = v[t][jmin_local - start];
-									tt_jmin_global = (SC)tt[t][jmin_local - start];
+									tt_jmin_global = (SC)tt[jmin_local - start];
 								}
 								jmin_local = dim2;
 #pragma omp barrier
@@ -728,7 +727,7 @@ namespace lap
 								{
 									if (colactive_private[j] != 0)
 									{
-										SC v2 = (tt[t][j] - tt_jmin) - (v_private[j] - v_jmin) + min_local;
+										SC v2 = (tt[j] - tt_jmin) - (v_private[j] - v_jmin) + min_local;
 										SC h = d_private[j];
 										if (v2 < h)
 										{
@@ -783,8 +782,8 @@ namespace lap
 									}
 								}
 							}
-							min_private[t] = min_n_local;
-							jmin_private[t] = jmin_local + start;
+							min_private[t << 4] = min_n_local;
+							jmin_private[t << 4] = jmin_local + start;
 #pragma omp barrier
 #ifndef LAP_QUIET
 							if (t == 0) { if (f < dim) total_rows++; else total_virtual++; }
@@ -799,18 +798,18 @@ namespace lap
 							bool taken = false;
 							min_n_local = min_private[0];
 							jmin_local = jmin_private[0];
-							for (int ii = 1; ii < omp_get_num_threads(); ii++)
+							for (int ii = 1; ii < threads; ii++)
 								{
-								if (min_private[ii] < min_n_local)
+								if (min_private[ii << 4] < min_n_local)
 								{
 									// better than previous
-									min_n_local = min_private[ii];
-									jmin_local = jmin_private[ii];
+									min_n_local = min_private[ii << 4];
+									jmin_local = jmin_private[ii << 4];
 									taken = (colsol[jmin_local] >= 0);
 								}
-								else if ((min_private[ii] == min_n_local) && (taken) && (colsol[jmin_private[ii]] < 0))
+								else if ((min_private[ii << 4] == min_n_local) && (taken) && (colsol[jmin_private[ii]] < 0))
 								{
-									jmin_local = jmin_private[ii];
+									jmin_local = jmin_private[ii << 4];
 									taken = false;
 								}
 							}
@@ -833,9 +832,9 @@ namespace lap
 						// update column prices. can increase or decrease
 						if (epsilon > SC(0))
 						{
-							min_private[t + 2 * threads] = SC(0);
-							min_private[t + 3 * threads] = SC(0);
-							updateColumnPrices(colactive_private, 0, count, min_local, v_private, d_private, epsilon, min_private[t + 2 * threads], min_private[t + 3 * threads]);
+							min_private[(t << 4) + 2] = SC(0);
+							min_private[(t << 4) + 3] = SC(0);
+							updateColumnPrices(colactive_private, 0, count, min_local, v_private, d_private, epsilon, min_private[(t << 4) + 2], min_private[(t << 4) + 3]);
 						}
 						else
 						{
@@ -844,10 +843,10 @@ namespace lap
 #pragma omp barrier
 						if (t == 0)
 						{
-							if (epsilon > SC(0)) for (int tt = 0; tt < omp_get_num_threads(); tt++)
+							if (epsilon > SC(0)) for (int tt = 0; tt < threads; tt++)
 							{
-								total_d += min_private[tt + 2 * threads];
-								total_eps += min_private[tt + 3 * threads];
+								total_d += min_private[(tt << 4) + 2];
+								total_eps += min_private[(tt << 4) + 3];
 							}
 						}
 #ifdef LAP_ROWS_SCANNED
@@ -1012,7 +1011,6 @@ namespace lap
 			lapFree(min_private);
 			lapFree(jmin_private);
 			lapFree(perm);
-			lapFree(tt);
 		}
 
 		// shortcut for square problems

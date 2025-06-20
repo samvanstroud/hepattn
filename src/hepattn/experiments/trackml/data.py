@@ -113,7 +113,7 @@ class TrackMLDataset(Dataset):
         targets["hit_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy()).unsqueeze(0)
 
         # Add sample ID
-        targets['sample_id'] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)
+        targets["sample_id"] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)
 
         # Build the regression targets
         if "particle" in self.targets:

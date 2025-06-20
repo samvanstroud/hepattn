@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from hepattn.experiments.trackml.data import TrackMLDataset
-from hepattn.experiments.trackml.plot_kinematics import plot_trackml_kinematics
+from hepattn.experiments.trackml.eval.plot_kinematics import plot_trackml_kinematics
 
 
 class TestTrackMLEvent:
@@ -46,6 +46,9 @@ class TestTrackMLEvent:
 
         return dataset
 
+    @pytest.mark.requiresdata
     def test_trackml_plot_kinematics(self, trackml_dataset):
         fig = plot_trackml_kinematics(trackml_dataset)
-        fig.savefig(Path("tests/outputs/trackml/trackml_kinematics.png"))
+        output_dir = Path("tests/outputs/trackml/")
+        output_dir.mkdir(exist_ok=True, parents=True)
+        fig.savefig(output_dir / Path("trackml_kinematics.png"))
