@@ -19,7 +19,7 @@ jobs:
         run: pixi run python --version
       # Step 4: Download external data
       - name: Download trackml data
-        run: python data/trackml/get_trackml_data.py
+        run: pixi run python data/trackml/get_trackml_data.py
       # Step 5: Run tests
       - name: Run pytest defined in pyproject.toml
         run: pixi run test-ci
