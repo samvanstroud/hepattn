@@ -18,6 +18,11 @@ jobs:
       - name: Test Pixi
         run: pixi run python --version
       # Step 4: Download external data
+      - name: Set up kaggle API
+        run: |
+          mkdir -p ~/.config/kaggle
+          echo "${{ secrets.KAGGLE_API_TOKEN }}" > ~/.config/kaggle/kaggle.json
+          chmod 600 ~/.config/kaggle/kaggle.json
       - name: Download trackml data
         run: pixi run python data/trackml/get_trackml_data.py
       # Step 5: Run tests
