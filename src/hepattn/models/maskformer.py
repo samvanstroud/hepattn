@@ -216,6 +216,7 @@ class MaskFormer(nn.Module):
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
+        batch_idxs = torch.arange(targets["particle_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
             if not self.intermediate_losses and layer_name != "final":
                 continue
@@ -239,9 +240,9 @@ class MaskFormer(nn.Module):
         for layer_name in outputs:
             if not self.intermediate_losses and layer_name != "final":
                 continue
+
             # Get the indicies that can permute the predictions to yield their optimal matching
-            pred_idxs = self.matcher(costs[layer_name])
-            batch_idxs = torch.arange(costs[layer_name].shape[0]).unsqueeze(1).expand(-1, self.num_queries)
+            pred_idxs = self.matcher(costs[layer_name], targets["particle_valid"])
 
             # Apply the permutation in place
             for task in self.tasks:
