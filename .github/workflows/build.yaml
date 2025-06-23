@@ -23,6 +23,7 @@ jobs:
           mkdir -p ~/.config/kaggle
           echo "${{ secrets.KAGGLE_API_TOKEN }}" > ~/.config/kaggle/kaggle.json
           chmod 600 ~/.config/kaggle/kaggle.json
+          cat ~/.config/kaggle/kaggle.json
       - name: Download trackml data
         run: pixi run python data/trackml/get_trackml_data.py
       # Step 5: Run tests
