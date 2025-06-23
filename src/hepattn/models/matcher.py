@@ -69,7 +69,7 @@ class Matcher(nn.Module):
         for k in range(len(costs)):
             # remove invalid targets for efficiency
             cost = costs[k][:, : batch_obj_lengths[k]].T
-            pred_idx = torch.as_tensor(self.solver(cost))
+            pred_idx = torch.as_tensor(self.solver(cost), device=cost.device)
 
             # scipy returns incomplete assignments, handle that here
             if self.solver == SOLVERS["scipy"]:
