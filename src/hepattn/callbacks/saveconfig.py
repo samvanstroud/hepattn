@@ -14,8 +14,8 @@ class SaveConfig(Callback):
         super().__init__()
         self.already_saved = False
 
-    def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
-        if self.already_saved or trainer.fast_dev_run or stage != "fit":
+    def on_train_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        if self.already_saved or trainer.fast_dev_run:
             return
 
         log_dir = trainer.log_dir  # this broadcasts the directory
@@ -34,6 +34,9 @@ class SaveConfig(Callback):
             if isinstance(trainer.logger, CometLogger):
                 for file in log_dir.glob("*.yaml"):
                     trainer.logger.experiment.log_asset(file)
+                base_dir = Path(__file__).parents[3]
+                for file in (base_dir / "src").glob("**/*.py"):
+                    trainer.logger.experiment.log_code(file)
 
             self.already_saved = True
 
