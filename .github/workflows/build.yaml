@@ -14,9 +14,9 @@ jobs:
           pixi-version: v0.48.1
           cache: true
           locked: true
-      # Step 3: Ensure python is installed
+      # Step 3: Run tests
       - name: Test Pixi
-        run: pixi run python --version
-      # Step 4: Run tests
+        run: |
+          pixi run python --version
       - name: Run pytest defined in pyproject.toml
         run: pixi run test-ci
