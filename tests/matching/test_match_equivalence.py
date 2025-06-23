@@ -19,7 +19,7 @@ def test_matcher_with_target_padding(solver, scale: float):
         cost = rng.random((1, n_objects, n_objects)) * scale  # Add batch dimension
         object_valid_mask = np.zeros((1, n_objects), dtype=bool)  # Add batch dimension
         object_valid_mask[0, :n_valid_objects] = True
-        cost[0, :, ~object_valid_mask[0]] = 1e8  # Set padding costs to infinity
+        cost[0, :, ~object_valid_mask[0]] = 1e5  # Set padding costs
 
         # Convert to torch tensors
         cost_tensor = torch.from_numpy(cost).float()
@@ -28,7 +28,8 @@ def test_matcher_with_target_padding(solver, scale: float):
         # Test with full cost matrix
         idx_all = matcher(cost_tensor).squeeze(0).numpy()
 
-        # Test with padded cost matrix (simulate what happens internally)
+        # Test with padded cost matrix
+        cost[0, :, ~object_valid_mask[0]] = np.nan  # if we pass the pad mask the nans should be removed
         cost_padded = cost.copy()
         idx_padded = matcher(torch.from_numpy(cost_padded).float(), object_valid_mask).squeeze(0).numpy()
 
