@@ -205,10 +205,8 @@ pytest-temp
 *.nfs*
 
 # external data
-*.gz
 *.tar
 *.zip
 *.parquet
 *.pickle
-*.csv
 *.h5
