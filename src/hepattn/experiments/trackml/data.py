@@ -94,7 +94,7 @@ class TrackMLDataset(Dataset):
 
         # Build the targets for whether a particle slot is used or not
         targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
-        targets["particle_valid"][: len(particles)] = True
+        targets["particle_valid"][:num_particles] = True
         targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
         message = f"Event {idx} has {num_particles}, but limit is {self.event_max_num_particles}"
         assert num_particles <= self.event_max_num_particles, message

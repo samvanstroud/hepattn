@@ -17,6 +17,9 @@ python run_filtering.py fit --config configs/filtering.yaml --trainer.fast_dev_r
 
 # test
 python run_filtering.py test --config PATH
+
+# evaluate on train/val
+python run_filtering.py test --config PATH --data.test_dir /share/rcifdata/maxhart/data/trackml/prepped/train
 ```
 
 ## Tracking
@@ -35,4 +38,35 @@ python run_tracking.py test --config PATH
 ```shell
 sbatch /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/submit/submit_trackml_filtering.sh
 sbatch /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/submit/submit_trackml_tracking.sh
+```
+
+
+## Configurations
+
+A full pixel detector with a reasonable pt cut for targeting >1GeV particles:
+
+```yaml
+hit_volume_ids: [7, 8, 9] # pixel barrel and endcaps
+particle_min_pt: 0.9
+particle_max_abs_eta: 4.0
+```
+
+
+
+
+
+A more lightweight configuration for testing purposes:
+
+```yaml
+hit_volume_ids: [8] # pixel barrel only
+particle_min_pt: 1.0
+particle_max_abs_eta: 2.5
+```
+
+For which the following pre-trained hit filter evaluations can be used:
+
+```yaml
+hit_eval_train: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_train_eval.h5
+hit_eval_val: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_val_eval.h5
+hit_eval_test: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_test_eval.h5
 ```
