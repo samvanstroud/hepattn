@@ -80,9 +80,10 @@ class TestTrackMLEvent:
     def test_trackml_event_display(self, trackml_event):
         # Quick event display plotted directly from dataloader to verify things look correct
         inputs, targets = trackml_event
-
+        output_dir = Path("tests/outputs/trackml/")
+        output_dir.mkdir(exist_ok=True, parents=True)
         fig = plot_trackml_event_reconstruction(inputs, targets)
-        fig.savefig(Path("tests/outputs/trackml/trackml_event.png"))
+        fig.savefig(output_dir / "trackml_event.png")
 
     def test_trackml_matcher(self):
         Matcher(
