@@ -9,6 +9,12 @@ cd hepattn && pixi shell
 cd hepattn/src/hepattn/experiments/trackml/
 ```
 
+## Data
+You can use the `detectors.csv` file available in `data/trackml/` directory.
+This file was obtained by unzipping the file provided on the [Kaggle trackML webpage](https://www.kaggle.com/competitions/trackml-particle-identification/data).
+For training, use the codalab data from [this webpage](https://competitions.codalab.org/competitions/20112#participate-get_data).
+Sample data is available for testing in the `data/trackml/raw/` directory.
+
 ## Hit Filter
 
 ```shell
