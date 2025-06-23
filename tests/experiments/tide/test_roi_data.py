@@ -18,18 +18,20 @@ class TestROIDataModule:
         config_path = Path("src/hepattn/experiments/tide/configs/base.yaml")
         config = yaml.safe_load(config_path.read_text())["data"]
         config["num_workers"] = 0
+        config["batch_size"] = 2
+        config["num_train"] = 10
+        config["num_val"] = 10
 
         datamodule = ROIDataModule(**config)
         datamodule.setup(stage="fit")
 
         return datamodule
 
-    @pytest.mark.requiresdata
     def test_roi_data(self, roi_datamodule):
         dataloader = roi_datamodule.train_dataloader()
         data_iterator = iter(dataloader)
 
-        for _i in range(10):
+        for _i in range(5):
             inputs, targets = next(data_iterator)
 
             for k, v in inputs.items():

@@ -2,9 +2,9 @@ name: TIDE_5M_100_32trk_F32_regr_smooth1l
 
 data:
   batch_size: 100
-  train_dir: /share/rcifdata/maxhart/data/ambi/train/
-  val_dir: /share/rcifdata/maxhart/data/ambi/val/
-  test_dir: /share/rcifdata/maxhart/data/ambi/test/
+  train_dir: data/tide/prepped/
+  val_dir: data/tide/prepped/
+  test_dir: data/tide/prepped/
   num_workers: 10
   num_train: 5000000
   num_test: 10000

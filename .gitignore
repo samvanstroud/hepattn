@@ -211,3 +211,4 @@ pytest-temp
 *.parquet
 *.pickle
 *.csv
+*.h5

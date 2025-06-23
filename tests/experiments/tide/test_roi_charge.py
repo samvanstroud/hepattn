@@ -6,6 +6,7 @@ import torch
 import yaml
 
 from hepattn.experiments.tide.data import ROIDataModule
+from hepattn.experiments.tide.prep import preprocess_files
 
 plt.rcParams["figure.dpi"] = 300
 
@@ -18,15 +19,20 @@ class TestROIDataModule:
         config_path = Path("src/hepattn/experiments/tide/configs/base.yaml")
         config = yaml.safe_load(config_path.read_text())["data"]
         config["num_workers"] = 0
-        config["batch_size"] = 1000
-        config["num_test"] = 10000
+        config["batch_size"] = 2
+        config["num_test"] = 10
 
         datamodule = ROIDataModule(**config)
         datamodule.setup(stage="test")
 
         return datamodule
 
-    @pytest.mark.requiresdata
+    def test_tide_preprocess(self):
+        input_dir = Path("data/tide/raw/")
+        output_dir = Path("data/tide/prepped/")
+        output_dir.mkdir(exist_ok=True, parents=True)
+        preprocess_files(input_dir, output_dir, False)
+
     def test_roi_data(self, roi_datamodule):
         dataloader = roi_datamodule.test_dataloader()
         data_iterator = iter(dataloader)

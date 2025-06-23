@@ -2,9 +2,9 @@ seed_everything: 42
 name: TRK-v0-dice-focal-noce
 
 data:
-  train_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
-  val_dir: /share/rcifdata/maxhart/data/trackml/prepped/val/
-  test_dir: /share/rcifdata/maxhart/data/trackml/prepped/test/
+  train_dir: data/trackml/prepped/
+  val_dir: data/trackml/prepped/
+  test_dir: data/trackml/prepped/
 
   hit_eval_train: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_train_eval.h5
   hit_eval_val: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_val_eval.h5

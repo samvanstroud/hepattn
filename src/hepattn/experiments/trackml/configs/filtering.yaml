@@ -2,9 +2,9 @@ seed_everything: 42
 name: HC-v3
 
 data:
-  train_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
-  val_dir: /share/rcifdata/maxhart/data/trackml/prepped/val/
-  test_dir: /share/rcifdata/maxhart/data/trackml/prepped/test/
+  train_dir: data/trackml/prepped/
+  val_dir: data/trackml/prepped/
+  test_dir: data/trackml/prepped/
 
   num_workers: 10
   num_train: -1

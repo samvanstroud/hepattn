@@ -218,6 +218,7 @@ def preprocess_file(
     in_file_path = input_dir / Path(f"{file_name}.root")
     out_file_path = output_dir / Path(f"{file_name}.h5")
     out_file_path_tmp = output_dir / Path(f"{file_name}.tmp")
+    output_dir.mkdir(exist_ok=True, parents=True)
 
     # Skip the file if it has already been preprocessed
     if out_file_path.is_file() and not overwrite:
@@ -253,7 +254,7 @@ def preprocess_file(
     print(f"Done reading fields from {in_file_path}")
 
     # user.srettie.42156221.EXT1._000193.tree.tmp -> 000193
-    file_id = str(file_name.replace("user.srettie.42156221.EXT1._", "").replace(".tree", ""))
+    file_id = str(file_name.replace("user.srettie.42156221.EXT1._", "").replace(".tree", "").replace("hadronic_rois", ""))
 
     # Maps the ROI id to the ROI index in the input file
     roi_ids_idxs = {int(file_id + str(roi_idx).zfill(6)): roi_idx for roi_idx in range(len(data["roi_e"]))}

@@ -2,9 +2,9 @@ name: TIDE_1M_100_32trk_F32_pixel
 
 data:
   batch_size: 100
-  train_dir: /share/rcifdata/maxhart/data/ambi_new/
-  val_dir: /share/rcifdata/maxhart/data/ambi_new/
-  test_dir: /share/rcifdata/maxhart/data/ambi_new/
+  train_dir: data/tide/prepped/
+  val_dir: data/tide/prepped/
+  test_dir: data/tide/prepped/
   num_workers: 1
   num_train: 1000000
   num_test: 10000
