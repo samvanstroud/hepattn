@@ -37,10 +37,10 @@ export TMPDIR=/home/syw24/tmp
 echo "Running training script..."
 
 # Python command that will be run
-CONFIG_PATH="/home/syw24/ftag/hepattn/logs/CLIC_Pflow_Full_20250620-T014846/config.yaml"
-CKPT_PATH="/home/syw24/ftag/hepattn/logs/CLIC_Pflow_Full_20250620-T014846/ckpts/epoch=020-val_loss=0.71725.ckpt"
-PYTORCH_CMD="python src/hepattn/experiments/clic/main.py test --config $CONFIG_PATH --ckpt_path $CKPT_PATH"
-# PYTORCH_CMD="python src/hepattn/experiments/clic/main.py fit --config $CONFIG_PATH"
+CONFIG_PATH="/home/syw24/ftag/hepattn/src/hepattn/experiments/clic/configs/base.yaml"
+# CKPT_PATH="/home/syw24/ftag/hepattn/logs/CLIC_Pflow_FullDiceFocFix_20250621-T002933/ckpts/epoch=075-val_loss=0.97786.ckpt"
+# PYTORCH_CMD="python src/hepattn/experiments/clic/main.py test --config $CONFIG_PATH --ckpt_path $CKPT_PATH"
+PYTORCH_CMD="python src/hepattn/experiments/clic/main.py fit --config $CONFIG_PATH"
 
 # Pixi commnand that runs the python command inside the pixi env
 PIXI_CMD="pixi run $PYTORCH_CMD"

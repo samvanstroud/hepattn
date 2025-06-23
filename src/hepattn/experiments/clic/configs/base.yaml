@@ -1,4 +1,4 @@
-name: CLIC_Pflow_Full
+name: CLIC_Pflow_FullDiceFocFix_128
 seed_everything: 42
 
 data:
@@ -27,7 +27,7 @@ data:
   test_path: /share/gpu1/syw24/dmitrii_clic/test_clic_fix.root
 
   # Number of events to include in each set
-  num_workers: 8
+  num_workers: 10
   num_train: -1
   num_test: -1
   num_val: 5000
@@ -39,7 +39,9 @@ data:
 
 # Training stuff here
 trainer:
+  gradient_clip_val: 0.1
   max_epochs: 200
+  accelerator: gpu
   devices: 1
   precision: bf16-mixed
   default_root_dir: logs
@@ -49,7 +51,9 @@ trainer:
   logger:
     class_path: lightning.pytorch.loggers.CometLogger
     init_args:
-      project_name: clic
+      api_key: PcMdYSuDnX6qCEVHiQki4h4YL
+      workspace: sunnyw22
+      project_name: hepattn-clic
 
   callbacks:
     - class_path: hepattn.callbacks.InferenceTimer
@@ -58,7 +62,7 @@ trainer:
       init_args:
         monitor: val/loss
         save_last: true
-        # every_n_train_steps: 1000
+        every_n_train_steps: 1000
     - class_path: hepattn.experiments.clic.PflowPredictionWriter
       # init_args:
       #   write_inputs: true
@@ -129,6 +133,8 @@ model:
       decoder_layer_config:
         dim: *dim
         mask_attention: true
+        attn_kwargs:
+          num_heads: 8
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
@@ -149,9 +155,9 @@ model:
                 target_object: particle
                 num_classes: 5
                 losses:
-                  object_ce: 2
+                  object_ce: 5.0
                 costs:
-                  object_ce: 2
+                  object_ce: 5.0
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
@@ -171,15 +177,15 @@ model:
                 output_object: pflow
                 target_object: particle
                 pred_threshold: 0.1
-                logit_scale: 4
+                logit_scale: 1
                 losses:
-                  mask_bce: 5.0
-                  # mask_dice: 1
-                  # mask_focal: 2
+                  mask_bce: 10.0
+                  mask_dice: 1.0
+                  mask_focal: 2.0
                 costs:
-                  mask_bce: 5.0
-                  # mask_dice: 1
-                  # mask_focal: 2
+                  mask_bce: 10.0
+                  mask_dice: 1.0
+                  mask_focal: 2.0
                 dim: *dim
                 null_weight: 1.0
 
@@ -191,9 +197,9 @@ model:
                 output_object: pflow
                 target_object: particle
                 losses:
-                  kl_div: 1
+                  kl_div: 1.0
                 costs:
-                  kl_div: 1
+                  kl_div: 1.0
                 net:
                   class_path: hepattn.models.Dense
                   init_args:

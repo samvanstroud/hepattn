@@ -3,7 +3,7 @@ seed_everything: 42
 
 data:
   num_objects: &num_particles 150
-  scale_dict_path: &scale_dict_path /storage/agrp/dmitrykl/hgpf/hepattn/src/hepattn/experiments/clic/configs/clic_var_transform.yaml
+  scale_dict_path: &scale_dict_path /home/syw24/ftag/hepattn/src/hepattn/experiments/clic/configs/clic_var_transform.yaml
 
 model:
   lrs_config:
