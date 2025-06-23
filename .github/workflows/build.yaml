@@ -18,5 +18,9 @@ jobs:
       - name: Test Pixi
         run: |
           pixi run python --version
+      - name: Install Git LFS
+        run: |
+          git lfs install
+          git lfs pull
       - name: Run pytest defined in pyproject.toml
         run: pixi run test-ci
