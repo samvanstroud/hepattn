@@ -1,14 +1,15 @@
 seed_everything: 42
-name: TRK-v0-full
+name: TRK-v0-lite-lapearly
 
 data:
   train_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
   val_dir: /share/rcifdata/maxhart/data/trackml/prepped/val/
   test_dir: /share/rcifdata/maxhart/data/trackml/prepped/test/
 
-  hit_eval_train: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_train_eval.h5
-  hit_eval_val: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_val_eval.h5
-  hit_eval_test: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_test_eval.h5
+  hit_eval_train: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_train_eval.h5
+  hit_eval_val: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_val_eval.h5
+  hit_eval_test: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_test_eval.h5
+
   num_workers: 10
   num_train: -1
   num_test: 10
@@ -17,19 +18,19 @@ data:
   # Select only hits from these detector volumes
   # pix barrel: 8, pix endcap: 7, 9
   # See: https://competitions.codalab.org/competitions/20112
-  hit_volume_ids: [7, 8, 9]
+  hit_volume_ids: [8]
 
   # Minimum pt for a particle to be deemed reconstructible
-  particle_min_pt: 0.9
+  particle_min_pt: 1.0
 
   # Maximum absolute eta for a particle to be deemed reconstructible
-  particle_max_abs_eta: 4.0
+  particle_max_abs_eta: 2.5
 
   # Minimum number of true hits for a particle to be deemed reconstructible
   particle_min_num_hits: 3
 
   # Maximum number of reconstructable particles allowed in an event
-  event_max_num_particles: &num_objects 2200
+  event_max_num_particles: &num_objects 1200
 
   # Define which inputs will be available to the model
   inputs:
@@ -66,7 +67,7 @@ trainer:
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
-  log_every_n_steps: 50
+  log_every_n_steps: 10
   default_root_dir: logs
   gradient_clip_val: 0.1
   enable_progress_bar: true
@@ -100,7 +101,7 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
-        refresh_rate: 50
+        refresh_rate: 1
 
 model:
   optimizer: Lion
@@ -176,7 +177,7 @@ model:
           norm: RMSNorm
 
       num_decoder_layers: 4
-      intermediate_losses: true
+      intermediate_losses: false
       decoder_layer_config:
         dim: *dim
         norm: RMSNorm
