@@ -32,7 +32,7 @@ class Matcher(nn.Module):
         self,
         default_solver: str = "scipy",
         adaptive_solver: bool = True,
-        adaptive_check_interval: int = 100,
+        adaptive_check_interval: int = 1000,
     ):
         super().__init__()
         """ Used to match predictions to targets based on a given cost matrix.
