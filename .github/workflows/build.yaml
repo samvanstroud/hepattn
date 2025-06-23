@@ -14,9 +14,12 @@ jobs:
           pixi-version: v0.48.1
           cache: true
           locked: true
-      # Step 3: Run tests
+      # Step 3: Ensure python is installed
       - name: Test Pixi
-        run: |
-          pixi run python --version
+        run: pixi run python --version
+      # Step 4: Download external data
+      - name: Download trackml data
+        run: python data/trackml/get_trackml_data.py
+      # Step 5: Run tests
       - name: Run pytest defined in pyproject.toml
         run: pixi run test-ci

@@ -203,3 +203,11 @@ pytest-temp
 
 # NFS
 *.nfs*
+
+# external data
+*.gz
+*.tar
+*.zip
+*.parquet
+*.pickle
+*.csv

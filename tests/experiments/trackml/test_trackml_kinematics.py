@@ -24,8 +24,8 @@ class TestTrackMLEvent:
             "particle": ["pt", "eta", "phi"],
         }
 
-        dirpath = "/share/rcifdata/maxhart/data/trackml/prepped/train/"
-        num_events = 24
+        dirpath = "data/trackml/prepped/"
+        num_events = 10
         hit_volume_ids = [7, 8, 9]
         particle_min_pt = 0.0
         particle_max_abs_eta = 4.0
@@ -46,7 +46,6 @@ class TestTrackMLEvent:
 
         return dataset
 
-    @pytest.mark.requiresdata
     def test_trackml_plot_kinematics(self, trackml_dataset):
         fig = plot_trackml_kinematics(trackml_dataset)
         output_dir = Path("tests/outputs/trackml/")
