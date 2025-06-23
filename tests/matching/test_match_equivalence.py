@@ -19,7 +19,7 @@ def test_matcher_with_target_padding(solver, scale: float):
         cost = rng.random((1, n_objects, n_objects)) * scale  # Add batch dimension
         object_valid_mask = np.zeros((1, n_objects), dtype=bool)  # Add batch dimension
         object_valid_mask[0, :n_valid_objects] = True
-        cost[0, :, ~object_valid_mask[0]] = 1e5  # Set padding costs
+        cost[0, :, ~object_valid_mask[0]] = 1e4  # Set padding costs
 
         # Convert to torch tensors
         cost_tensor = torch.from_numpy(cost).float()
