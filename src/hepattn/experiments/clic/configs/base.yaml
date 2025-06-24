@@ -51,9 +51,7 @@ trainer:
   logger:
     class_path: lightning.pytorch.loggers.CometLogger
     init_args:
-      api_key: PcMdYSuDnX6qCEVHiQki4h4YL
-      workspace: sunnyw22
-      project_name: hepattn-clic
+      project_name: hepattn_clic
 
   callbacks:
     - class_path: hepattn.callbacks.InferenceTimer
@@ -133,8 +131,8 @@ model:
       decoder_layer_config:
         dim: *dim
         mask_attention: true
-        attn_kwargs:
-          num_heads: 8
+        # attn_kwargs:
+        #   num_heads: 8
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
@@ -155,9 +153,9 @@ model:
                 target_object: particle
                 num_classes: 5
                 losses:
-                  object_ce: 5.0
+                  object_ce: 2
                 costs:
-                  object_ce: 5.0
+                  object_ce: 2
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
@@ -179,11 +177,11 @@ model:
                 pred_threshold: 0.1
                 logit_scale: 1
                 losses:
-                  mask_bce: 10.0
+                  mask_bce: 5.0
                   mask_dice: 1.0
                   mask_focal: 2.0
                 costs:
-                  mask_bce: 10.0
+                  mask_bce: 5.0
                   mask_dice: 1.0
                   mask_focal: 2.0
                 dim: *dim
