@@ -54,9 +54,6 @@ class Dense(nn.Module):
         self.output_size = output_size
         gate = isinstance(activation, SwiGLU)
 
-        self.activation = activation
-        self.final_activation = final_activation
-
         layers = []
         if norm_input:
             layers.append(nn.LayerNorm(input_size))
