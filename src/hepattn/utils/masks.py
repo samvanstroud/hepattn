@@ -255,8 +255,21 @@ def reco_metrics(
 
 
 def topk_attn(attn_scores: Tensor, k: int, dim=-1):
-    """
-    Keep only the topk scores in each row of the attention matrix.
+    """Keep only the topk scores in each row of the attention matrix.
+
+    Parameters
+    ----------
+    attn_scores : Tensor
+        The attention scores.
+    k : int
+        The number of top scores to keep.
+    dim : int, optional
+        The dimension to apply top-k along, by default -1.
+
+    Returns
+    -------
+    BoolTensor
+        A boolean mask with `True` for the top-k scores.
     """
     _, topk_indices = attn_scores.topk(k, dim=dim)
     zeros = torch.zeros_like(attn_scores, dtype=bool)

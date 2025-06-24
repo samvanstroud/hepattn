@@ -75,6 +75,12 @@ def join_structured_arrays(arrays: list):
     np.array
         A merged structured array
     """
+    if not arrays:
+        raise ValueError("Input list of arrays cannot be empty.")
+    first_shape = arrays[0].shape
+    if any(a.shape != first_shape for a in arrays):
+        raise ValueError("All arrays in the list must have the same shape.")
+
     dtype: list = reduce(operator.add, (a.dtype.descr for a in arrays))
     newrecarray = np.empty(arrays[0].shape, dtype=dtype)
     for a in arrays:
@@ -86,7 +92,22 @@ def join_structured_arrays(arrays: list):
 
 def maybe_pad(x: np.ndarray, target_shape: tuple, pad_value: float = 0.0) -> np.ndarray:
     """
-    numpy version of pad_to_size from hepattn.utils.tensor_utils
+    Pads a numpy array `x` to match `target_shape`, using `pad_value`.
+    numpy version of pad_to_size from hepattn.utils.tensor_utils.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        The input array to pad.
+    target_shape : tuple of int
+        The desired shape of the output array. Use -1 to match input dim.
+    pad_value : float
+        The constant value to use for padding.
+
+    Returns
+    -------
+    np.ndarray
+        Padded array of shape `target_shape`.
     """
     current_shape = x.shape
     if len(target_shape) != x.ndim:

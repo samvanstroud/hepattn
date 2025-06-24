@@ -22,7 +22,7 @@ def test_dense_custom_parameters():
         output_size=5,
         hidden_layers=[20, 15],
         hidden_dim_scale=3,
-        activation=nn.ReLU,
+        activation=nn.ReLU(),
         final_activation=nn.Sigmoid,
         dropout=0.1,
         bias=False,
