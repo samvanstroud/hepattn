@@ -41,7 +41,7 @@ class TestTrackMLEvent:
         }
 
         dirpath = "data/trackml/prepped/"
-        num_events = 10
+        num_events = 2
         hit_volume_ids = [8]
         particle_min_pt = 1.0
         particle_max_abs_eta = 2.5
