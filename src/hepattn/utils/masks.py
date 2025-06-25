@@ -252,3 +252,27 @@ def reco_metrics(
         fake = fake[pred_valid].float().mean()
 
     return eff, fake
+
+
+def topk_attn(attn_scores: Tensor, k: int, dim=-1):
+    """Keep only the topk scores in each row of the attention matrix.
+
+    Parameters
+    ----------
+    attn_scores : Tensor
+        The attention scores.
+    k : int
+        The number of top scores to keep.
+    dim : int, optional
+        The dimension to apply top-k along, by default -1.
+
+    Returns
+    -------
+    BoolTensor
+        A boolean mask with `True` for the top-k scores.
+    """
+    _, topk_indices = attn_scores.topk(k, dim=dim)
+    zeros = torch.zeros_like(attn_scores, dtype=bool)
+    src = torch.ones_like(topk_indices, dtype=bool).expand_as(topk_indices)
+    mask = torch.scatter(zeros, dim=dim, index=topk_indices, src=src)
+    return mask

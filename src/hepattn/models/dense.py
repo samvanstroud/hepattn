@@ -48,11 +48,11 @@ class Dense(nn.Module):
         if hidden_layers is None:
             hidden_layers = [input_size * hidden_dim_scale]
         if activation is None:
-            activation = SwiGLU
+            activation = SwiGLU()
 
         self.input_size = input_size
         self.output_size = output_size
-        gate = activation == SwiGLU
+        gate = isinstance(activation, SwiGLU)
 
         layers = []
         if norm_input:
@@ -65,7 +65,7 @@ class Dense(nn.Module):
             proj_dim = proj_dim * 2 if gate else proj_dim
 
             # inner projection and activation
-            layers.extend((nn.Linear(in_dim, proj_dim, bias=bias), activation()))
+            layers.extend((nn.Linear(in_dim, proj_dim, bias=bias), activation))
 
             # maybe dropout
             if dropout:
@@ -74,7 +74,7 @@ class Dense(nn.Module):
         # final projection and activation
         layers.append(nn.Linear(node_list[-1], output_size, bias=bias))
         if final_activation:
-            layers.append(final_activation())
+            layers.append(final_activation)
 
         # build the net
         self.net = nn.Sequential(*layers)

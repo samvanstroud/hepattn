@@ -14,7 +14,7 @@ def concat_tensors(tensors: list[Tensor]) -> Tensor:
 
 
 class InputNet(nn.Module):
-    def __init__(self, input_name: str, net: nn.Module, fields: list[str], posenc: nn.Module | None):
+    def __init__(self, input_name: str, net: nn.Module, fields: list[str], posenc: nn.Module | None = None):
         super().__init__()
         """ A wrapper which takes a list of input features, concatenates them, and passes them through a dense
         layer followed by an optional positional encoding module.
