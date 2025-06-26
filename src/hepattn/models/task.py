@@ -11,6 +11,7 @@ from hepattn.models.loss import cost_fns, focal_loss, loss_fns
 class Task(nn.Module, ABC):
     def __init__(self):
         super().__init__()
+        self.has_intermediate_loss = False
 
     @abstractmethod
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -205,6 +206,8 @@ class ObjectHitMaskTask(Task):
     ):
         super().__init__()
 
+
+
         self.name = name
         self.input_hit = input_hit
         self.input_object = input_object
@@ -215,6 +218,7 @@ class ObjectHitMaskTask(Task):
         self.dim = dim
         self.null_weight = null_weight
         self.mask_attn = mask_attn
+        self.has_intermediate_loss = mask_attn
 
         self.output_object_hit = output_object + "_" + input_hit
         self.target_object_hit = target_object + "_" + input_hit
