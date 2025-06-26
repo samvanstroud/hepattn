@@ -8,12 +8,11 @@ class MaskFormer(nn.Module):
     def __init__(
         self,
         input_nets: nn.ModuleList,
+        query_inputs_nets: nn.ModuleList,
         encoder: nn.Module,
         decoder_layer_config: dict,
         num_decoder_layers: int,
         tasks: nn.ModuleList,
-        num_queries: int,
-        dim: int,
         matcher: nn.Module | None = None,
         input_sort_field: str | None = None,
         use_attn_masks: bool = True,
@@ -58,12 +57,11 @@ class MaskFormer(nn.Module):
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(**decoder_layer_config) for _ in range(num_decoder_layers)])
         self.tasks = tasks
         self.matcher = matcher
-        self.num_queries = num_queries
-        self.query_initial = nn.Parameter(torch.randn(num_queries, dim))
         self.input_sort_field = input_sort_field
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
         self.intermediate_losses = intermediate_losses
+        self.query_inputs_nets = query_inputs_nets
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
@@ -117,8 +115,10 @@ class MaskFormer(nn.Module):
             x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
         # Generate the queries that represent objects
-        x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
-        x["query_valid"] = torch.full((batch_size, self.num_queries), True)
+        for query_input_net in self.query_inputs_nets:
+            x["query_embed"] = query_input_net(inputs, batch_size)
+            # add positional encoding to the queries
+            x["query_valid"] = torch.full((batch_size, self.num_queries), True)
 
         # Pass encoded inputs through decoder to produce outputs
         outputs = {}
