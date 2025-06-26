@@ -182,7 +182,9 @@ class TrackMLDataset(Dataset):
                 hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
                 hits = hits[hit_filter_pred]
 
-        # TODO: Add back truth based hit filtering
+        else:
+            valid_idx = hits.particle_id.isin(particles.particle_id) | (hits.particle_id == 0)
+            hits = hits[valid_idx]
 
         # Sanity checks
         assert len(particles) != 0, "No particles remaining - loosen selection!"
