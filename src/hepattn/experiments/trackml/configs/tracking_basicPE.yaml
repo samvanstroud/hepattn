@@ -121,15 +121,6 @@ model:
     init_args:
       input_sort_field: phi
       num_queries: *num_objects
-      query_inputs_nets:
-        class_path: torch.nn.ModuleList
-        init_args:
-          modules:
-            - class_path: hepattn.models.QueryInputNet
-              init_args:
-                input_name: query
-                num_queries: *num_objects
-                dim: &dim 256
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:

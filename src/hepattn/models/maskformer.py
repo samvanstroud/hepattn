@@ -8,8 +8,8 @@ class MaskFormer(nn.Module):
     def __init__(
         self,
         input_nets: nn.ModuleList,
-        query_inputs_nets: nn.ModuleList,
         num_queries: int,
+        dim: int,
         encoder: nn.Module,
         decoder_layer_config: dict,
         num_decoder_layers: int,
@@ -19,6 +19,8 @@ class MaskFormer(nn.Module):
         use_attn_masks: bool = True,
         use_query_masks: bool = True,
         intermediate_losses: bool = True,
+        query_posenc: nn.Module | None = None,
+        preserve_original_queries: bool = True,
     ):
         """
         Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -50,6 +52,10 @@ class MaskFormer(nn.Module):
             If True, query masks will be used to control which queries are valid during attention.
         intermediate_losses : bool, optional
             If True, intermediate losses will be applied at each decoder layer.
+        query_posenc : nn.Module or None, optional
+            Positional encoding module for queries (similar to SAM's prompt positional encoding).
+        preserve_original_queries : bool, optional
+            If True, original query embeddings (including positional encodings) are re-added at each layer.
         """
         super().__init__()
 
@@ -62,8 +68,13 @@ class MaskFormer(nn.Module):
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
         self.intermediate_losses = intermediate_losses
-        self.query_inputs_nets = query_inputs_nets
         self.num_queries = num_queries
+        self.dim = dim
+        self.query_initial = nn.Parameter(torch.randn(num_queries, dim))
+        
+        # SAM-like positional encoding for queries
+        self.query_posenc = query_posenc
+        self.preserve_original_queries = preserve_original_queries
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
@@ -117,17 +128,26 @@ class MaskFormer(nn.Module):
             x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
         # Generate the queries that represent objects
-        for query_input_net in self.query_inputs_nets:
-            x["query_embed"] = query_input_net(inputs, batch_size)
-            # add positional encoding to the queries
-            x["query_valid"] = torch.full((batch_size, self.num_queries), True)
+        x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
+        
+        # Add positional encoding to the queries
+        if self.query_posenc is not None:
+            device = x["key_embed"].device
+            x["query_posenc"] = self.query_posenc(inputs, batch_size, self.num_queries, device)
+            x["query_embed"] = x["query_embed"] + x["query_posenc"]
+        
+        # Store original query embeddings for re-addition (similar to SAM's prompt tokens)
+        if self.preserve_original_queries:
+            x["query_embed_original"] = x["query_embed"].clone()
+            
+        x["query_valid"] = torch.full((batch_size, self.num_queries), True)
 
         # Pass encoded inputs through decoder to produce outputs
-        outputs = {}
+        outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
             outputs[f"layer_{layer_index}"] = {}
 
-            attn_masks = {}
+            attn_masks: dict[str, Tensor] = {}
             query_mask = None
 
             for task in self.tasks:
@@ -170,6 +190,10 @@ class MaskFormer(nn.Module):
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=x.get("key_valid")
             )
+            
+            # Re-add original query embeddings (similar to SAM's prompt token re-addition)
+            if self.preserve_original_queries:
+                x["query_embed"] = x["query_embed"] + x["query_embed_original"]
 
             # Unmerge the updated features back into the separate input types
             for input_name in input_names:
@@ -191,7 +215,7 @@ class MaskFormer(nn.Module):
         outputs:
             The outputs produces the forward pass of the model.
         """
-        preds = {}
+        preds: dict[str, dict] = {}
 
         # Compute predictions for each task in each block
         for layer_name, layer_outputs in outputs.items():
@@ -236,7 +260,8 @@ class MaskFormer(nn.Module):
                     else:
                         layer_costs = cost
 
-            costs[layer_name] = layer_costs.detach()
+            if layer_costs is not None:
+                costs[layer_name] = layer_costs.detach()
 
         # Permute the outputs for each output in each layer
         for layer_name in outputs:
@@ -244,15 +269,16 @@ class MaskFormer(nn.Module):
                 continue
 
             # Get the indicies that can permute the predictions to yield their optimal matching
-            pred_idxs = self.matcher(costs[layer_name], targets["particle_valid"])
+            if self.matcher is not None and layer_name in costs:
+                pred_idxs = self.matcher(costs[layer_name], targets["particle_valid"])
 
-            # Apply the permutation in place
-            for task in self.tasks:
-                for output_name in task.outputs:
-                    outputs[layer_name][task.name][output_name] = outputs[layer_name][task.name][output_name][batch_idxs, pred_idxs]
+                # Apply the permutation in place
+                for task in self.tasks:
+                    for output_name in task.outputs:
+                        outputs[layer_name][task.name][output_name] = outputs[layer_name][task.name][output_name][batch_idxs, pred_idxs]
 
         # Compute the losses for each task in each block
-        losses = {}
+        losses: dict[str, dict] = {}
         for layer_name in outputs:
             if not self.intermediate_losses and layer_name != "final":
                 continue

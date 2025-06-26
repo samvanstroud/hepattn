@@ -28,6 +28,9 @@ data:
   # Maximum number of reconstructable particles allowed in an event
   event_max_num_particles: &num_objects 2200
 
+  # Model dimension
+  dim: &dim 256
+
   # Define which inputs will be available to the model
   inputs:
     hit:
@@ -121,26 +124,22 @@ model:
     init_args:
       input_sort_field: phi
       num_queries: *num_objects
-      query_inputs_nets:
-        class_path: torch.nn.ModuleList
+      query_posenc:
+        class_path: hepattn.models.QueryPosEnc
         init_args:
-          modules:
-            - class_path: hepattn.models.QueryInputNet
-              init_args:
-                input_name: query
-                num_queries: *num_objects
-                dim: &dim 256
-                posenc:
-                  class_path: hepattn.models.PositionEncoder
-                  init_args:
-                    input_name: query
-                    fields:
-                      - phi
-                    sym_fields:
-                      - phi
-                    dim: *dim
-                    per_input_dim: 85 # 256 // 3
-                    remainder_dim: 171 # 256 - 85
+          input_name: query
+          posenc:
+            class_path: hepattn.models.PositionEncoder
+            init_args:
+              input_name: query
+              fields:
+                - phi
+              sym_fields:
+                - phi
+              dim: *dim
+              per_input_dim: 85 # 256 // 3
+              remainder_dim: 171 # 256 - 85
+      preserve_original_queries: true
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
