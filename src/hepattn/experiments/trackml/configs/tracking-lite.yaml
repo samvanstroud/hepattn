@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v0-lite-lapearly
+name: TRK-v0-lite-aux-only-mask
 
 data:
   train_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
@@ -63,7 +63,7 @@ data:
 
 trainer:
   # Training stuff here
-  max_epochs: 30
+  max_epochs: 10
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
@@ -177,7 +177,6 @@ model:
           norm: RMSNorm
 
       num_decoder_layers: 4
-      intermediate_losses: false
       decoder_layer_config:
         dim: *dim
         norm: RMSNorm

@@ -48,8 +48,6 @@ class MaskFormer(nn.Module):
             If True, attention masks will be used to control which input objects are attended to.
         use_query_masks : bool, optional
             If True, query masks will be used to control which queries are valid during attention.
-        intermediate_losses : bool, optional
-            If True, intermediate losses will be applied at each decoder layer.
         """
         super().__init__()
 
@@ -63,7 +61,6 @@ class MaskFormer(nn.Module):
         self.input_sort_field = input_sort_field
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
-        self.intermediate_losses = intermediate_losses
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
