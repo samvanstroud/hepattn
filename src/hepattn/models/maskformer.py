@@ -2,6 +2,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoderLayer
+from hepattn.models.task import ObjectHitMaskTask
 
 
 class MaskFormer(nn.Module):
@@ -224,6 +225,9 @@ class MaskFormer(nn.Module):
             layer_costs = None
             # Get the cost contribution from each of the tasks
             for task in self.tasks:
+                # Skip tasks that are not ObjectHitMaskTask for intermediate layers
+                if layer_name != "final" and not isinstance(task, ObjectHitMaskTask):
+                    continue
                 # Only use the cost from the final set of predictions
                 task_costs = task.cost(layer_outputs[task.name], targets)
 
@@ -256,6 +260,9 @@ class MaskFormer(nn.Module):
                 continue
             losses[layer_name] = {}
             for task in self.tasks:
+                # Skip tasks that are not ObjectHitMaskTask for intermediate layers
+                if layer_name != "final" and not isinstance(task, ObjectHitMaskTask):
+                    continue
                 losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses
