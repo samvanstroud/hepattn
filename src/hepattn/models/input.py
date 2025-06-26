@@ -64,7 +64,7 @@ class InputNet(nn.Module):
         return x
 
 class QueryInputNet(nn.Module):
-    def __init__(self, input_name: str, num_queries: int, dim: int, fields: list[str], posenc: nn.Module | None = None):
+    def __init__(self, input_name: str, num_queries: int, dim: int, posenc: nn.Module | None = None):
         super().__init__()
         """ A wrapper which takes a list of input features, concatenates them, and passes them through a dense
         layer followed by an optional positional encoding module.
@@ -88,10 +88,7 @@ class QueryInputNet(nn.Module):
         self.input_name = input_name
         self.num_queries = num_queries
         self.query_initial = nn.Parameter(torch.randn(num_queries, dim))
-        self.fields = fields
         self.posenc = posenc
-
-    
 
     def forward(self, inputs: dict[str, Tensor], batch_size: int, hit_input_net: InputNet = None) -> Tensor:
         """Embed the set of input features into an embedding.
@@ -116,9 +113,16 @@ class QueryInputNet(nn.Module):
 
         x = self.query_initial.expand(batch_size, -1, -1)
 
-        # Perform an optional positional encoding using the positonal encoding fields
         if self.posenc is not None:
+            # Perform an optional positional encoding using the positonal encoding fields
+            inputs = {}
+            for field in self.posenc.fields:
+                if field == "phi":
+                    # for each query set value of phi to 2pi/n_queries * query_idx - should be shape [batch_size, num_queries]
+                    inputs[f"{self.input_name}_{field}"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x.device) / self.num_queries - 0.5)
+                else:
+                    raise ValueError(f"Field {field} not supported for query input net")
             # self.posenc.register_hit_encoder(hit_input_net.input_name, hit_input_net.posenc)
-            x += self.posenc(inputs)
+            x = x + self.posenc(inputs)
 
         return x

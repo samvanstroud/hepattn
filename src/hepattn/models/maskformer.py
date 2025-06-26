@@ -9,6 +9,7 @@ class MaskFormer(nn.Module):
         self,
         input_nets: nn.ModuleList,
         query_inputs_nets: nn.ModuleList,
+        num_queries: int,
         encoder: nn.Module,
         decoder_layer_config: dict,
         num_decoder_layers: int,
@@ -62,6 +63,7 @@ class MaskFormer(nn.Module):
         self.use_query_masks = use_query_masks
         self.intermediate_losses = intermediate_losses
         self.query_inputs_nets = query_inputs_nets
+        self.num_queries = num_queries
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names

@@ -103,11 +103,18 @@ class PositionEncoder(nn.Module):
             Positional encoding of the input variables.
         """
         encodings = []
+
         for field in self.fields:
             pos_enc_fn = pos_enc_symmetric if field in self.sym_fields else pos_enc
             encodings.append(pos_enc_fn(inputs[f"{self.input_name}_{field}"], self.per_input_dim, self.alpha))
         if self.remainder_dim:
-            encodings.append(torch.zeros_like(encodings[0])[..., : self.remainder_dim])
+            # Handle remainder by appending zero tensors
+            remaining = self.remainder_dim
+            while remaining > 0:
+                # Take either the full per_input_dim or the remaining amount
+                current_size = min(self.per_input_dim, remaining)
+                encodings.append(torch.zeros_like(encodings[0])[..., : current_size])
+                remaining -= current_size
         encodings = torch.cat(encodings, dim=-1)
         return encodings
 
