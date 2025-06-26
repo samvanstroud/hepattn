@@ -1,14 +1,11 @@
 seed_everything: 42
-name: TRK-v0-full
+name: TRK-v0-TEST
 
 data:
-  train_dir: data/trackml/prepped/
-  val_dir: data/trackml/prepped/
-  test_dir: data/trackml/prepped/
+  train_dir: /share/rcifdata/pduckett/hepattn-main/src/hepattn/experiments/trackml/data/prepped/train/
+  val_dir: /share/rcifdata/pduckett/hepattn-main/src/hepattn/experiments/trackml/data/prepped/val/
+  test_dir: /share/rcifdata/pduckett/hepattn-main/src/hepattn/experiments/trackml/data/prepped/test/
 
-  hit_eval_train: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_train_eval.h5
-  hit_eval_val: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_val_eval.h5
-  hit_eval_test: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_test_eval.h5
   num_workers: 10
   num_train: -1
   num_test: 10
