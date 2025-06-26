@@ -63,7 +63,7 @@ def pos_enc(xs, dim, alpha=1000):
 
 
 class PositionEncoder(nn.Module):
-    def __init__(self, input_name: str, fields: list[str], dim: int, sym_fields: list[str] | None = None, alpha=1000):
+    def __init__(self, input_name: str, fields: list[str], dim: int, sym_fields: list[str] | None = None, alpha=1000, per_input_dim: int | None = None, remainder_dim: int | None = None):
         """Positional encoder.
 
         Parameters
@@ -86,9 +86,8 @@ class PositionEncoder(nn.Module):
         self.sym_fields = sym_fields or []
         self.dim = dim
         self.alpha = alpha
-
-        self.per_input_dim = self.dim // len(self.fields)
-        self.remainder_dim = self.dim % len(self.fields)
+        self.per_input_dim = per_input_dim if per_input_dim is not None else self.dim // len(self.fields)
+        self.remainder_dim = remainder_dim if remainder_dim is not None else self.dim % len(self.fields)
 
     def forward(self, inputs: dict):
         """Apply positional encoding to the inputs.
@@ -135,3 +134,53 @@ class FourierPositionEncoder(nn.Module):
         xs = 2 * self.pi * xs
         xs @= self.B
         return torch.cat([torch.sin(xs), torch.cos(xs)], dim=-1)
+
+
+# class SharedFourierPositionEncoder(FourierPositionEncoder):
+#     """
+#     A FourierPositionEncoder that shares the phi projection with a hit encoder.
+#     This class is designed to be used for query encoders that need to align with hit encoders.
+#     """
+    
+#     # Class-level registry to store hit encoders
+    # _hit_encoders: dict[str, FourierPositionEncoder] = {}
+    
+    # @classmethod
+    # def register_hit_encoder(cls, name: str, encoder: FourierPositionEncoder):
+    #     """Register a hit encoder that can be shared with query encoders."""
+    #     cls._hit_encoders[name] = encoder
+    
+    # @classmethod
+    # def get_hit_encoder(cls, name: str) -> FourierPositionEncoder:
+    #     """Get a registered hit encoder."""
+    #     if name not in cls._hit_encoders:
+    #         raise ValueError(f"No hit encoder registered with name '{name}'")
+    #     return cls._hit_encoders[name]
+    
+    # def __init__(self, input_name: str, dim: int, fields: list[str], scale: float = 1, 
+    #              hit_encoder_name: str = "default") -> None:
+    #     # Get the hit encoder
+    #     hit_encoder = self.get_hit_encoder(hit_encoder_name)
+        
+    #     # Create a B matrix with the shared phi projection
+    #     query_B = torch.zeros((len(fields), dim // 2), 
+    #                          device=hit_encoder.B.device, 
+    #                          dtype=hit_encoder.B.dtype)
+        
+    #     # Map phi to the correct position in query fields
+    #     if "phi" in fields and "phi" in hit_encoder.fields:
+    #         query_phi_idx = fields.index("phi")
+    #         hit_phi_idx = hit_encoder.fields.index("phi")
+    #         query_B[query_phi_idx] = hit_encoder.B[hit_phi_idx]
+        
+    #     # Create field indices mapping
+    #     field_indices = {field: i for i, field in enumerate(fields)}
+        
+    #     super().__init__(
+    #         input_name=input_name,
+    #         dim=dim,
+    #         fields=fields,
+    #         scale=scale,
+    #         shared_B=query_B,
+    #         field_indices=field_indices
+    #     )

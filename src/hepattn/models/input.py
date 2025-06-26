@@ -91,13 +91,19 @@ class QueryInputNet(nn.Module):
         self.fields = fields
         self.posenc = posenc
 
-    def forward(self, inputs: dict[str, Tensor], batch_size: int) -> Tensor:
+    
+
+    def forward(self, inputs: dict[str, Tensor], batch_size: int, hit_input_net: InputNet = None) -> Tensor:
         """Embed the set of input features into an embedding.
 
         Parameters
         ----------
         inputs : dict
             Input data consisting of a dictionary the requested input features.
+        batch_size : int
+            The batch size of the input data.
+        hit_input_net : InputNet
+            The input net used to embed the hit features.
 
         Returns
         -------
@@ -112,6 +118,7 @@ class QueryInputNet(nn.Module):
 
         # Perform an optional positional encoding using the positonal encoding fields
         if self.posenc is not None:
+            # self.posenc.register_hit_encoder(hit_input_net.input_name, hit_input_net.posenc)
             x += self.posenc(inputs)
 
         return x
