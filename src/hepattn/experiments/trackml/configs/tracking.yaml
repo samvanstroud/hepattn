@@ -120,9 +120,26 @@ model:
   model:
     class_path: hepattn.models.MaskFormer
     init_args:
-      dim: &dim 256
-      num_queries: *num_objects
       input_sort_field: phi
+      query_inputs_nets:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.QueryInputNet
+              init_args:
+                input_name: query
+                num_queries: *num_objects
+                dim: &dim 256
+                fields:
+                  - phi
+                posenc:
+                  class_path: hepattn.models.FourierPositionEncoder
+                  init_args:
+                    input_name: query
+                    fields:
+                      - phi
+                    dim: *dim
+                    scale: 0.1
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:

@@ -62,3 +62,56 @@ class InputNet(nn.Module):
             x += self.posenc(inputs)
 
         return x
+
+class QueryInputNet(nn.Module):
+    def __init__(self, input_name: str, num_queries: int, dim: int, fields: list[str], posenc: nn.Module | None = None):
+        super().__init__()
+        """ A wrapper which takes a list of input features, concatenates them, and passes them through a dense
+        layer followed by an optional positional encoding module.
+
+        Parameters
+        ----------
+        input_name : str
+            The name of the feature / object that will be embedded, e.g. pix for pixel clusters.
+        num_queries : int
+            The number of queries to embed.
+        dim : int
+            The dimension of the query embedding.
+        fields : list[str]
+            A list of fields belonging to the feature that will be embedded. E.g. [x, y, z] together with a
+            input name of "pix" would result in the fields "pix_x", "pix_y" and "pix_z" being concatenated
+            together to make the feature vector.
+        posenc : nn.Module
+            An optional module used to perform the positional encoding.
+        """
+
+        self.input_name = input_name
+        self.num_queries = num_queries
+        self.query_initial = nn.Parameter(torch.randn(num_queries, dim))
+        self.fields = fields
+        self.posenc = posenc
+
+    def forward(self, inputs: dict[str, Tensor], batch_size: int) -> Tensor:
+        """Embed the set of input features into an embedding.
+
+        Parameters
+        ----------
+        inputs : dict
+            Input data consisting of a dictionary the requested input features.
+
+        Returns
+        -------
+        x : Tensor
+            Tensor containing an embedding of the concatenated input features.
+        """
+        # Some input fields will be a vector, i.e. have shape (batch, keys, D) where D > 1
+        # But must will be scalars, i.e. (batch, keys), so for these we reshape them to (batch, keys, 1)
+        # After this we can then concatenate everything together
+
+        x = self.query_initial.expand(batch_size, -1, -1)
+
+        # Perform an optional positional encoding using the positonal encoding fields
+        if self.posenc is not None:
+            x += self.posenc(inputs)
+
+        return x
