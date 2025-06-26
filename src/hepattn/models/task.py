@@ -7,9 +7,6 @@ from torch import Tensor, nn
 from hepattn.models.dense import Dense
 from hepattn.models.loss import cost_fns, focal_loss, loss_fns
 
-# Pick a value that is safe for float16
-COST_PAD_VALUE = 1e4
-
 
 class Task(nn.Module, ABC):
     def __init__(self):
@@ -110,8 +107,6 @@ class ObjectValidTask(Task):
         costs = {}
         for cost_fn, cost_weight in self.costs.items():
             costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target)
-            # Set the costs of invalid objects to be (basically) inf
-            costs[cost_fn][~targets[self.target_object + "_valid"].unsqueeze(-2).expand_as(costs[cost_fn])] = COST_PAD_VALUE
         return costs
 
     def loss(self, outputs, targets):
@@ -264,9 +259,6 @@ class ObjectHitMaskTask(Task):
         costs = {}
         for cost_fn, cost_weight in self.costs.items():
             costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target)
-
-            # Set the costs of invalid objects to be (basically) inf
-            costs[cost_fn][~targets[self.target_object + "_valid"].unsqueeze(-2).expand_as(costs[cost_fn])] = COST_PAD_VALUE
         return costs
 
     def loss(self, outputs, targets):
