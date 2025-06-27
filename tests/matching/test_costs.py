@@ -8,8 +8,12 @@ torch.manual_seed(42)
 
 def compute_class_cost_unbatched(pred_logits, target_labels):
     """Compute classification cost for object matching."""
-    if pred_logits.shape[-1] == 1:
-        # Binary classification
+    if pred_logits.dim() == 1:
+        # Binary classification - 2D input [num_queries]
+        out_prob = pred_logits.sigmoid()
+        cost_class = -out_prob.unsqueeze(1) * target_labels.unsqueeze(0) - (1 - out_prob.unsqueeze(1)) * (1 - target_labels.unsqueeze(0))
+    elif pred_logits.shape[-1] == 1:
+        # Binary classification - 3D input [num_queries, 1]
         out_prob = pred_logits.sigmoid().squeeze(-1)
         cost_class = -out_prob.unsqueeze(1) * target_labels.unsqueeze(0) - (1 - out_prob.unsqueeze(1)) * (1 - target_labels.unsqueeze(0))
     else:
@@ -45,9 +49,8 @@ def test_object_bce_cost(batch_size):
     """Test that batched and unbatched implementations produce equivalent results."""
     num_queries = 100
     num_targets = 100
-    num_classes = 1
 
-    pred_logits_batched = torch.randn(batch_size, num_queries, num_classes)
+    pred_logits_batched = torch.randn(batch_size, num_queries)
     target_labels_batched = torch.randint(0, 2, (batch_size, num_targets))
 
     cost_batched = object_bce_cost(pred_logits_batched, target_labels_batched)
