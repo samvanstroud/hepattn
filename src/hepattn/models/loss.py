@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 
-def object_bce_loss(pred_logits, true, mask=None, weight=None):
+def object_bce_loss(pred_logits, true, mask=None, weight=None):  # noqa: ARG001
     losses = F.binary_cross_entropy_with_logits(pred_logits, true, weight=weight)
     return losses.mean()
 
