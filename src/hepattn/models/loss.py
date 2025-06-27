@@ -88,14 +88,13 @@ def mask_iou_costs(pred_logits, true, eps=1e-6):
     return costs
 
 
-def focal_loss(pred_logits, targets, balance=True, gamma=2.0, mask=None, weight=None):
+def focal_loss(pred_logits, targets, alpha=-1, gamma=2.0, mask=None, weight=None):
     pred = pred_logits.sigmoid()
     ce_loss = F.binary_cross_entropy_with_logits(pred_logits, targets.type_as(pred_logits), reduction="none")
     p_t = pred * targets + (1 - pred) * (1 - targets)
     losses = ce_loss * ((1 - p_t) ** gamma)
 
-    if balance:
-        alpha = 1 - targets.float().mean()
+    if alpha >= 0:
         alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
         losses = alpha_t * losses
 
@@ -108,7 +107,7 @@ def focal_loss(pred_logits, targets, balance=True, gamma=2.0, mask=None, weight=
     return losses.mean()
 
 
-def mask_focal_costs(pred_logits, true, alpha=-1.0, gamma=2.0):
+def mask_focal_costs(pred_logits, true, alpha=-1, gamma=2.0):
     pred = pred_logits.sigmoid()
     focal_pos = ((1 - pred) ** gamma) * F.binary_cross_entropy_with_logits(pred_logits, torch.ones_like(pred), reduction="none")
     focal_neg = (pred**gamma) * F.binary_cross_entropy_with_logits(pred_logits, torch.zeros_like(pred), reduction="none")
