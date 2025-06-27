@@ -106,9 +106,7 @@ class QueryPosEnc(nn.Module):
         for field in self.posenc.fields:
             if field == "phi":
                 # for each query set value of phi to 2pi/n_queries * query_idx - should be shape [batch_size, num_queries]
-                query_indices = torch.arange(num_queries, device=device)
-                phi_values = 2 * torch.pi * (query_indices / num_queries - 0.5)
-                pos_inputs[f"{self.input_name}_{field}"] = phi_values.unsqueeze(0).expand(batch_size, -1)
+                pos_inputs[f"{self.input_name}_{field}"] = 2 * torch.pi * (torch.arange(num_queries, device=device) / num_queries - 0.5)
             else:
                 raise ValueError(f"Field {field} not supported for query input net")
 

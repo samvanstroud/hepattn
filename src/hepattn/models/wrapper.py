@@ -77,6 +77,10 @@ class ModelWrapper(LightningModule):
     def training_step(self, batch, batch_idx):
         inputs, targets = batch
 
+        # Pass logger to model for figure logging
+        if hasattr(self.model, 'set_logger'):
+            self.model.set_logger(self.logger, self.global_step)
+
         # Get the model outputs
         outputs = self.model(inputs)
 
@@ -99,6 +103,10 @@ class ModelWrapper(LightningModule):
     def validation_step(self, batch):
         inputs, targets = batch
 
+        # Pass logger to model for figure logging
+        if hasattr(self.model, 'set_logger'):
+            self.model.set_logger(self.logger, self.global_step)
+
         # Get the raw model outputs
         outputs = self.model(inputs)
 
@@ -114,6 +122,11 @@ class ModelWrapper(LightningModule):
 
     def test_step(self, batch):
         inputs, targets = batch
+
+        # Pass logger to model for figure logging
+        if hasattr(self.model, 'set_logger'):
+            self.model.set_logger(self.logger, self.global_step)
+
         outputs = self.model(inputs)
 
         # Calculate loss to also run matching

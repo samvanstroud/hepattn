@@ -1,5 +1,6 @@
 import torch
 from torch import Tensor, nn
+import matplotlib.pyplot as plt
 
 from hepattn.models.decoder import MaskFormerDecoderLayer
 
@@ -76,6 +77,30 @@ class MaskFormer(nn.Module):
         self.query_posenc = query_posenc
         self.preserve_original_queries = preserve_original_queries
 
+        # Logger for figure logging
+        self.logger = None
+        self.step = 0
+
+    def set_logger(self, logger, step):
+        """Set the logger and current step for figure logging."""
+        self.logger = logger
+        self.step = step
+
+    def log_figure(self, name, fig, step=None):
+        """Log a matplotlib figure to the logger (Comet)."""
+        if self.logger is not None and hasattr(self.logger, 'experiment'):
+            # Use the provided step or the current step
+            current_step = step if step is not None else self.step
+            
+            # Log the figure to Comet
+            self.logger.experiment.log_figure(
+                figure_name=name,
+                figure=fig,
+                step=current_step
+            )
+            # Close the figure to free memory
+            plt.close(fig)
+
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
@@ -133,12 +158,11 @@ class MaskFormer(nn.Module):
         # Add positional encoding to the queries
         if self.query_posenc is not None:
             device = x["key_embed"].device
-            x["query_posenc"] = self.query_posenc(inputs, batch_size, self.num_queries, device)
-            x["query_embed"] = x["query_embed"] + x["query_posenc"]
-        
-        # Store original query embeddings for re-addition (similar to SAM's prompt tokens)
-        if self.preserve_original_queries:
-            x["query_embed_original"] = x["query_embed"].clone()
+            if self.preserve_original_queries:
+                x["query_posenc"] = self.query_posenc(inputs, batch_size, self.num_queries, device)
+                x["query_embed"] = x["query_embed"] + x["query_posenc"]
+            else:
+                x["query_embed"] = x["query_embed"] + self.query_posenc(inputs, batch_size, self.num_queries, device)
             
         x["query_valid"] = torch.full((batch_size, self.num_queries), True)
 
@@ -185,6 +209,12 @@ class MaskFormer(nn.Module):
             # If no attention masks were specified, set it to none to avoid redundant masking
             else:
                 attn_mask = None
+                
+            if attn_mask is not None and self.step % 4000 == 0 and (layer_index == 0 or layer_index == len(self.decoder_layers) - 1):
+                plt.figure(constrained_layout=True, dpi=300)
+                attn_mask_cpu = attn_mask[0].cpu().detach().numpy()
+                plt.imshow(attn_mask_cpu, aspect="auto")
+                self.log_figure(f"local_ca_mask_step{self.step}_layer{layer_index}", plt.gcf(), step=self.step)
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
@@ -192,8 +222,9 @@ class MaskFormer(nn.Module):
             )
             
             # Re-add original query embeddings (similar to SAM's prompt token re-addition)
-            if self.preserve_original_queries:
-                x["query_embed"] = x["query_embed"] + x["query_embed_original"]
+            if self.query_posenc is not None:
+                if self.preserve_original_queries:
+                    x["query_embed"] = x["query_embed"] + x["query_posenc"]
 
             # Unmerge the updated features back into the separate input types
             for input_name in input_names:

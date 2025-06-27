@@ -3,7 +3,7 @@ from hepattn.models.attention import Attention
 from hepattn.models.decoder import MaskFormerDecoderLayer
 from hepattn.models.dense import Dense
 from hepattn.models.hitfilter import HitFilter
-from hepattn.models.input import InputNet, QueryInputNet
+from hepattn.models.input import InputNet, QueryPosEnc
 from hepattn.models.maskformer import MaskFormer
 from hepattn.models.norm import LayerNorm, RMSNorm
 from hepattn.models.posenc import FourierPositionEncoder, PositionEncoder
@@ -18,7 +18,7 @@ __all__ = [
     "FourierPositionEncoder",
     "HitFilter",
     "InputNet",
-    "QueryInputNet",
+    "QueryPosEnc",
     "LayerNorm",
     "LayerScale",
     "MaskFormer",
