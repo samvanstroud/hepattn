@@ -2,17 +2,48 @@ import torch
 import torch.nn.functional as F
 
 
-def object_bce_loss(pred_logits, true, mask=None, weight=None):  # noqa: ARG001
-    # TODO: Add support for mask?
+def object_bce_loss(pred_logits, true, mask=None, weight=None):
     losses = F.binary_cross_entropy_with_logits(pred_logits, true, weight=weight)
     return losses.mean()
 
 
-def object_bce_costs(pred_logits, true):
-    costs = F.binary_cross_entropy_with_logits(
-        pred_logits.unsqueeze(2).expand(-1, -1, true.shape[1]), true.unsqueeze(1).expand(-1, pred_logits.shape[1], -1), reduction="none"
-    )
-    return costs
+def object_bce_cost(pred_logits, target_labels):
+    """
+    Compute batched binary object classification cost for object matching.
+    Approximate the CE loss using -probs[target_class].
+
+    Args:
+        pred_logits: [batch_size, num_queries] - predicted logits for binary classification
+        target_labels: [batch_size, num_targets] - ground truth class labels
+
+    Returns:
+        cost_class: [batch_size, num_queries, num_targets] - classification cost matrix
+    """
+    out_prob = pred_logits.sigmoid().unsqueeze(-1)
+    target_labels = target_labels.unsqueeze(1)
+    return -out_prob * target_labels - (1 - out_prob) * (1 - target_labels)
+
+
+def object_ce_cost(pred_logits, target_labels):
+    """
+    Compute batched mutliclass object classification cost for object matching.
+    Approximate the CE loss using -probs[target_class].
+
+    Args:
+        pred_logits: [batch_size, num_queries, num_classes] - predicted logits (num_classes>1)
+        target_labels: [batch_size, num_targets] - ground truth class labels
+
+    Returns:
+        cost_class: [batch_size, num_queries, num_targets] - classification cost matrix
+    """
+    assert pred_logits.shape[-1] > 1
+    out_prob = pred_logits.softmax(-1)
+
+    batch_size, num_queries, _ = out_prob.shape
+    num_targets = target_labels.size(1)
+
+    index = target_labels.unsqueeze(1).expand(batch_size, num_queries, num_targets)
+    return -torch.gather(out_prob, dim=2, index=index)
 
 
 def mask_dice_loss(pred_logits, true, mask=None, weight=None, eps=1e-6):
@@ -131,7 +162,8 @@ def regr_smooth_l1_costs(pred, true):
 
 
 cost_fns = {
-    "object_bce": object_bce_costs,
+    "object_bce": object_bce_cost,
+    "object_ce": object_ce_cost,
     "mask_bce": mask_bce_costs,
     "mask_dice": mask_dice_costs,
     "mask_focal": mask_focal_costs,

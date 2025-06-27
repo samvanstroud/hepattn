@@ -67,8 +67,9 @@ class TrackMLTracker(ModelWrapper):
         self.log(f"{stage}/nh_per_particle", torch.mean(nh_per_true.float()), sync_dist=True)
         self.log(f"{stage}/nh_per_track", torch.mean(nh_per_pred.float()), sync_dist=True)
 
-        self.log(f"{stage}/num_particles", torch.mean(pred_num.float()), sync_dist=True)
-        self.log(f"{stage}/num_tracks", torch.mean(true_num.float()), sync_dist=True)
+        self.log(f"{stage}/num_tracks", torch.mean(pred_num.float()), sync_dist=True)
+        self.log(f"{stage}/num_particles", torch.mean(true_num.float()), sync_dist=True)
+
 
 
 def main(args: ArgsType = None) -> None:

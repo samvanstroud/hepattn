@@ -236,6 +236,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/8a/0b/9fcc47d19c48b59121088dd6da2488a49d5f72dacf8262e2790a1d2c7d15/pygments-2.19.1-py3-none-any.whl
       - pypi: https://download.pytorch.org/whl/test/pyparsing-3.1.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/30/3d/64ad57c803f1fa1e963a7946b6e0fea4a70df53c1a7fed304586539c2bac/pytest-8.3.5-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/73/d4/8b706b81b07b43081bd68a2c0359fe895b74bf664b20aca8005d2bb3be71/pytest_repeat-0.9.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/88/c6/6d1e368710cb6c458ed692d179d7e101ebce80a3e640b2e74cc7ae886d6f/python_box-6.1.0-py3-none-any.whl
       - pypi: https://download.pytorch.org/whl/test/python_dateutil-2.9.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/de/a9/e14821cfaf08e8d78185cca0477c9d3a62bafe1b4b530100f7b66bb1f7bb/pytorch_lightning-2.5.1.post0-py3-none-any.whl
@@ -1491,13 +1492,14 @@ packages:
 - pypi: .
   name: hepattn
   version: 0.1.0
-  sha256: 97ef1714ec500133cf79488ebcad6388ccbda9a40730827c1320727903bf3fa2
+  sha256: a45cf809245d46cc3bd282eb8be77d8664aa79b9075e4239816ac25c475ed434
   requires_dist:
   - packaging
   - wheel
   - numpy
   - scipy
   - pytest>=8.3.3,<9
+  - pytest-repeat
   - ruff==0.8.0
   - pre-commit>=4.0.1,<5
   - matplotlib==3.9.*
@@ -3149,6 +3151,13 @@ packages:
   - setuptools ; extra == 'dev'
   - xmlschema ; extra == 'dev'
   requires_python: '>=3.8'
+- pypi: https://files.pythonhosted.org/packages/73/d4/8b706b81b07b43081bd68a2c0359fe895b74bf664b20aca8005d2bb3be71/pytest_repeat-0.9.4-py3-none-any.whl
+  name: pytest-repeat
+  version: 0.9.4
+  sha256: c1738b4e412a6f3b3b9e0b8b29fcd7a423e50f87381ad9307ef6f5a8601139f3
+  requires_dist:
+  - pytest
+  requires_python: '>=3.9'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.12.11-h9e4cc4f_0_cpython.conda
   sha256: 6cca004806ceceea9585d4d655059e951152fc774a471593d4f5138e6a54c81d
   md5: 94206474a5608243a10c92cefbe0908f
