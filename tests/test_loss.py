@@ -125,6 +125,7 @@ def test_focal_loss(gamma=2.0):
     ce_loss = F.binary_cross_entropy_with_logits(pred_logits, targets.type_as(pred_logits), reduction="none")
     p_t = pred * targets + (1 - pred) * (1 - targets)
     loss = ce_loss * ((1 - p_t) ** gamma)
+    loss = loss * sample_weight
     loss2 = loss.mean()
 
     torch.testing.assert_close(loss1, loss2, rtol=1e-6, atol=1e-6)
