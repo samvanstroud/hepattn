@@ -116,16 +116,16 @@ def mask_dice_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None
 
 def mask_iou_cost(pred_logits, targets, input_pad_mask=None, eps=1e-6):
     # Apply input padding mask
+    probs = pred_logits.sigmoid()
     if input_pad_mask is not None:
-        pred_logits = pred_logits * input_pad_mask.unsqueeze(1)
+        probs = probs * input_pad_mask.unsqueeze(1)
 
-    num_pred = pred_logits.sum(-1).unsqueeze(2)
+    num_pred = probs.sum(-1).unsqueeze(2)
     num_targets = targets.sum(-1).unsqueeze(1)
 
-    # Context manager necessary to overwride global autocast to ensure float32 cost is returned
+    # Context manager necessary to overwrite global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
-        pred = pred_logits.sigmoid()
-        intersection = torch.einsum("bnc,bmc->bnm", pred, targets)
+        intersection = torch.einsum("bnc,bmc->bnm", probs, targets)
         cost = 1 - (intersection + eps) / (eps + num_pred + num_targets - intersection)
 
     return cost
