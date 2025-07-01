@@ -108,8 +108,8 @@ def test_gradient_equivalence():
     print("✓ Gradient equivalence passed")
 
 
-def test_focal_loss(gamma=2.0):
-    shape = (100, 50)  # Example shape for pred_logits and targets
+def test_focal_loss_sample_weight(gamma=2.0):
+    shape = (100, 50)
     # generate dummy inputs
     pred_logits = torch.randn(*shape, requires_grad=True)
     targets = torch.randint(0, 2, shape).float()
