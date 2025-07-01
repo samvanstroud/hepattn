@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from hepattn.models.loss import mask_bce_costs, mask_dice_costs, mask_focal_costs
+from hepattn.models.loss import mask_bce_cost, mask_dice_cost, mask_focal_cost
 from hepattn.models.matcher import SOLVERS, Matcher
 
 
@@ -32,9 +32,9 @@ def test_mask_recovery(solver, batch_size, num_queries, seq_len):
     pred_mask = torch.clone(true_mask[:, torch.randperm(num_queries), :])
 
     # compute costs
-    costs_ce = mask_bce_costs(pred_mask, true_mask)
-    costs_dice = mask_dice_costs(pred_mask, true_mask)
-    costs_focal = mask_focal_costs(pred_mask, true_mask)
+    costs_ce = mask_bce_cost(pred_mask, true_mask)
+    costs_dice = mask_dice_cost(pred_mask, true_mask)
+    costs_focal = mask_focal_cost(pred_mask, true_mask)
 
     # create a matcher
     matcher = Matcher(default_solver=solver, adaptive_solver=False)

@@ -105,12 +105,12 @@ model:
                 logit_scale: 4
                 losses:
                   mask_ce: 5.0
-                  mask_dice: 1
-                  mask_focal: 2
+                  mask_dice: 1.0
+                  mask_focal: 2.0
                 costs:
                   mask_ce: 5.0
-                  mask_dice: 1
-                  mask_focal: 2
+                  mask_dice: 1.0
+                  mask_focal: 2.0
                 dim: *dim
                 null_weight: 1.0
 

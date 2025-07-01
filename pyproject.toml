@@ -8,6 +8,8 @@ requires-python = "== 3.12"
 version = "0.1.0"
 dependencies = [
     "packaging",
+    "jupyter",
+    "ipykernel",
     "wheel",
     "numpy",
     "scipy",
@@ -71,6 +73,7 @@ git = "*"
 cuda = "12.3.*"
 "ruamel.yaml" = ">=0.18.10,<0.19"
 git-lfs = ">=3.6.1,<4"
+gxx_linux-64 = "*"
 
 [tool.pixi.tasks.test]
 cmd = "pytest -xsv"
