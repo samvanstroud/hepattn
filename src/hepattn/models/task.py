@@ -5,7 +5,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.dense import Dense
-from hepattn.models.loss import cost_fns, focal_loss, loss_fns
+from hepattn.models.loss import cost_fns, loss_fns, mask_focal_loss
 
 
 class Task(nn.Module, ABC):
@@ -65,11 +65,9 @@ class ObjectValidTask(Task):
         target_object: str
             Name of the target object feature that we want to predict is valid or not.
         losses : dict[str, float]
-            Dict specifying which losses to use. Keys denote the loss function name,
-            whiel value denotes loss weight.
+            Dict specifying which losses to use. Keys are loss function name and values are loss weights.
         costs : dict[str, float]
-            Dict specifying which costs to use. Keys denote the cost function name,
-            whiel value denotes cost weight.
+            Dict specifying which costs to use. Keys are cost function name and values are cost weights.
         dim : int
             Embedding dimension of the input features.
         null_weight : float
@@ -114,10 +112,9 @@ class ObjectValidTask(Task):
         losses = {}
         output = outputs[self.output_object + "_logit"]
         target = targets[self.target_object + "_valid"].type_as(output)
-        weight = target + self.null_weight * (1 - target)
-        # Calculate the loss from each specified loss function.
+        sample_weight = target + self.null_weight * (1 - target)
         for loss_fn, loss_weight in self.losses.items():
-            losses[loss_fn] = loss_weight * loss_fns[loss_fn](output, target, mask=None, weight=weight)
+            losses[loss_fn] = loss_weight * loss_fns[loss_fn](output, target, sample_weight=sample_weight)
         return losses
 
     def query_mask(self, outputs, threshold=0.1):
@@ -167,16 +164,16 @@ class HitFilterTask(Task):
 
         # Calculate the BCE loss with class weighting
         if self.loss_fn == "bce":
-            weight = 1 / target.float().mean()
-            loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=weight)
+            pos_weight = 1 / target.float().mean()
+            loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=pos_weight)
             return {f"{self.input_object}_{self.loss_fn}": loss}
         if self.loss_fn == "focal":
-            loss = focal_loss(output, target)
+            loss = mask_focal_loss(output, target)
             return {f"{self.input_object}_{self.loss_fn}": loss}
         if self.loss_fn == "both":
-            weight = 1 / target.float().mean()
-            bce_loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=weight)
-            focal_loss_value = focal_loss(output, target)
+            pos_weight = 1 / target.float().mean()
+            bce_loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=pos_weight)
+            focal_loss_value = mask_focal_loss(output, target)
             return {
                 f"{self.input_object}_bce": bce_loss,
                 f"{self.input_object}_focal": focal_loss_value,
@@ -205,8 +202,6 @@ class ObjectHitMaskTask(Task):
         mask_attn: bool = True,
     ):
         super().__init__()
-
-
 
         self.name = name
         self.input_hit = input_hit
@@ -261,6 +256,7 @@ class ObjectHitMaskTask(Task):
         target = targets[self.target_object_hit + "_valid"].to(torch.float32)
 
         costs = {}
+        # sample_weight = target + self.null_weight * (1 - target)
         for cost_fn, cost_weight in self.costs.items():
             costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target)
         return costs
@@ -269,19 +265,15 @@ class ObjectHitMaskTask(Task):
         output = outputs[self.output_object_hit + "_logit"]
         target = targets[self.target_object_hit + "_valid"].type_as(output)
 
-        # Build a padding mask for object-hit pairs
-        hit_pad = targets[self.input_hit + "_valid"].unsqueeze(-2).expand_as(target)
-        object_pad = targets[self.target_object + "_valid"].unsqueeze(-1).expand_as(target)
-        # An object-hit is valid slot if both its object and hit are valid slots
-        # TODO: Maybe calling this a mask is confusing since true entries are
-        object_hit_mask = object_pad & hit_pad
+        hit_pad = targets[self.input_hit + "_valid"]
+        object_pad = targets[self.target_object + "_valid"]
 
-        weight = target + self.null_weight * (1 - target)
-
+        sample_weight = target + self.null_weight * (1 - target)
         losses = {}
         for loss_fn, loss_weight in self.losses.items():
-            loss = loss_fns[loss_fn](output, target, mask=object_hit_mask, weight=weight)
-            losses[loss_fn] = loss_weight * loss
+            losses[loss_fn] = loss_weight * loss_fns[loss_fn](
+                output, target, object_valid_mask=object_pad, input_pad_mask=hit_pad, sample_weight=sample_weight
+            )
         return losses
 
 
