@@ -1,11 +1,9 @@
 name: ITk_pixel_region135_eta4_900mev
 
 data:
-  train_dir: /share/rcifdata/maxhart/data/itk/train/
-  val_dir: /share/rcifdata/maxhart/data/itk/val/
-  test_dir: /share/rcifdata/maxhart/data/itk/test/
-
-  hit_eval_test: /share/rcifdata/maxhart/hepattn-test/hepattn/logs/ITk_pixel_region135_eta4_pt1_20250422-T132414/ckpts/epoch=029-val_loss=0.40065_test_eval.h5
+  train_dir: /share/rcifdata/pduckett/hepattn-main/src/hepattn/experiments/itk/data/train/
+  val_dir: /share/rcifdata/pduckett/hepattn-main/src/hepattn/experiments/itk/data/val/
+  test_dir: /share/rcifdata/pduckett/hepattn-main/src/hepattn/experiments/itk/data/test/
 
   num_workers: 10
   num_train: -1
