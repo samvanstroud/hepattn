@@ -6,6 +6,7 @@ import torch
 
 from hepattn.models.matcher import SOLVERS, Matcher
 
+
 def generate_dummy_cost(rng: np.random.Generator, batch_size: int, n_objects: int, scale: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
     cost = rng.random((batch_size, n_objects, n_objects)) * scale  # Add batch dimension
     object_valid_mask = np.zeros((batch_size, n_objects), dtype=bool)
@@ -50,6 +51,7 @@ def test_matcher_with_target_padding(solver, scale: float):
             f"Solver {solver} produced duplicate indices for padded n_objects={n_objects}, n_valid_objects={n_valid_objects}"
         )
 
+
 @pytest.mark.parametrize("solver", SOLVERS)
 @pytest.mark.parametrize("scale", [1.0, 10.0, 100.0, 1000.0])
 def test_matcher_with_parallel_solver(solver, scale: float):
@@ -72,20 +74,14 @@ def test_matcher_with_parallel_solver(solver, scale: float):
         assert idxs_parallel.shape == (batch_size, n_objects), (
             f"Parallel Solver {solver} produced incorrect shape for idxs: {idxs_parallel.shape}, expected {(batch_size, n_objects)}"
         )
-        assert np.all(
-            idxs_parallel[object_valid_mask] == idxs[object_valid_mask]
-        ), (
+        assert np.all(idxs_parallel[object_valid_mask] == idxs[object_valid_mask]), (
             f"Parallel Solver {solver} produced different indices for valid objects: {np.where(object_valid_mask)[0]}"
             f" for n_objects={n_objects}, batch_size={batch_size}, scale={scale}"
         )
-        assert np.all(
-            idxs_parallel[~object_valid_mask] == idxs[~object_valid_mask]
-        ), (
+        assert np.all(idxs_parallel[~object_valid_mask] == idxs[~object_valid_mask]), (
             f"Parallel Solver {solver} produced different indices for invalid objects: {np.where(~object_valid_mask)[0]}"
             f" for n_objects={n_objects}, batch_size={batch_size}, scale={scale}"
         )
-
-
 
 
 @pytest.mark.parametrize("solver", SOLVERS)

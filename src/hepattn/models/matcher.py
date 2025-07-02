@@ -23,9 +23,16 @@ def solve_1015_late(cost):
     return lap1015.lap_late(cost)
 
 
+SOLVERS = {
+    "scipy": solve_scipy,
+    # "1015_early": solve_1015_early,
+    "1015_late": solve_1015_late,
+}
+
+
 def match_individual(solver_fn, cost: np.ndarray, default_idx: torch.Tensor) -> torch.Tensor:
     pred_idx = torch.as_tensor(solver_fn(cost))
-    if solver_fn == solve_scipy:
+    if solver_fn == SOLVERS["scipy"]:
         pred_idx = torch.concatenate([pred_idx, default_idx[~torch.isin(default_idx, pred_idx)]])
     return pred_idx
 
@@ -38,13 +45,6 @@ def match_parallel(solver_fn, costs: np.ndarray, batch_obj_lengths: torch.Tensor
         # Use the pool to map the function to the arguments
         pred_idxs = pool.starmap(match_individual, args)
     return torch.stack(pred_idxs, dim=0)
-
-
-SOLVERS = {
-    "scipy": solve_scipy,
-    # "1015_early": solve_1015_early,
-    "1015_late": solve_1015_late,
-}
 
 
 class Matcher(nn.Module):
