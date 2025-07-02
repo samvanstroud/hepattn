@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-HEPATTN-BASIC-FOURIER
+name: TRK-HEPATTN-BASIC-STANDARD-POSENC
 
 data:
   train_dir:  /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/train/
@@ -156,16 +156,16 @@ model:
                     input_size: 16
                     output_size: *dim
                 posenc:
-                  class_path: hepattn.models.FourierPositionEncoder
+                  class_path: hepattn.models.PositionEncoder
                   init_args:
                     input_name: hit
                     fields:
                       - r
                       - eta
                       - phi
+                    sym_fields:
+                      - phi
                     dim: *dim
-                    scale: 0.1
-
       encoder:
         class_path: hepattn.models.Encoder
         init_args:

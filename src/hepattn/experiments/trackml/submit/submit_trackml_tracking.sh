@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=trackml-hepattnbasic-train-fourier
+#SBATCH --job-name=trackml-hepattnbasic-train-standardpe
 #SBATCH -p GPU
 #SBATCH --nodes=1
 #SBATCH --export=ALL
@@ -39,7 +39,7 @@ echo "Running training script..."
 
 # Python command that will be run
 #PYTORCH_CMD="python run_filtering.py fit --config configs/filtering.yaml"
-PYTORCH_CMD="python run_tracking.py fit --config configs/tracking-lite.yaml --trainer.devices 1"
+PYTORCH_CMD="python run_tracking.py fit --config configs/tracking-lite-standard-pe.yaml --trainer.devices 1"
 
 # Do testing instead
 #PYTORCH_CMD="python run_filtering.py test --config /share/rcifdata/svanstroud/hepattn/logs/ec_eta4_20250409-T184858/config.yaml --ckpt_path /share/rcifdata/svanstroud/hepattn/logs/ec_eta4_20250409-T184858/ckpts/epoch=029-val_loss=0.05526.ckpt"
