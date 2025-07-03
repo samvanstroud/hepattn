@@ -4,7 +4,6 @@ from torch import Tensor, nn
 from hepattn.models.decoder import MaskFormerDecoderLayer
 from hepattn.models.task import ObjectHitMaskTask
 
-
 class MaskFormer(nn.Module):
     def __init__(
         self,
@@ -83,7 +82,6 @@ class MaskFormer(nn.Module):
 
     def get_last_attention_mask(self):
         """Get the last attention mask that was stored for logging.
-        
         Returns
         -------
         tuple or None
