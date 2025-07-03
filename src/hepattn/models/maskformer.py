@@ -4,7 +4,6 @@ from torch import Tensor, nn
 from hepattn.models.decoder import MaskFormerDecoderLayer
 from hepattn.models.task import ObjectHitMaskTask
 
-
 class MaskFormer(nn.Module):
     def __init__(
         self,
@@ -19,6 +18,7 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         use_attn_masks: bool = True,
         use_query_masks: bool = True,
+        log_attn_mask: bool = False,
     ):
         """
         Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -61,10 +61,53 @@ class MaskFormer(nn.Module):
         self.input_sort_field = input_sort_field
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
+        self.log_attn_mask = log_attn_mask
+        self.step_ = 0
+        self.logger = None
+
+    def log_figure(self, name, fig, step=None):
+        """Log a matplotlib figure to the logger (Comet)."""
+        if self.logger is not None and hasattr(self.logger, 'experiment'):
+            # Use the provided step or the current step
+            current_step = step if step is not None else self.step_
+            
+            # Log the figure to Comet
+            self.logger.experiment.log_figure(
+                figure_name=name,
+                figure=fig,
+                step=current_step
+            )
+            # Close the figure to free memory
+            fig.close()
+
+    def get_last_attention_mask(self):
+        """Get the last attention mask that was stored for logging.
+        Returns
+        -------
+        tuple or None
+            A tuple of (attention_mask, step, layer) if available, None otherwise.
+        """
+        if hasattr(self, '_last_attn_mask'):
+            return (
+                self._last_attn_mask,
+                getattr(self, '_last_attn_mask_step', 0),
+                getattr(self, '_last_attn_mask_layer', 0)
+            )
+        return None
+
+    def clear_last_attention_mask(self):
+        """Clear the stored attention mask after logging."""
+        if hasattr(self, '_last_attn_mask'):
+            del self._last_attn_mask
+        if hasattr(self, '_last_attn_mask_step'):
+            del self._last_attn_mask_step
+        if hasattr(self, '_last_attn_mask_layer'):
+            del self._last_attn_mask_layer
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
+        self.step_+=1
 
         assert "key" not in input_names, "'key' input name is reserved."
         assert "query" not in input_names, "'query' input name is reserved."
@@ -160,6 +203,16 @@ class MaskFormer(nn.Module):
             # If no attention masks were specified, set it to none to avoid redundant masking
             else:
                 attn_mask = None
+
+            if (
+                self.log_attn_mask
+                and (attn_mask is not None)
+                and (self.step_ % 1000 == 0)
+            ):
+                # Store for callback to log later
+                self._last_attn_mask = attn_mask[0].detach().cpu().clone()
+                self._last_attn_mask_step = self.step_
+                self._last_attn_mask_layer = layer_index
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(

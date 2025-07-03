@@ -5,5 +5,6 @@ from hepattn.callbacks.prediction_writer import PredictionWriter
 from hepattn.callbacks.saveconfig import SaveConfig
 from hepattn.callbacks.target_stats import TargetStats
 from hepattn.callbacks.throughput_monitor import MyThroughputMonitor
+from hepattn.callbacks.attn_mask_logger import AttnMaskLogger
 
-__all__ = ["Checkpoint", "Compile", "InferenceTimer", "MyThroughputMonitor", "PredictionWriter", "SaveConfig", "TargetStats"]
+__all__ = ["Checkpoint", "Compile", "InferenceTimer", "MyThroughputMonitor", "PredictionWriter", "SaveConfig", "TargetStats", "AttnMaskLogger"]
