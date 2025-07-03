@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-HEPATTN-BASIC-STANDARD-POSENC
+name: TRK-HEPATTN-BASIC-LOG-ATTN-MASK-TEST
 
 data:
   train_dir:  /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/train/
@@ -89,6 +89,8 @@ trainer:
     - class_path: hepattn.callbacks.Compile
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
+    - class_path: hepattn.callbacks.AttnMaskLogger
+    - class_path: hepattn.callbacks.StepIncrementer
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
@@ -125,6 +127,7 @@ model:
       dim: &dim 256
       num_queries: *num_objects
       input_sort_field: phi
+      log_attn_mask: true
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:

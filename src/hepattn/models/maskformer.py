@@ -64,7 +64,27 @@ class MaskFormer(nn.Module):
         self.use_query_masks = use_query_masks
         self.log_attn_mask = log_attn_mask
         self.step = 0
+        self.logger = None
 
+    # def set_logger(self, logger, step):
+    #     """Set the logger and current step for figure logging."""
+    #     self.logger = logger
+    #     self.step = step
+
+    def log_figure(self, name, fig, step=None):
+        """Log a matplotlib figure to the logger (Comet)."""
+        if self.logger is not None and hasattr(self.logger, 'experiment'):
+            # Use the provided step or the current step
+            current_step = step if step is not None else self.step
+            
+            # Log the figure to Comet
+            self.logger.experiment.log_figure(
+                figure_name=name,
+                figure=fig,
+                step=current_step
+            )
+            # Close the figure to free memory
+            plt.close(fig)
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
@@ -168,8 +188,7 @@ class MaskFormer(nn.Module):
             if (
                 self.log_attn_mask
                 and (attn_mask is not None)
-                and (self.step % 4000 == 0)
-                and (layer_index == 0 or layer_index == len(self.decoder_layers) - 1)
+                and (self.step % 1000 == 0)
             ):
                 # Store for callback to log later
                 self._last_attn_mask = attn_mask[0].detach().cpu().clone()
