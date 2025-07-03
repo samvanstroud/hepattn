@@ -1,14 +1,14 @@
 seed_everything: 42
-name: TRK-HEPATTN-BASIC-FOURIER
+name: TRK-v0-lite-aux-only-mask
 
 data:
-  train_dir:  /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/train/
-  val_dir: /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/val/
-  test_dir: /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/test/
+  train_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
+  val_dir: /share/rcifdata/maxhart/data/trackml/prepped/val/
+  test_dir: /share/rcifdata/maxhart/data/trackml/prepped/test/
 
-  hit_eval_train: /share/rcifdata/pduckett/hepattn-main/data/trackml/epoch=016-val_loss=0.15730_train_eval.h5
-  hit_eval_val: /share/rcifdata/pduckett/hepattn-main/data/trackml/epoch=016-val_loss=0.15730_val_eval.h5
-  hit_eval_test: /share/rcifdata/pduckett/hepattn-main/data/trackml/epoch=016-val_loss=0.15730_test_eval.h5
+  hit_eval_train: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_train_eval.h5
+  hit_eval_val: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_val_eval.h5
+  hit_eval_test: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_test_eval.h5
 
   num_workers: 10
   num_train: -1
