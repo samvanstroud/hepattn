@@ -79,7 +79,32 @@ class MaskFormer(nn.Module):
                 step=current_step
             )
             # Close the figure to free memory
-            plt.close(fig)
+            fig.close()
+
+    def get_last_attention_mask(self):
+        """Get the last attention mask that was stored for logging.
+        
+        Returns
+        -------
+        tuple or None
+            A tuple of (attention_mask, step, layer) if available, None otherwise.
+        """
+        if hasattr(self, '_last_attn_mask'):
+            return (
+                self._last_attn_mask,
+                getattr(self, '_last_attn_mask_step', 0),
+                getattr(self, '_last_attn_mask_layer', 0)
+            )
+        return None
+
+    def clear_last_attention_mask(self):
+        """Clear the stored attention mask after logging."""
+        if hasattr(self, '_last_attn_mask'):
+            del self._last_attn_mask
+        if hasattr(self, '_last_attn_mask_step'):
+            del self._last_attn_mask_step
+        if hasattr(self, '_last_attn_mask_layer'):
+            del self._last_attn_mask_layer
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
