@@ -19,6 +19,7 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         use_attn_masks: bool = True,
         use_query_masks: bool = True,
+        log_attn_mask: bool = False,
     ):
         """
         Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -61,6 +62,9 @@ class MaskFormer(nn.Module):
         self.input_sort_field = input_sort_field
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
+        self.log_attn_mask = log_attn_mask
+        self.step = 0
+
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
@@ -160,6 +164,17 @@ class MaskFormer(nn.Module):
             # If no attention masks were specified, set it to none to avoid redundant masking
             else:
                 attn_mask = None
+
+            if (
+                self.log_attn_mask
+                and (attn_mask is not None)
+                and (self.step % 4000 == 0)
+                and (layer_index == 0 or layer_index == len(self.decoder_layers) - 1)
+            ):
+                # Store for callback to log later
+                self._last_attn_mask = attn_mask[0].detach().cpu().clone()
+                self._last_attn_mask_step = self.step
+                self._last_attn_mask_layer = layer_index
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
