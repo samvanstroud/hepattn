@@ -19,6 +19,8 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         use_attn_masks: bool = True,
         use_query_masks: bool = True,
+        query_posenc: nn.Module | None = None,
+        preserve_original_queries: bool = True,
     ):
         """
         Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -61,6 +63,8 @@ class MaskFormer(nn.Module):
         self.input_sort_field = input_sort_field
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
+        self.query_posenc = query_posenc
+        self.preserve_original_queries = preserve_original_queries
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
@@ -117,6 +121,17 @@ class MaskFormer(nn.Module):
         x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
         x["query_valid"] = torch.full((batch_size, self.num_queries), True)
 
+
+        # Add positional encoding to the queries
+        if self.query_posenc is not None:
+            device = x["key_embed"].device
+            if self.preserve_original_queries:
+                x["query_posenc"] = self.query_posenc(inputs, batch_size, self.num_queries, device)
+                x["query_embed"] = x["query_embed"] + x["query_posenc"]
+            else:
+                x["query_embed"] = x["query_embed"] + self.query_posenc(inputs, batch_size, self.num_queries, device)
+
+
         # Pass encoded inputs through decoder to produce outputs
         outputs = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -165,6 +180,10 @@ class MaskFormer(nn.Module):
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=x.get("key_valid")
             )
+
+            # Re-add original query embeddings (similar to SAM's prompt token re-addition)
+            if (self.query_posenc is not None) and (self.preserve_original_queries):
+                    x["query_embed"] = x["query_embed"] + x["query_posenc"]
 
             # Unmerge the updated features back into the separate input types
             for input_name in input_names:

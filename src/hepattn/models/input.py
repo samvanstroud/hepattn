@@ -62,3 +62,56 @@ class InputNet(nn.Module):
             x += self.posenc(inputs)
 
         return x
+
+
+class QueryPosEnc(nn.Module):
+    def __init__(self, input_name: str, posenc: nn.Module, num_queries: int, scale: float = 1.0):
+        super().__init__()
+        """ A wrapper which takes a list of input features, concatenates them, and passes them through a dense
+        layer followed by an optional positional encoding module.
+
+        Parameters
+        ----------
+        input_name : str
+            The name of the feature / object that will be embedded, e.g. pix for pixel clusters.
+        posenc : nn.Module
+            An optional module used to perform the positional encoding.
+        num_queries : int
+            The number of queries to generate positional encodings for.
+        scale : float
+            The scale of the positional encoding.
+        """
+
+        self.input_name = input_name
+        self.posenc = posenc
+        self.scale = scale
+
+    def forward(self, inputs: dict[str, Tensor], num_queries: int, batch_size: int, device: torch.device) -> Tensor:
+        """Embed the set of input features into an embedding.
+
+        Parameters
+        ----------
+        inputs : dict
+            Input data consisting of a dictionary the requested input features.
+        num_queries : int
+            The number of queries to generate positional encodings for.
+        batch_size : int
+            The batch size.
+        device : torch.device
+            The device to create tensors on.
+
+        Returns
+        -------
+        posenc : Tensor
+            Tensor containing the positional encoding of the input features.
+        """
+        # Create inputs for positional encoding
+        pos_inputs = {}
+        for field in self.posenc.fields:
+            if field == "phi":
+                # for each query set value of phi to 2pi/n_queries * query_idx - should be shape [batch_size, num_queries]
+                pos_inputs[f"{self.input_name}_{field}"] = 2 * torch.pi * (torch.arange(num_queries, device=device) / num_queries - 0.5)
+            else:
+                raise ValueError(f"Field {field} not supported for query input net")
+
+        return self.scale * self.posenc(pos_inputs)

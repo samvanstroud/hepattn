@@ -135,3 +135,60 @@ class FourierPositionEncoder(nn.Module):
         xs = 2 * self.pi * xs
         xs @= self.B
         return torch.cat([torch.sin(xs), torch.cos(xs)], dim=-1)
+
+
+class QueryPositionEncoder(nn.Module):
+    def __init__(self, input_name: str, fields: list[str], dim: int, sym_fields: list[str] | None = None, alpha=1000, per_input_dim: int | None = None, remainder_dim: int | None = None):
+        """Positional encoder.
+
+        Parameters
+        ----------
+        input_name : str
+            The name of the input object that will be encoded.
+        fields : list[str]
+            List of fields belonging to the object to apply the positional encoding to.
+        fields : list[str]
+            List of fields that should use a rotationally symmetric positional encoding.
+        dim : int
+            Dimension to project the positional encoding into.
+        alpha : float
+            Scaling factor hyperparamater for the positional encoding.
+        """
+        super().__init__()
+
+        self.input_name = input_name
+        self.fields = fields
+        self.sym_fields = sym_fields or []
+        self.dim = dim
+        self.alpha = alpha
+        self.per_input_dim = per_input_dim if per_input_dim is not None else self.dim // len(self.fields)
+        self.remainder_dim = remainder_dim if remainder_dim is not None else self.dim % len(self.fields)
+
+    def forward(self, inputs: dict):
+        """Apply positional encoding to the inputs.
+
+        Parameters
+        ----------
+        inputs : dict
+            Dictionary of inputs.
+
+        Returns
+        -------
+        torch.Tensor
+            Positional encoding of the input variables.
+        """
+        encodings = []
+
+        for field in self.fields:
+            pos_enc_fn = pos_enc_symmetric if field in self.sym_fields else pos_enc
+            encodings.append(pos_enc_fn(inputs[f"{self.input_name}_{field}"], self.per_input_dim, self.alpha))
+        if self.remainder_dim:
+            # Handle remainder by appending zero tensors
+            remaining = self.remainder_dim
+            while remaining > 0:
+                # Take either the full per_input_dim or the remaining amount
+                current_size = min(self.per_input_dim, remaining)
+                encodings.append(torch.zeros_like(encodings[0])[..., : current_size])
+                remaining -= current_size
+        encodings = torch.cat(encodings, dim=-1)
+        return encodings
