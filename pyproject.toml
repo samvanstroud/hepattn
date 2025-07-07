@@ -12,6 +12,7 @@ dependencies = [
     "numpy",
     "scipy",
     "pytest>=8.3.3,<9",
+    "pytest-repeat",
     "ruff==0.8.0",
     "pre-commit>=4.0.1,<5",
     "matplotlib==3.9.*",

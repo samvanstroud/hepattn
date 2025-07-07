@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v0-lite-lapearly
+name: TRK-v0-lite-aux-only-mask
 
 data:
   train_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
@@ -63,11 +63,11 @@ data:
 
 trainer:
   # Training stuff here
-  max_epochs: 30
+  max_epochs: 10
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
-  log_every_n_steps: 10
+  log_every_n_steps: 50
   default_root_dir: logs
   gradient_clip_val: 0.1
   enable_progress_bar: true
@@ -85,7 +85,8 @@ trainer:
       project_name: trackml_tracking
 
   callbacks:
-    #- class_path: hepattn.callbacks.Compile
+    #- class_path: hepattn.callbacks.TargetStats
+    - class_path: hepattn.callbacks.Compile
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint
@@ -101,7 +102,7 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
-        refresh_rate: 1
+        refresh_rate: 50
 
 model:
   optimizer: Lion
@@ -177,7 +178,6 @@ model:
           norm: RMSNorm
 
       num_decoder_layers: 4
-      intermediate_losses: false
       decoder_layer_config:
         dim: *dim
         norm: RMSNorm

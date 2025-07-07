@@ -3,7 +3,7 @@ from torch import Tensor, nn
 import matplotlib.pyplot as plt
 
 from hepattn.models.decoder import MaskFormerDecoderLayer
-
+from hepattn.models.task import ObjectHitMaskTask
 
 class MaskFormer(nn.Module):
     def __init__(
@@ -19,7 +19,7 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         use_attn_masks: bool = True,
         use_query_masks: bool = True,
-        intermediate_losses: bool = True,
+        log_attn_mask: bool = False,
         query_posenc: nn.Module | None = None,
         preserve_original_queries: bool = True,
     ):
@@ -51,8 +51,6 @@ class MaskFormer(nn.Module):
             If True, attention masks will be used to control which input objects are attended to.
         use_query_masks : bool, optional
             If True, query masks will be used to control which queries are valid during attention.
-        intermediate_losses : bool, optional
-            If True, intermediate losses will be applied at each decoder layer.
         query_posenc : nn.Module or None, optional
             Positional encoding module for queries (similar to SAM's prompt positional encoding).
         preserve_original_queries : bool, optional
@@ -68,7 +66,32 @@ class MaskFormer(nn.Module):
         self.input_sort_field = input_sort_field
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
-        self.intermediate_losses = intermediate_losses
+        self.log_attn_mask = log_attn_mask
+        self.step_ = 0
+
+    def get_last_attention_mask(self):
+        """Get the last attention mask that was stored for logging.
+        Returns
+        -------
+        tuple or None
+            A tuple of (attention_mask, step, layer) if available, None otherwise.
+        """
+        if hasattr(self, '_last_attn_mask'):
+            return (
+                self._last_attn_mask,
+                getattr(self, '_last_attn_mask_step', 0),
+                getattr(self, '_last_attn_mask_layer', 0)
+            )
+        return None
+
+    def clear_last_attention_mask(self):
+        """Clear the stored attention mask after logging."""
+        if hasattr(self, '_last_attn_mask'):
+            del self._last_attn_mask
+        if hasattr(self, '_last_attn_mask_step'):
+            del self._last_attn_mask_step
+        if hasattr(self, '_last_attn_mask_layer'):
+            del self._last_attn_mask_layer
         self.num_queries = num_queries
         self.dim = dim
         self.query_initial = nn.Parameter(torch.randn(num_queries, dim))
@@ -77,33 +100,10 @@ class MaskFormer(nn.Module):
         self.query_posenc = query_posenc
         self.preserve_original_queries = preserve_original_queries
 
-        # Logger for figure logging
-        self.logger = None
-        self.step = 0
-
-    def set_logger(self, logger, step):
-        """Set the logger and current step for figure logging."""
-        self.logger = logger
-        self.step = step
-
-    def log_figure(self, name, fig, step=None):
-        """Log a matplotlib figure to the logger (Comet)."""
-        if self.logger is not None and hasattr(self.logger, 'experiment'):
-            # Use the provided step or the current step
-            current_step = step if step is not None else self.step
-            
-            # Log the figure to Comet
-            self.logger.experiment.log_figure(
-                figure_name=name,
-                figure=fig,
-                step=current_step
-            )
-            # Close the figure to free memory
-            plt.close(fig)
-
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
+        self.step_+=1
 
         assert "key" not in input_names, "'key' input name is reserved."
         assert "query" not in input_names, "'query' input name is reserved."
@@ -209,12 +209,26 @@ class MaskFormer(nn.Module):
             # If no attention masks were specified, set it to none to avoid redundant masking
             else:
                 attn_mask = None
-                
-            if attn_mask is not None and self.step % 4000 == 0 and (layer_index == 0 or layer_index == len(self.decoder_layers) - 1):
-                plt.figure(constrained_layout=True, dpi=300)
-                attn_mask_cpu = attn_mask[0].cpu().detach().numpy()
-                plt.imshow(attn_mask_cpu, aspect="auto")
-                self.log_figure(f"local_ca_mask_step{self.step}_layer{layer_index}", plt.gcf(), step=self.step)
+
+            if (
+                self.log_attn_mask
+                and (attn_mask is not None)
+                and (self.step_ % 1000 == 0)
+            ):
+                # Store for callback to log later
+                self._last_attn_mask = attn_mask[0].detach().cpu().clone()
+                self._last_attn_mask_step = self.step_
+                self._last_attn_mask_layer = layer_index
+
+            if (
+                self.log_attn_mask
+                and (attn_mask is not None)
+                and (self.step_ % 1000 == 0)
+            ):
+                # Store for callback to log later
+                self._last_attn_mask = attn_mask[0].detach().cpu().clone()
+                self._last_attn_mask_step = self.step_
+                self._last_attn_mask_layer = layer_index
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
@@ -275,12 +289,14 @@ class MaskFormer(nn.Module):
         costs = {}
         batch_idxs = torch.arange(targets["particle_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
-            if not self.intermediate_losses and layer_name != "final":
-                continue
-
             layer_costs = None
+
             # Get the cost contribution from each of the tasks
             for task in self.tasks:
+                # Skip tasks that do not contribute intermediate losses
+                if layer_name != "final" and not task.has_intermediate_loss:
+                    continue
+
                 # Only use the cost from the final set of predictions
                 task_costs = task.cost(layer_outputs[task.name], targets)
 
@@ -295,10 +311,7 @@ class MaskFormer(nn.Module):
                 costs[layer_name] = layer_costs.detach()
 
         # Permute the outputs for each output in each layer
-        for layer_name in outputs:
-            if not self.intermediate_losses and layer_name != "final":
-                continue
-
+        for layer_name in costs:
             # Get the indicies that can permute the predictions to yield their optimal matching
             if self.matcher is not None and layer_name in costs:
                 pred_idxs = self.matcher(costs[layer_name], targets["particle_valid"])
@@ -311,10 +324,11 @@ class MaskFormer(nn.Module):
         # Compute the losses for each task in each block
         losses: dict[str, dict] = {}
         for layer_name in outputs:
-            if not self.intermediate_losses and layer_name != "final":
-                continue
             losses[layer_name] = {}
             for task in self.tasks:
+                # Skip tasks that are not ObjectHitMaskTask for intermediate layers
+                if layer_name != "final" and not isinstance(task, ObjectHitMaskTask):
+                    continue
                 losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses
