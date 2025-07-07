@@ -4,7 +4,6 @@ from torch import Tensor, nn
 from hepattn.models.decoder import MaskFormerDecoderLayer
 from hepattn.models.task import ObjectHitMaskTask
 
-
 class MaskFormer(nn.Module):
     def __init__(
         self,
@@ -64,26 +63,9 @@ class MaskFormer(nn.Module):
         self.use_query_masks = use_query_masks
         self.log_attn_mask = log_attn_mask
         self.step_ = 0
-        self.logger = None
-
-    def log_figure(self, name, fig, step=None):
-        """Log a matplotlib figure to the logger (Comet)."""
-        if self.logger is not None and hasattr(self.logger, 'experiment'):
-            # Use the provided step or the current step
-            current_step = step if step is not None else self.step_
-            
-            # Log the figure to Comet
-            self.logger.experiment.log_figure(
-                figure_name=name,
-                figure=fig,
-                step=current_step
-            )
-            # Close the figure to free memory
-            fig.close()
 
     def get_last_attention_mask(self):
         """Get the last attention mask that was stored for logging.
-        
         Returns
         -------
         tuple or None

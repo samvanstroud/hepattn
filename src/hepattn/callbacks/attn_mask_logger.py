@@ -10,8 +10,7 @@ class AttnMaskLogger(Callback):
             attn_mask, step, layer = attn_mask_info
             plt.figure(constrained_layout=True, dpi=300)
             plt.imshow(attn_mask.numpy(), aspect="auto")
-            if hasattr(model, "log_figure"):
-                model.log_figure(f"local_ca_mask_val_step{step}_layer{layer}", plt.gcf(), step=step)
+            pl_module.log_figure(f"local_ca_mask_val_step{step}_layer{layer}", plt.gcf(), step=step)
             plt.close()
             # Clear after logging
             model.clear_last_attention_mask()
