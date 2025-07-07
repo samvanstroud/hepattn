@@ -2,7 +2,10 @@ import time
 
 import scipy
 import torch
+import numpy as np
 from torch import nn
+
+from multiprocessing.pool import ThreadPool as Pool
 
 import lap1015
 
@@ -27,12 +30,31 @@ SOLVERS = {
 }
 
 
+def match_individual(solver_fn, cost: np.ndarray, default_idx: torch.Tensor) -> torch.Tensor:
+    pred_idx = torch.as_tensor(solver_fn(cost))
+    if solver_fn == SOLVERS["scipy"]:
+        pred_idx = torch.concatenate([pred_idx, default_idx[~torch.isin(default_idx, pred_idx)]])
+    return pred_idx
+
+
+def match_parallel(solver_fn, costs: np.ndarray, batch_obj_lengths: torch.Tensor, n_jobs: int = 8) -> torch.Tensor:
+    default_idx = torch.arange(costs.shape[2])
+    with Pool(processes=n_jobs) as pool:
+        # Prepare the arguments for the parallel function
+        args = ((solver_fn, costs[k][:, : batch_obj_lengths[k]].T, default_idx) for k in range(len(costs)))
+        # Use the pool to map the function to the arguments
+        pred_idxs = pool.starmap(match_individual, args)
+    return torch.stack(pred_idxs, dim=0)
+
+
 class Matcher(nn.Module):
     def __init__(
         self,
         default_solver: str = "scipy",
         adaptive_solver: bool = True,
         adaptive_check_interval: int = 1000,
+        parallel_solver: bool = False,
+        n_jobs: int = 8,
     ):
         super().__init__()
         """ Used to match predictions to targets based on a given cost matrix.
@@ -47,12 +69,18 @@ class Matcher(nn.Module):
             is then set as the current solver.
         adaptive_check_interval: bool
             Interval for checking which solver is the fastest.
+        parallel_solver: bool
+            If true, then the solver will use a parallel implementation to speed up the matching.
+        n_jobs: int
+            Number of jobs to use for parallel matching. Only used if parallel_solver is True.
         """
         if default_solver not in SOLVERS:
             raise ValueError(f"Unknown solver: {default_solver}. Available solvers: {list(SOLVERS.keys())}")
         self.solver = SOLVERS[default_solver]
         self.adaptive_solver = adaptive_solver
         self.adaptive_check_interval = adaptive_check_interval
+        self.parallel_solver = parallel_solver
+        self.n_jobs = n_jobs
         self.step = 0
 
     def compute_matching(self, costs, object_valid_mask=None):
@@ -65,16 +93,17 @@ class Matcher(nn.Module):
         idxs = []
         default_idx = torch.arange(costs.shape[2])
 
+        if self.parallel_solver:
+            # If we are using a parallel solver, we can use it to speed up the matching
+            pred_idxs = match_parallel(self.solver, costs, batch_obj_lengths, n_jobs=self.n_jobs)
+            return pred_idxs
+
         # Do the matching sequentially for each example in the batch
         for k in range(len(costs)):
             # remove invalid targets for efficiency
             cost = costs[k][:, : batch_obj_lengths[k]].T
-            pred_idx = torch.as_tensor(self.solver(cost), device=cost.device)
-
-            # scipy returns incomplete assignments, handle that here
-            if self.solver == SOLVERS["scipy"]:
-                pred_idx = torch.concatenate([pred_idx, default_idx[~torch.isin(default_idx, pred_idx)]])
-
+            # Solve the matching problem using the current solver
+            pred_idx = match_individual(self.solver, cost, default_idx)
             # These indicies can be used to permute the predictions so they now match the truth objects
             idxs.append(pred_idx)
 
