@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=trackml-hepattnbasic-train-standardpe
+#SBATCH --job-name=trackml-train
 #SBATCH -p GPU
 #SBATCH --nodes=1
 #SBATCH --export=ALL
@@ -8,7 +8,7 @@
 #SBATCH --ntasks-per-node=1         # must match number of devices
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=50G
-#SBATCH --output=/share/rcifdata/pduckett/hepattn-basic/src/hepattn/experiments/trackml/slurm_logs/slurm-%j.%x.out
+#SBATCH --output=/share/rcifdata/svanstroud/slurm_logs/slurm-%j.%x.out
 
 
 # Comet variables
@@ -25,7 +25,7 @@ echo "CPU count: $(cat /proc/cpuinfo | awk '/^processor/{print $3}' | tail -1)"
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 
 # Move to workdir
-cd /share/rcifdata/pduckett/hepattn-basic/src/hepattn/experiments/trackml/
+cd /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/
 echo "Moved dir, now in: ${PWD}"
 
 # Set tmpdir
@@ -39,7 +39,7 @@ echo "Running training script..."
 
 # Python command that will be run
 #PYTORCH_CMD="python run_filtering.py fit --config configs/filtering.yaml"
-PYTORCH_CMD="python run_tracking.py fit --config configs/tracking-lite-standard-pe.yaml --trainer.devices 1"
+PYTORCH_CMD="python run_tracking.py fit --config configs/tracking.yaml --trainer.devices 1"
 
 # Do testing instead
 #PYTORCH_CMD="python run_filtering.py test --config /share/rcifdata/svanstroud/hepattn/logs/ec_eta4_20250409-T184858/config.yaml --ckpt_path /share/rcifdata/svanstroud/hepattn/logs/ec_eta4_20250409-T184858/ckpts/epoch=029-val_loss=0.05526.ckpt"

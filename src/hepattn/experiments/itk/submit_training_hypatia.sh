@@ -8,7 +8,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=24G
-#SBATCH --output=/share/rcifdata/pduckett/hepattn-basic/src/hepattn/experiments/itk/slurm_logs/slurm-%j.%x.out
+#SBATCH --output=/share/rcifdata/maxhart/hepattn/src/hepattn/experiments/itk/slurm_logs/slurm-%j.%x.out
 
 
 # Comet variables
@@ -27,7 +27,7 @@ echo "nvidia-smi:"
 nvidia-smi
 
 # Move to workdir
-cd /share/rcifdata/pduckett/hepattn-basic/
+cd /share/rcifdata/maxhart/hepattn/
 echo "Moved dir, now in: ${PWD}"
 
 # Set tmpdir
@@ -49,7 +49,7 @@ PYTORCH_CMD="python src/hepattn/experiments/itk/run_filtering.py fit --config sr
 PIXI_CMD="pixi run $PYTORCH_CMD"
 
 # Apptainer command that runs the pixi command inside the pixi apptainer image
-APPTAINER_CMD="apptainer run --nv --bind /share/rcifdata /share/rcifdata/pduckett/hepattn-basic/pixi.lock $PIXI_CMD"
+APPTAINER_CMD="apptainer run --nv --bind /share/rcifdata/maxhart /share/rcifdata/maxhart/hepattn/pixi.sif $PIXI_CMD"
 
 # Run the final command
 echo "Running command: $APPTAINER_CMD"
