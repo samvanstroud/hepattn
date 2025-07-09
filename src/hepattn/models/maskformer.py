@@ -64,30 +64,6 @@ class MaskFormer(nn.Module):
         self.log_attn_mask = log_attn_mask
         self.step_ = 0
 
-    def get_last_attention_mask(self):
-        """Get the last attention mask that was stored for logging.
-        Returns
-        -------
-        tuple or None
-            A tuple of (attention_mask, step, layer) if available, None otherwise.
-        """
-        if hasattr(self, '_last_attn_mask'):
-            return (
-                self._last_attn_mask,
-                getattr(self, '_last_attn_mask_step', 0),
-                getattr(self, '_last_attn_mask_layer', 0)
-            )
-        return None
-
-    def clear_last_attention_mask(self):
-        """Clear the stored attention mask after logging."""
-        if hasattr(self, '_last_attn_mask'):
-            del self._last_attn_mask
-        if hasattr(self, '_last_attn_mask_step'):
-            del self._last_attn_mask_step
-        if hasattr(self, '_last_attn_mask_layer'):
-            del self._last_attn_mask_layer
-
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]

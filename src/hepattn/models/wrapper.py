@@ -7,7 +7,6 @@ from torch import nn
 from torch.optim import AdamW
 from torchjd import mtl_backward
 from torchjd.aggregation import UPGrad
-import matplotlib.pyplot as plt
 
 
 class ModelWrapper(LightningModule):
@@ -178,27 +177,3 @@ class ModelWrapper(LightningModule):
             mtl_backward(losses=layer_losses, features=layer_features, aggregator=UPGrad())
 
         opt.step()
-
-    def log_figure(self, name, fig, step=None):
-        """Log a matplotlib figure to the logger (Comet) if available."""
-        logger = getattr(self, 'logger', None)
-        if logger is not None and hasattr(logger, 'experiment'):
-            # Use the provided step or the current step if available
-            current_step = step if step is not None else getattr(self, 'global_step', None)
-            if hasattr(logger.experiment, 'log_figure'):
-                logger.experiment.log_figure(
-                    figure_name=name,
-                    figure=fig,
-                    step=current_step
-                )
-            elif hasattr(logger.experiment, 'log_image'):
-                logger.experiment.log_image(
-                    figure=fig,
-                    name=name,
-                    step=current_step
-                )
-            else:
-                print(f"Warning: Comet experiment does not support figure logging for {name}")
-            plt.close(fig)
-        else:
-            print(f"Warning: No Comet logger found for logging figure {name}")
