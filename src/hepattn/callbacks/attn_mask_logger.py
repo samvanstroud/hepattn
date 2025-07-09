@@ -5,7 +5,11 @@ class AttnMaskLogger(Callback):
     def _log_attention_mask(self, pl_module, model, step, layer, prefix="local_ca_mask"):
         """Helper method to create and log attention mask figures."""
         fig, ax = plt.subplots(constrained_layout=True, dpi=300)
-        im = ax.imshow(model._last_attn_mask.numpy(), aspect="auto", cmap='RdYlBu_r', vmin=0, vmax=1)
+        attn_mask = getattr(model, '_last_attn_mask', None)
+        if attn_mask is None:
+            return
+            
+        im = ax.imshow(attn_mask.numpy(), aspect="auto", cmap='RdYlBu_r', vmin=0, vmax=1)
         
         # Add colorbar with clear labels
         cbar = plt.colorbar(im, ax=ax, ticks=[0, 1])
@@ -18,18 +22,19 @@ class AttnMaskLogger(Callback):
         ax.set_ylabel('Queries')
         
         # Log directly to Comet
-        if hasattr(pl_module, 'logger') and pl_module.logger is not None:
-            if hasattr(pl_module.logger, 'experiment'):
-                pl_module.logger.experiment.log_figure(
-                    figure_name=f"{prefix}_step{step}_layer{layer}",
-                    figure=fig,
-                    step=step
-                )
+        logger = getattr(pl_module, 'logger', None)
+        if logger is not None and hasattr(logger, 'experiment'):
+            logger.experiment.log_figure(
+                figure_name=f"{prefix}_step{step}_layer{layer}",
+                figure=fig,
+                step=step
+            )
         
         plt.close(fig)
         
         # Clear the stored attention mask
-        del model._last_attn_mask
+        if hasattr(model, '_last_attn_mask'):
+            del model._last_attn_mask
         if hasattr(model, '_last_attn_mask_step'):
             del model._last_attn_mask_step
         if hasattr(model, '_last_attn_mask_layer'):
