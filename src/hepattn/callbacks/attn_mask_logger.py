@@ -33,12 +33,9 @@ class AttnMaskLogger(Callback):
         plt.close(fig)
         
         # Clear the stored attention mask
-        if hasattr(model, '_last_attn_mask'):
-            del model._last_attn_mask
-        if hasattr(model, '_last_attn_mask_step'):
-            del model._last_attn_mask_step
-        if hasattr(model, '_last_attn_mask_layer'):
-            del model._last_attn_mask_layer
+        for attr_name in ['_last_attn_mask', '_last_attn_mask_step', '_last_attn_mask_layer']:
+            if hasattr(model, attr_name):
+                delattr(model, attr_name)
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
@@ -53,9 +50,7 @@ class AttnMaskLogger(Callback):
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
         step = getattr(model, "step_", 0)
         
-        if step % 1000 == 0:
-            # Directly check for stored attention mask
-            if hasattr(model, '_last_attn_mask'):
-                step = getattr(model, '_last_attn_mask_step', 0)
-                layer = getattr(model, '_last_attn_mask_layer', 0)
-                self._log_attention_mask(pl_module, model, step, layer, "local_ca_mask")
+        if step % 1000 == 0 and hasattr(model, '_last_attn_mask'):
+            step = getattr(model, '_last_attn_mask_step', 0)
+            layer = getattr(model, '_last_attn_mask_layer', 0)
+            self._log_attention_mask(pl_module, model, step, layer, "local_ca_mask")
