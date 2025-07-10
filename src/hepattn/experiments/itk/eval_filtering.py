@@ -5,6 +5,7 @@ from pathlib import Path
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import yaml
 from scipy.stats import binned_statistic
 from tqdm import tqdm
@@ -24,7 +25,7 @@ def sigmoid(x):
 def main():
     # Arguments for the evaluation
     # First specify the config which will provide things like input info etc
-    config_path = Path("/share/rcifdata/maxhart/hepattn-test/hepattn/src/hepattn/experiments/itk/configs/filtering_pixel.yaml")
+    config_path = Path("/share/rcifdata/maxhart/hepattn/src/hepattn/experiments/itk/configs/filtering_pixel.yaml")
     recon_max_eta = 4.0
     recon_min_pt = 1.0
     recon_min_num_pixel = 3.0
@@ -47,11 +48,13 @@ def main():
         particle_min_pt=recon_min_pt,
         particle_max_abs_eta=recon_max_eta,
         particle_min_num_hits={"pixel": recon_min_num_pixel},
-        event_max_num_particles=5000,
+        event_max_num_particles=10000,
     )
 
     # Give the test eval file we are evaluating and setup the file
-    hit_eval_path = "/share/rcifdata/maxhart/hepattn-test/hepattn/logs/ITk_pixel_region135_eta4_900mev_20250428-T091926/ckpts/epoch=061-val_loss=0.43928_test_eval.h5"
+    hit_eval_path = "/share/rcifdata/maxhart/hepattn/logs/ITk_filtering_pixel_region135_3pix_eta4_900mev_PE_20250629-T133325/ckpts/epoch=099-val_loss=0.43550_test_eval.h5"
+
+    dump_path = Path("/share/rcifdata/maxhart/hepattn/src/hepattn/experiments/itk/eval_dump")
 
     # Define bins for particle retention rate under the nominal working point
     particle_bins = {"pt": np.linspace(0.5, 10.0, 32), "eta": np.linspace(-4, 4, 32), "phi": np.linspace(-np.pi, np.pi, 32)}
@@ -61,17 +64,17 @@ def main():
     num_hits_pre = []
     num_recon_parts_pre = []
 
-    working_points = [0.01, 0.05, 0.1]
+    working_points = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1]
     wp_num_hits_post = {wp: [] for wp in working_points}
     wp_num_recon_parts_post = {wp: [] for wp in working_points}
 
     hit = "pixel"
 
     # Working point that is used for the bulk plots
-    nominal_wp = 0.05
+    nominal_wp = 0.025
 
     # Iterate over the events
-    for idx in tqdm(range(100)):
+    for idx in tqdm(range(10)):
         # Load the data from the event
         sample_id = dataset.sample_ids[idx]
 
@@ -80,6 +83,13 @@ def main():
 
         with h5py.File(hit_eval_path, "r") as hit_eval_file:
             hit_logits = hit_eval_file[f"{sample_id}/outputs/final/{hit}_filter/{hit}_logit"][0]
+
+        event_name = dataset.sample_ids_to_event_names[sample_id]
+        dump_data_df = pd.DataFrame({
+            "hit_id": inputs["pixel_hit_id"],
+            "logit": hit_logits,
+            })
+        dump_data_df.to_csv(dump_path / f"{event_name}.csv", index=False)
 
         # Particles which are deemed reconstructable pre-filter
         particle_recon_pre = targets["particle_valid"]
@@ -128,13 +138,27 @@ def main():
 
     for wp in working_points:
         frac_recon_parts_retained = np.array(wp_num_recon_parts_post[wp]) / np.array(num_recon_parts_pre)
-        ax.scatter(np.array(wp_num_hits_post[wp]), frac_recon_parts_retained, label=wp, alpha=0.5)
+        num_hits_post = wp_num_hits_post[wp]
+        ax.errorbar(
+            np.mean(num_hits_post),
+            np.mean(frac_recon_parts_retained),
+            yerr=np.std(frac_recon_parts_retained),
+            xerr=np.std(num_hits_post),
+            label=wp,
+        )
 
-    ax.grid(zorder=0, alpha=0.25, linestyle="--")
-    ax.legend()
     ax.set_xscale("log")
     ax.set_xlabel("Number of Hits Retained")
     ax.set_ylabel("Fraction of Reconstructable Particles Retained")
+
+    ax.axvline(np.mean(num_hits_pre), color="gray", linestyle="-", label="No Filtering")
+    ax.axvline(np.mean(num_hits_pre) - np.std(num_hits_pre), color="gray", linestyle="--")
+    ax.axvline(np.mean(num_hits_pre) + np.std(num_hits_pre), color="gray", linestyle="--")
+
+    ax.grid(alpha=0.25, linestyle="--")
+    ax.legend()
+
+    ax.set_xticks([5e4, 7.5e4, 1e5, 1.25e5, 1.5e5, 2.0e5, 2.5e5])
 
     fig.savefig(plot_save_dir / Path("wp_scan.png"))
 
@@ -151,7 +175,7 @@ def main():
 
     ax.set_xlabel("Truth Particle $p_T$ [GeV]")
     ax.set_ylabel("Fraction of Reconstructable \n Particles Retained")
-    ax.set_ylim(0.97, 1.005)
+    ax.set_ylim(0.99, 1.01)
     ax.grid(zorder=0, alpha=0.25, linestyle="--")
 
     fig.savefig(plot_save_dir / Path("particle_recon_pt.png"))
@@ -169,7 +193,7 @@ def main():
 
     ax.set_xlabel(r"Truth Particle $\eta$")
     ax.set_ylabel("Fraction of Reconstructable \n Particles Retained")
-    ax.set_ylim(0.96, 1.005)
+    ax.set_ylim(0.99, 1.0)
     ax.grid(zorder=0, alpha=0.25, linestyle="--")
 
     fig.savefig(plot_save_dir / Path("particle_recon_eta.png"))
@@ -187,7 +211,7 @@ def main():
 
     ax.set_xlabel(r"Truth Particle $\phi$")
     ax.set_ylabel("Fraction of Reconstructable \n Particles Retained")
-    ax.set_ylim(0.97, 1.005)
+    ax.set_ylim(0.99, 1.0)
     ax.grid(zorder=0, alpha=0.25, linestyle="--")
 
     fig.savefig(plot_save_dir / Path("particle_recon_phi.png"))

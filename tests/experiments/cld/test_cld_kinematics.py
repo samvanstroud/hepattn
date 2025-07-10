@@ -16,7 +16,7 @@ def cld_datamodule():
     config_path = Path("src/hepattn/experiments/cld/configs/base.yaml")
     config = yaml.safe_load(config_path.read_text())["data"]
     config["num_workers"] = 0
-    config["batch_size"] = 50
+    config["batch_size"] = 10
 
     datamodule = CLDDataModule(**config)
     datamodule.setup(stage="fit")
@@ -34,7 +34,7 @@ def test_plot_cld_hit_coords(cld_datamodule):
     fig, ax = plt.subplots(4, 1)
     fig.set_size_inches(8, 6)
 
-    for item_name in dataloader.dataset.inputs:
+    for item_name in ["vtxd", "trkr"]:
         r = inputs[f"{item_name}_pos.r"][inputs[f"{item_name}_valid"]]
         phi = inputs[f"{item_name}_pos.phi"][inputs[f"{item_name}_valid"]]
         theta = inputs[f"{item_name}_pos.theta"][inputs[f"{item_name}_valid"]]

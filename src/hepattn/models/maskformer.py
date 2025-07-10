@@ -15,6 +15,8 @@ class MaskFormer(nn.Module):
         tasks: nn.ModuleList,
         num_queries: int,
         dim: int,
+        target_object: str = "particle",
+        pooling: nn.Module | None = None,
         matcher: nn.Module | None = None,
         input_sort_field: str | None = None,
         use_attn_masks: bool = True,
@@ -43,6 +45,8 @@ class MaskFormer(nn.Module):
             The number of object-level queries to initialize and decode.
         dim : int
             The dimensionality of the query and key embeddings.
+        target_object : str
+            The target object name which is used to mark valid/invalid objects during matching.
         input_sort_field : str or None, optional
             An optional key used to sort the input objects (e.g., for windowed attention).
         use_attn_masks : bool, optional
@@ -57,7 +61,9 @@ class MaskFormer(nn.Module):
         self.input_nets = input_nets
         self.encoder = encoder
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(**decoder_layer_config) for _ in range(num_decoder_layers)])
+        self.pooling = pooling
         self.tasks = tasks
+        self.target_object = target_object
         self.matcher = matcher
         self.num_queries = num_queries
         self.query_initial = nn.Parameter(torch.randn(num_queries, dim))
@@ -124,7 +130,12 @@ class MaskFormer(nn.Module):
 
         # Generate the queries that represent objects
         x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
-        x["query_valid"] = torch.full((batch_size, self.num_queries), True)
+        x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
+
+        # Do any pooling if desired
+        if self.pooling is not None:
+            x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
+            x[f"{self.pooling.output_name}_embed"] = x | x_pooled
 
         # Pass encoded inputs through decoder to produce outputs
         outputs = {}
@@ -186,6 +197,11 @@ class MaskFormer(nn.Module):
             for input_name in input_names:
                 x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
+            # Do any pooling if desired
+            if self.pooling is not None:
+                x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
+                x[f"{self.pooling.output_name}_embed"] = x | x_pooled
+
         # Get the final outputs - we don't need to compute attention masks or update things here
         outputs["final"] = {}
         for task in self.tasks:
@@ -237,7 +253,7 @@ class MaskFormer(nn.Module):
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
-        batch_idxs = torch.arange(targets["particle_valid"].shape[0]).unsqueeze(1)
+        batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
             layer_costs = None
 
@@ -270,10 +286,15 @@ class MaskFormer(nn.Module):
                 continue
 
             # Get the indicies that can permute the predictions to yield their optimal matching
-            pred_idxs = self.matcher(cost, targets["particle_valid"])
+            pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
 
             # Apply the permutation in place
             for task in self.tasks:
+                # Some tasks, such as hit-level or sample-level tasks, do not need permutation
+                if hasattr(task, "permute_loss"):
+                    if not task.permute_loss:
+                        continue
+
                 for output_name in task.outputs:
                     outputs[layer_name][task.name][output_name] = outputs[layer_name][task.name][output_name][batch_idxs, pred_idxs]
 

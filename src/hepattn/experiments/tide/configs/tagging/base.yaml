@@ -1,0 +1,278 @@
+name: TIDE_10M_100_40trk_F32_tagging
+
+data:
+  batch_size: 100
+  train_dir: /share/rcifdata/maxhart/data/ambi/train/
+  val_dir: /share/rcifdata/maxhart/data/ambi/val/
+  test_dir: /share/rcifdata/maxhart/data/ambi/test/
+  num_workers: 10
+  num_train: 10000000
+  num_test: 10000
+  num_val: 10000
+  precision: single
+
+  # Minimum track pT in GeV
+  track_min_pt: 1.0
+
+  # Maximum track d0 in mm
+  track_max_d0: 100.0
+
+  # Minimum number of each hit type required to be on a track for it
+  # to be deemed reconstructable / not dropped
+  track_min_num_hits:
+    pix: 2
+    sct: 4
+
+  # Maximum number of tracks allowed in an ROI before we drop the ROI
+  roi_max_num_tracks: &num_tracks 40
+
+  # The maximum number of tracks that can be dropped from track
+  # cuts before we drop the entire ROI
+  roi_max_num_dropped_tracks: 0
+
+  inputs:
+    pix:
+      # Global coordinates of the cluster space point
+      - x
+      - y
+      - z
+      # Layer and bec info
+      - layer
+      - bec
+      # Conformal coords
+      - u
+      - v
+      # Cylindrical coords
+      - s
+      - r
+      - theta
+      - eta
+      - phi
+      # ROI axis location in detector coords
+      - roi_eta
+      - roi_phi
+      - roi_theta
+      - roi_z0
+      # Coordinates in ROI frame
+      - dtheta
+      - deta
+      - dphi
+      # Module global orientation
+      - mod_norm_x
+      - mod_norm_y
+      - mod_norm_z
+      - mod_norm_phi
+      - mod_norm_theta
+      # Module coordinates
+      - mod_x
+      - mod_y
+      - mod_z
+      - mod_r
+      - mod_theta
+      - mod_eta
+      - mod_phi
+      # Module local coordinates
+      #- mod_loc_x
+      #- mod_loc_y
+      # Pixel specific fields
+      - log_charge
+      - lshift
+      - pitches
+      - log_charge_matrix
+    sct:
+      # Global coordinates of the cluster space point
+      - x
+      - y
+      - z
+      # Layer and bec info
+      - layer
+      - bec
+      # Conformal coords
+      - u
+      - v
+      # Cylindrical coords
+      - s
+      - r
+      - theta
+      - eta
+      - phi
+      # ROI axis location in detector coords
+      - roi_eta
+      - roi_phi
+      - roi_theta
+      - roi_z0
+      # Coordinates in ROI frame
+      - dtheta
+      - deta
+      - dphi
+      # Module global orientation
+      - mod_norm_x
+      - mod_norm_y
+      - mod_norm_z
+      - mod_norm_phi
+      - mod_norm_theta
+      # Module coordinates
+      - mod_x
+      - mod_y
+      - mod_z
+      - mod_r
+      - mod_theta
+      - mod_eta
+      - mod_phi
+      # Module local coordinates
+      #- mod_loc_x
+      #- mod_loc_y
+      # SCT specific fields
+      - side
+      - width
+
+  targets:
+    sudo:
+      # Track paramaters in global frame
+      - pt
+      - eta
+      - phi
+      - theta
+      - z0
+      - d0
+      - q
+      - qopt
+      # Track paramaters in the ROI frame
+      - dtheta
+      - deta
+      - dphi
+      - dz0
+      # Vertex location in global frame
+      - vx
+      - vy
+      - vz
+      # Scaled fields for the regression
+      - scaled_dz0
+      - scaled_d0
+      - scaled_qopt
+      - scaled_dtheta
+      - scaled_dphi
+      # Pseudotrack specific fields
+      - origin
+      - bhad_pt
+      - from_b
+      - from_c
+      - from_tau
+      - from_other
+      # Hit summary statistics
+      - num_pix
+      - num_sct
+      - num_shared_pix
+      - num_shared_sct
+      - num_layer_0_pix
+      - num_layer_1_pix
+      - num_shared_layer_0_pix
+      - num_shared_layer_1_pix
+
+    roi:
+      - eta
+      - phi
+      - energy
+      # Whether the ROI contains a b/c/tau/other
+      - has_b
+      - has_c
+      - has_tau
+      - has_other
+      # Whether the ROI is marked as a b/c/tau/other
+      - is_b
+      - is_c
+      - is_tau
+      - is_other
+
+# Training stuff here
+trainer:
+  max_epochs: 10
+  accelerator: gpu
+  devices: 1
+  precision: 32
+  log_every_n_steps: 10
+  default_root_dir: logs
+  gradient_clip_val: 0.1
+  accumulate_grad_batches: 1
+  enable_progress_bar: True
+  val_check_interval: 1000
+
+  # Specify loggers here
+  logger:
+    class_path: lightning.pytorch.loggers.CometLogger
+    init_args:
+      project_name: tide-tagging
+
+  # Specify any callback here
+  callbacks:
+    - class_path: hepattn.callbacks.Checkpoint
+      init_args:
+        monitor: train/loss
+        every_n_train_steps: 1000
+    - class_path: hepattn.callbacks.PredictionWriter
+      init_args:
+        write_inputs: false
+        write_outputs: true
+        write_preds: true
+        write_targets: false
+        write_losses: false
+    - class_path: lightning.pytorch.callbacks.ModelSummary
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    - class_path: lightning.pytorch.callbacks.TQDMProgressBar
+      init_args:
+        refresh_rate: 50
+
+model:
+  optimizer: lion
+
+  lrs_config:
+    initial: 1e-7
+    max: 1e-5
+    end: 1e-6
+    pct_start: 0.01
+    skip_scheduler: false
+    weight_decay: 1e-5
+
+  mtl: false
+
+  model:
+    class_path: hepattn.models.tagger.Tagger
+    init_args:
+      dim: &dim 256
+      encoder:
+        class_path: hepattn.models.Encoder
+        init_args:
+          num_layers: 8
+          dim: *dim
+          attn_type: torch
+
+      pooling:
+        class_path: hepattn.models.pooling.Pooling
+        init_args:
+          input_object: key
+          output_object: pool
+          dim: *dim
+
+      tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.ClassificationTask
+              init_args:
+                name: roi_tagging
+                input_object: pool
+                output_object: jet
+                target_object: roi
+                classes:
+                  - is_b
+                  - is_c
+                  - is_tau
+                  - is_other
+                class_weights:
+                  is_b: 7.41
+                  is_c: 5.71
+                  is_tau: 83.33
+                  is_other: 1.47
+                dim: *dim
+                loss_weight: 1.0
+                multilabel: false

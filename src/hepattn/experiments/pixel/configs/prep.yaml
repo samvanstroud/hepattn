@@ -1,0 +1,113 @@
+preprocessing:
+  # Directory containing the raw ROOT files to be preprocessed
+  input_dir: /share/lustre/maxhart/data/pixsplit/user.hart.mc23_13p6TeV.801172.JZ7.e8514_e8528_s4162_s4114_r14327.RadDamage.Mid2024.new.DAOD_IDTIDE_EXT0/
+
+  # Directory where the output preprocesed files will be saved
+  output_dir: /share/rcifdata/maxhart/data/pixsplit/mc23_prepped/train
+
+  input_file_extension: .root
+
+  # Random seed for splitting the dataset
+  random_seed: 0
+
+  # Maximum number of samples to be read in (-1 = use all available samples)
+  max_num_samples: -1
+
+  # Defines subsampling rate for each cluster multiplicity
+  # If none is given, then all clusters of that multiplicity are saved
+  cluster_multiplicity_subsample_frac:
+    1: 0.25
+
+  # Name of the tree in the ROOT file under which the data is contained
+  tree_name: CollectionTree;1
+
+  # Name of the prefix for the pixel cluster fields in the tree
+  fields_prefix: PixelClustersAuxDyn
+
+  # Mapping of names used in the ROOT file to shorter names saved by the preprocessing
+  # First the cluster fields that have a fixed size per cluster
+  cluster_fields:
+    charge: charge
+    identifier: identifier
+    # rdoIdentifierList
+    localX: local_X
+    localY: local_y
+    localXError: local_x_err
+    localYError: local_y_err
+    localXYCorrelation: local_xy_corr
+    globalX: global_x
+    globalY: global_y
+    globalZ: global_z
+    bec: bec
+    layer: layer
+    phi_module: module_phi
+    eta_module: module_eta
+    eta_pixel_index: eta_index
+    phi_pixel_index: phi_index
+    sizePhi: size_phi
+    sizeZ: size_z
+    nRDO: num_rdo
+    #ToT
+    #LVL1A
+    isFake: is_fake
+    gangedPixel: is_ganged
+    isSplit: is_split
+    splitProbability1: split_prob_1
+    splitProbability2: split_prob_2
+    NN_sizeX: charge_matrix_size_x
+    NN_sizeY: charge_matrix_size_y
+    #NN_phiBS
+    #NN_thetaBS
+    #NN_matrixOfToT
+    NN_matrixOfCharge: charge_matrix
+    NN_vectorOfPitchesY: pitch_vector
+    NN_etaPixelIndexWeightedPosition: weighted_eta_index
+    NN_phiPixelIndexWeightedPosition: weighted_phi_index
+    NN_localPhiPixelIndexWeightedPosition: local_weighted_phi_index
+    NN_localEtaPixelIndexWeightedPosition: local_weighted_eta_index
+    hasBSError: bs_error
+    DCSState: dcs_state
+    BiasVoltage: bias_voltage
+    Temperature: temperature
+    DepletionVoltage: depletion_voltage
+    LorentzShift: lorentz_shift
+    #detectorElementID
+    #waferID
+    #centroid_xphi: centroid_phi
+    #centroid_xeta: centroid_eta
+    #omegax
+    #omegay
+    #truth_barcode
+    broken: broken
+    #sihit_barcode
+
+  # Which fields are associated to particles on a cluster
+  particle_fields:
+    NN_positions_indexX: index_x
+    NN_positions_indexY: index_y
+    NN_positionsX: x
+    NN_positionsY: y
+    NN_theta: theta
+    NN_phi: phi
+    NN_barcode: barcode
+    NN_pdgid: pdgid
+    NN_energyDep: edep
+    NN_trueP: p
+    NN_motherBarcode: mother_barcode
+    NN_motherPdgid: mother_pdgid
+    NN_pathlengthX: pathlen_x
+    NN_pathlengthY: pathlen_y
+    NN_pathlengthZ: pathlen_z
+    truth_barcode: truth_barcode
+    sihit_barcode: sihit_barcode
+
+  # Which fields are associated to a pixel / RDO on a cluster
+  pixel_fields:
+    rdo_phi_pixel_index: phi_index
+    rdo_eta_pixel_index: eta_index
+    rdo_charge: charge
+    #rdo_tot
+    #rdo_Cterm
+    #rdo_Aterm
+    #rdo_Eterm
+ 

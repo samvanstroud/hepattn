@@ -1,0 +1,215 @@
+name: TIDE_10M_100_40trk_F32_tagging_hits
+
+data:
+  inputs:
+    pix:
+      # Global coordinates of the cluster space point
+      - x
+      - y
+      - z
+      # Layer and bec info
+      - layer
+      - bec
+      # Conformal coords
+      - u
+      - v
+      # Cylindrical coords
+      - s
+      - r
+      - theta
+      - eta
+      - phi
+      # ROI axis location in detector coords
+      - roi_eta
+      - roi_phi
+      - roi_theta
+      - roi_z0
+      # Coordinates in ROI frame
+      - dtheta
+      - deta
+      - dphi
+      # Module global orientation
+      - mod_norm_x
+      - mod_norm_y
+      - mod_norm_z
+      - mod_norm_phi
+      - mod_norm_theta
+      # Module coordinates
+      - mod_x
+      - mod_y
+      - mod_z
+      - mod_r
+      - mod_theta
+      - mod_eta
+      - mod_phi
+      # Module local coordinates
+      #- mod_loc_x
+      #- mod_loc_y
+      # Pixel specific fields
+      - log_charge
+      - lshift
+      - pitches
+      - log_charge_matrix
+    sct:
+      # Global coordinates of the cluster space point
+      - x
+      - y
+      - z
+      # Layer and bec info
+      - layer
+      - bec
+      # Conformal coords
+      - u
+      - v
+      # Cylindrical coords
+      - s
+      - r
+      - theta
+      - eta
+      - phi
+      # ROI axis location in detector coords
+      - roi_eta
+      - roi_phi
+      - roi_theta
+      - roi_z0
+      # Coordinates in ROI frame
+      - dtheta
+      - deta
+      - dphi
+      # Module global orientation
+      - mod_norm_x
+      - mod_norm_y
+      - mod_norm_z
+      - mod_norm_phi
+      - mod_norm_theta
+      # Module coordinates
+      - mod_x
+      - mod_y
+      - mod_z
+      - mod_r
+      - mod_theta
+      - mod_eta
+      - mod_phi
+      # Module local coordinates
+      #- mod_loc_x
+      #- mod_loc_y
+      # SCT specific fields
+      - side
+      - width
+
+model:
+  model:
+    class_path: hepattn.models.tagger.Tagger
+    init_args:
+      dim: &dim 256
+      input_nets:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: pix
+                fields:
+                  # Coordinates in global frame
+                  - x
+                  - y
+                  - z
+                  - s
+                  - r
+                  - theta
+                  - phi
+                  # Coordinates relative to ROI axis
+                  - dtheta
+                  - dphi
+                  # ROI axis location in detector coords
+                  - roi_theta
+                  - roi_phi
+                  - roi_z0
+                  # Module global orientation
+                  - mod_norm_x
+                  - mod_norm_y
+                  - mod_norm_z
+                  - mod_norm_phi
+                  - mod_norm_theta
+                  # Module coordinates
+                  - mod_x
+                  - mod_y
+                  - mod_z
+                  - mod_r
+                  - mod_theta
+                  - mod_phi
+                  # Pixel specific fields
+                  - log_charge
+                  - lshift
+                  - log_charge_matrix
+                  - pitches
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 81
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.FourierPositionEncoder
+                  init_args:
+                    input_name: pix
+                    dim: *dim
+                    fields:
+                      - x
+                      - y
+                      - z
+                      - r
+                      - dtheta
+                      - dphi
+
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: sct
+                fields:
+                  # Coordinates in global frame
+                  - x
+                  - y
+                  - z
+                  - s
+                  - r
+                  - theta
+                  - phi
+                  # Coordinates relative to ROI axis
+                  - dtheta
+                  - dphi
+                  # ROI axis location in detector coords
+                  - roi_theta
+                  - roi_phi
+                  - roi_z0
+                  # Module global orientation
+                  - mod_norm_x
+                  - mod_norm_y
+                  - mod_norm_z
+                  - mod_norm_phi
+                  - mod_norm_theta
+                  # Module coordinates
+                  - mod_x
+                  - mod_y
+                  - mod_z
+                  - mod_r
+                  - mod_theta
+                  - mod_phi
+                  # SCT specific fields
+                  - side
+                  - width
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 25
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.FourierPositionEncoder
+                  init_args:
+                    input_name: sct
+                    dim: *dim
+                    fields:
+                      - x
+                      - y
+                      - z
+                      - r
+                      - dtheta
+                      - dphi

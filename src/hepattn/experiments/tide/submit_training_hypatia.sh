@@ -6,7 +6,7 @@
 #SBATCH --export=ALL
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=24
 #SBATCH --mem=48G
 #SBATCH --output=/share/rcifdata/maxhart/hepattn/src/hepattn/experiments/tide/slurm_logs/slurm-%j.%x.out
 #SBATCH --error=/share/rcifdata/maxhart/hepattn/src/hepattn/experiments/tide/slurm_logs/slurm-%j.%x.out
@@ -38,7 +38,7 @@ export TMPDIR=/share/rcifdata/maxhart/tmp/
 echo "Running training script..."
 
 # Python command that will be run
-PYTORCH_CMD="python src/hepattn/experiments/tide/main.py fit --config src/hepattn/experiments/tide/configs/regression.yaml "
+PYTORCH_CMD="python src/hepattn/experiments/tide/main.py fit -c src/hepattn/experiments/tide/configs/tagging/base.yaml -c src/hepattn/experiments/tide/configs/tagging/sudo.yaml "
 # PYTORCH_CMD="python src/hepattn/experiments/tide/main.py fit --config /share/rcifdata/maxhart/hepattn/logs/TIDE_1M_100_32trk_F32_20250517-T092110/config.yaml --ckpt_path /share/rcifdata/maxhart/hepattn/logs/TIDE_1M_100_32trk_F32_20250517-T092110/ckpts/epoch=001-train_loss=73.99285.ckpt"
 
 # Pixi commnand that runs the python command inside the pixi env

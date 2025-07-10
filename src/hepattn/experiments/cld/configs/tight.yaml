@@ -1,0 +1,283 @@
+name: CLD_5_350_charged_10MeV_noise_neutrals_F16_fixed
+
+data:
+  # Paths to preprocessed data directories
+  train_dir: /share/rcifdata/maxhart/data/cld/prepped/train/
+  val_dir: /share/rcifdata/maxhart/data/cld/prepped/val/
+  test_dir: /share/rcifdata/maxhart/data/cld/prepped/test/
+
+  # Number of events to include in each set
+  num_workers: 10
+  num_train: -1
+  num_test: 100
+  num_val: 100
+
+  batch_size: 5
+
+  precision: 16
+
+  # Minimum pT for a particle to be deemed reconstructve in GeV
+  particle_min_pt: 0.1
+
+  # Number of query slots / particles to generate per event
+  event_max_num_particles: &num_particles 256
+
+  # Charged particle cuts based on hit content
+  charged_particle_min_num_hits:
+    vtxd: 4
+    trkr: 4
+    sihit: 8
+
+  # Neutral particle cuts based on hit content
+  charged_particle_max_num_hits:
+    vtxd: 12
+    trkr: 12
+    sihit: 18
+
+  particle_cut_veto_min_num_hits:
+    ecal: 10000
+    hcal: 10000
+
+  # Cuts on minimum calibrated calorimeter energy a particle should have in GeV
+  particle_min_calib_calo_energy:
+    ecal: 0.1
+    hcal: 0.1
+
+  # Cuts on minimum fraction of particle pT a hit should have
+  particle_hit_min_p_ratio:
+    vtxd: 0.01
+    trkr: 0.01
+
+  # Cuts on maximum deflection between subsequent hits
+  particle_hit_deflection_cuts:
+    vtxd:
+      max_angle: 0.25
+      num_passes: 8
+    trkr:
+      max_angle: 1.0
+      num_passes: 12
+
+  # Cuts on maximum distance between subsequent hit
+  particle_hit_separation_cuts:
+    vtxd:
+      max_dist: 0.25
+      num_passes: 8
+    trkr:
+      max_dist: 1.5
+      num_passes: 12
+
+  # Whether to include charged / neutral particles as targets
+  include_charged: true
+  include_neutral: true
+
+  truth_filter_hits: []
+    #- vtxd
+    #- trkr
+    #- ecal
+    #- hcal
+    #- muon
+
+  merge_inputs:
+    vtxd:
+      - vtb
+      - vte
+
+    trkr:
+      - itb
+      - ite
+      - otb
+      - ote
+
+    sihit:
+      - vtb
+      - vte
+      - itb
+      - ite
+      - otb
+      - ote
+
+    ecal:
+      - ecb
+      - ece
+
+    hcal:
+      - hcb
+      - hce
+      - hco
+
+    muon:
+      - msb
+      - mse
+
+  inputs:
+    vtxd:
+      - type
+      - quality
+      - pos.x
+      - pos.y
+      - pos.z
+      - pos.s
+      - pos.r
+      - pos.theta
+      - pos.eta
+      - pos.phi
+      - pos.u
+      - pos.v
+      - eDep
+      - eDepError
+      - time
+      - u.a
+      - u.b
+      - v.a
+      - v.b
+      - du
+      - dv
+
+    trkr:
+      - type
+      - quality
+      - pos.x
+      - pos.y
+      - pos.z
+      - pos.s
+      - pos.r
+      - pos.theta
+      - pos.eta
+      - pos.phi
+      - pos.u
+      - pos.v
+      - eDep
+      - eDepError
+      - time
+      - u.a
+      - u.b
+      - v.a
+      - v.b
+      - du
+      - dv
+
+    sihit:
+      - type
+
+    ecal:
+      - type
+      - pos.x
+      - pos.y
+      - pos.z
+      - pos.s
+      - pos.r
+      - pos.theta
+      - pos.eta
+      - pos.phi
+      - pos.u
+      - pos.v
+      - energy
+      - log_energy
+      - energyError
+      - time
+
+    hcal:
+      - type
+      - pos.x
+      - pos.y
+      - pos.z
+      - pos.s
+      - pos.r
+      - pos.theta
+      - pos.eta
+      - pos.phi
+      - pos.u
+      - pos.v
+      - energy
+      - log_energy
+      - energyError
+      - time
+
+    muon:
+      - type
+      - pos.x
+      - pos.y
+      - pos.z
+      - pos.s
+      - pos.r
+      - pos.theta
+      - pos.eta
+      - pos.phi
+      - pos.u
+      - pos.v
+      - energy
+      - log_energy
+      - energyError
+      - time
+
+  targets:
+    particle:
+      - PDG
+      - charge
+      - time
+      - mass
+      - vtx.x
+      - vtx.y
+      - vtx.z
+      - vtx.r
+      - mom.x
+      - mom.y
+      - mom.z
+      - mom.r
+      - mom.eta
+      - mom.phi
+      - mom.theta
+      - mom.eta_drad
+      - mom.phi_drad
+      - mom.rinv
+      - mom.qopt
+      - spin.x
+      - spin.y
+      - spin.z
+      - colorFlow.a
+      - colorFlow.b
+      - isCharged
+      - isNeutral
+      - num_vtxd
+      - num_trkr
+      - num_ecal
+      - num_hcal
+      - num_sihit
+      - isolation
+      - energy_ecal
+      - energy_hcal
+      - calib_energy_ecal
+      - calib_energy_hcal
+
+    particle_vtxd:
+      - pos.x
+      - pos.y
+      - pos.z
+      - mom.x
+      - mom.y
+      - mom.z
+      - mom.rinv
+      - mom.theta
+      - mom.phi
+
+    particle_trkr:
+      - pos.x
+      - pos.y
+      - pos.z
+      - mom.x
+      - mom.y
+      - mom.z
+      - mom.rinv
+      - mom.theta
+      - mom.phi
+
+    particle_ecal:
+      - energy
+      - energy_frac
+
+    particle_hcal:
+      - energy
+      - energy_frac
+
+    particle_muon:
+      - energy
