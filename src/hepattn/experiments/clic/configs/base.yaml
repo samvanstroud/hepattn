@@ -1,4 +1,4 @@
-name: CLIC_Pflow_FullDiceFocFix_bf16_mixed_4gpu_oldloss_modified
+name: CLIC_Pflow_FullDiceFocFix_bf16_mixed_merge
 seed_everything: 42
 
 data:
@@ -156,6 +156,7 @@ model:
                   object_ce: 2
                 costs:
                   object_ce: 2
+                has_intermediate_loss: true
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
@@ -184,6 +185,7 @@ model:
                   mask_bce: 5.0
                   mask_dice: 1.0
                   mask_focal: 2.0
+                has_intermediate_loss: true
                 dim: *dim
                 null_weight: 1.0
 

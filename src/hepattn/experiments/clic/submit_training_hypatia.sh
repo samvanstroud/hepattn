@@ -36,12 +36,12 @@ export TMPDIR=/share/gpu1/syw24/tmp
 echo "Running training script..."
 
 # Python command that will be run
-# CONFIG_PATH="/share/gpu1/syw24/hepattn/src/hepattn/experiments/clic/configs/base.yaml"
-# PYTORCH_CMD="python src/hepattn/experiments/clic/main.py fit --config $CONFIG_PATH"
+CONFIG_PATH="/share/gpu1/syw24/hepattn/src/hepattn/experiments/clic/configs/base.yaml"
+PYTORCH_CMD="python src/hepattn/experiments/clic/main.py fit --config $CONFIG_PATH"
 
-CONFIG_PATH="/share/gpu1/syw24/hepattn/logs/CLIC_Pflow_FullDiceFocFix_bf16_mixed_1gpu_oldloss_modified_20250708-T054437/config.yaml"
-CKPT_PATH="/share/gpu1/syw24/hepattn/logs/CLIC_Pflow_FullDiceFocFix_bf16_mixed_1gpu_oldloss_modified_20250708-T054437/ckpts/epoch=026-val_loss=3.98219.ckpt"
-PYTORCH_CMD="python src/hepattn/experiments/clic/main.py test --config $CONFIG_PATH --ckpt_path $CKPT_PATH --trainer.devices=1"
+# CONFIG_PATH="/share/gpu1/syw24/hepattn/logs/CLIC_Pflow_FullDiceFocFix_bf16_mixed_1gpu_oldloss_modified_20250708-T054437/config.yaml"
+# CKPT_PATH="/share/gpu1/syw24/hepattn/logs/CLIC_Pflow_FullDiceFocFix_bf16_mixed_1gpu_oldloss_modified_20250708-T054437/ckpts/epoch=026-val_loss=3.98219.ckpt"
+# PYTORCH_CMD="python src/hepattn/experiments/clic/main.py test --config $CONFIG_PATH --ckpt_path $CKPT_PATH --trainer.devices=1"
 
 # Pixi commnand that runs the python command inside the pixi env
 PIXI_CMD="pixi run $PYTORCH_CMD"

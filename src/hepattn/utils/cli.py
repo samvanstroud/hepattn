@@ -99,9 +99,9 @@ class CLI(LightningCLI):
             if isinstance(n_devices, list) and len(n_devices) > 1:
                 raise ValueError("Testing requires --trainer.devices=1")
 
-    # def after_instantiate_classes(self) -> None:
-    #     """After instantiating classes, set the checkpoint path if not provided."""
-    #     if self.subcommand == "test" and not self.trainer.ckpt_path:
-    #         config = self.config[self.subcommand]["config"]
-    #         assert len(config) == 1
-    #         self.trainer.ckpt_path = get_best_epoch(Path(config[0].rel_path))
+    def after_instantiate_classes(self) -> None:
+        """After instantiating classes, set the checkpoint path if not provided."""
+        if self.subcommand == "test" and not self.trainer.ckpt_path:
+            config = self.config[self.subcommand]["config"]
+            assert len(config) == 1
+            self.trainer.ckpt_path = get_best_epoch(Path(config[0].rel_path))

@@ -11,9 +11,9 @@ from hepattn.utils.scaling import FeatureScaler
 
 
 class Task(nn.Module, ABC):
-    def __init__(self):
+    def __init__(self, has_intermediate_loss: bool = False):
         super().__init__()
-        self.has_intermediate_loss = False
+        self.has_intermediate_loss = has_intermediate_loss
 
     @abstractmethod
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -112,7 +112,7 @@ class ObjectValidTask(Task):
 
     def loss(self, outputs, targets):
         losses = {}
-        output = outputs[self.name][self.output_object + "_logit"]
+        output = outputs[self.output_object + "_logit"]
         target = targets[self.target_object + "_valid"].type_as(output)
         sample_weight = target + self.null_weight * (1 - target)
         for loss_fn, loss_weight in self.losses.items():
@@ -161,7 +161,7 @@ class HitFilterTask(Task):
 
     def loss(self, outputs: dict, targets: dict) -> dict:
         # Pick out the field that denotes whether a hit is on a reconstructable object or not
-        output = outputs[self.name][f"{self.input_object}_logit"]
+        output = outputs[f"{self.input_object}_logit"]
         target = targets[f"{self.input_object}_{self.target_field}"].type_as(output)
 
         # Calculate the BCE loss with class weighting
@@ -268,7 +268,7 @@ class ObjectHitMaskTask(Task):
         return costs
 
     def loss(self, outputs, targets):
-        output = outputs[self.name][self.output_object_hit + "_logit"]
+        output = outputs[self.output_object_hit + "_logit"]
         target = targets[self.target_object_hit + "_valid"].type_as(output)
 
         hit_pad = targets[self.input_hit + "_valid"]
@@ -315,7 +315,7 @@ class RegressionTask(Task):
 
     def loss(self, outputs, targets):
         target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1)
-        output = outputs[self.name][self.output_object + "_regr"]
+        output = outputs[self.output_object + "_regr"]
 
         # Only compute loss for valid targets
         mask = targets[self.target_object + "_valid"].clone()
@@ -431,7 +431,6 @@ class ObjectClassificationTask(Task):
         loss_class_weights: list[float] | None = None,
         null_weight: float = 1.0,
         mask_queries: bool = False,
-        inter_loss: bool = True,
     ):
         """Task used for object classification.
 
@@ -466,7 +465,6 @@ class ObjectClassificationTask(Task):
         self.losses = losses
         self.costs = costs
         self.num_classes = num_classes
-        self.has_intermediate_loss = inter_loss
 
         class_weights = torch.ones(self.num_classes + 1, dtype=torch.float32)
         if loss_class_weights is not None:
@@ -506,7 +504,7 @@ class ObjectClassificationTask(Task):
 
     def loss(self, outputs, targets):
         losses = {}
-        output = outputs[self.name][self.output_object + "_class_prob"]
+        output = outputs[self.output_object + "_class_prob"]
         target = targets[self.target_object + "_class"].long()
         # Calculate the loss from each specified loss function.
         for loss_fn, loss_weight in self.losses.items():
@@ -571,7 +569,7 @@ class IncidenceRegressionTask(Task):
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         losses = {}
-        output = outputs[self.name][self.output_object + "_incidence"]
+        output = outputs[self.output_object + "_incidence"]
         target = targets[self.target_object + "_incidence"].type_as(output)
 
         # Create a mask for valid nodes and objects
@@ -698,7 +696,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         output_class = outputs["classification"][self.output_object + "_class_prob"].detach().argmax(-1)
         for i, field in enumerate(self.fields):
             target = targets[self.target_object + "_" + field]
-            output = outputs[self.name][self.output_object + "_regr"][..., i]
+            output = outputs[self.output_object + "_regr"][..., i]
             mask = targets[self.target_object + "_valid"].clone()
             if self.split_charge_neutral_loss and field in self.loss_masks:
                 mask = mask & self.loss_masks[field](output_class, target_class)

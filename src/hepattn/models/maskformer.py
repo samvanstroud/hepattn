@@ -2,6 +2,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoderLayer
+from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 
 
 class MaskFormer(nn.Module):
@@ -138,10 +139,10 @@ class MaskFormer(nn.Module):
                 task_outputs = task(x)
 
                 # Need this for incidence-based regression task
-                if task.name == "incidence":
+                if isinstance(task, IncidenceRegressionTask):
                     # Assume that the incidence task has only one output
                     x["incidence"] = task_outputs[task.outputs[0]].detach()
-                if task.name == "classification":
+                if isinstance(task, ObjectClassificationTask):
                     # Assume that the classification task has only one output
                     x["class_probs"] = task_outputs[task.outputs[0]].detach()
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
@@ -283,6 +284,6 @@ class MaskFormer(nn.Module):
             for task in self.tasks:
                 if layer_name != "final" and not task.has_intermediate_loss:
                     continue
-                losses[layer_name][task.name] = task.loss(outputs[layer_name], targets)
+                losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses
