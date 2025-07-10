@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 from lightning.pytorch.callbacks import Callback
+from matplotlib.colors import ListedColormap
 
 class AttnMaskLogger(Callback):
     def _log_attention_mask(self, pl_module, model, step, layer, prefix="local_ca_mask"):
@@ -8,8 +9,11 @@ class AttnMaskLogger(Callback):
         attn_mask = getattr(model, '_last_attn_mask', None)
         if attn_mask is None:
             return
+
+        cmap = ListedColormap(['#4575b4', '#d73027'])  # blue for 0, red for 1
+        im = ax.imshow(attn_mask.numpy().astype(int), aspect="auto", cmap=cmap, vmin=0, vmax=1, interpolation='nearest')
             
-        im = ax.imshow(attn_mask.numpy(), aspect="auto", cmap='RdYlBu_r', vmin=0, vmax=1)
+        # im = ax.imshow(attn_mask.numpy(), aspect="auto", cmap='RdYlBu_r', vmin=0, vmax=1)
         
         # Add colorbar with clear labels
         cbar = plt.colorbar(im, ax=ax, ticks=[0, 1])
