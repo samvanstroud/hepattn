@@ -1,4 +1,4 @@
-name: CLIC_Pflow_FullDiceFocFix_128
+name: CLIC_Pflow_FullDiceFocFix_bf16_mixed_4gpu_oldloss_modified
 seed_everything: 42
 
 data:
@@ -27,7 +27,7 @@ data:
   test_path: /share/gpu1/syw24/dmitrii_clic/test_clic_fix.root
 
   # Number of events to include in each set
-  num_workers: 10
+  num_workers: 8
   num_train: -1
   num_test: -1
   num_val: 5000
@@ -35,14 +35,15 @@ data:
   batch_size: 128
   incidence_cutval: 0.01
 
-  scale_dict_path: &scale_dict_path /home/syw24/ftag/hepattn/src/hepattn/experiments/clic/configs/clic_var_transform.yaml
+  scale_dict_path: &scale_dict_path /share/gpu1/syw24/hepattn/src/hepattn/experiments/clic/configs/clic_var_transform.yaml
 
 # Training stuff here
 trainer:
   gradient_clip_val: 0.1
   max_epochs: 200
+  strategy: ddp
   accelerator: gpu
-  devices: 1
+  devices: 4
   precision: bf16-mixed
   default_root_dir: logs
   enable_progress_bar: True
@@ -51,7 +52,7 @@ trainer:
   logger:
     class_path: lightning.pytorch.loggers.CometLogger
     init_args:
-      project_name: hepattn_clic
+      project_name: hepattn-clic
 
   callbacks:
     - class_path: hepattn.callbacks.InferenceTimer
@@ -60,7 +61,7 @@ trainer:
       init_args:
         monitor: val/loss
         save_last: true
-        every_n_train_steps: 1000
+        # every_n_train_steps: 1000
     - class_path: hepattn.experiments.clic.PflowPredictionWriter
       # init_args:
       #   write_inputs: true
@@ -127,7 +128,6 @@ model:
             num_heads: 16
 
       num_decoder_layers: 4
-      intermediate_losses: false
       decoder_layer_config:
         dim: *dim
         mask_attention: true
@@ -175,7 +175,7 @@ model:
                 output_object: pflow
                 target_object: particle
                 pred_threshold: 0.1
-                logit_scale: 1
+                logit_scale: 4
                 losses:
                   mask_bce: 5.0
                   mask_dice: 1.0

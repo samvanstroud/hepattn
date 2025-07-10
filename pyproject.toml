@@ -8,6 +8,8 @@ requires-python = "== 3.12"
 version = "0.1.0"
 dependencies = [
     "packaging",
+    "jupyter",
+    "ipykernel",
     "wheel",
     "numpy",
     "scipy",

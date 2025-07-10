@@ -1,9 +1,9 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from scipy.optimize import curve_fit
 from tqdm import tqdm
 
-from .style_sheet import FIG_W, FIG_H_1ROW, FIG_DPI
+from .style_sheet import FIG_DPI, FIG_H_1ROW, FIG_W
 from .utils import custom_hist_v1, custom_hist_v2, update_stylesheet
 
 
@@ -34,7 +34,7 @@ def compute_jet_residual_dict(matched_jets_dict, dr_cut=0.1, leading_N_jets=999,
         matched_count = 0
         for ev_i in range(entry_start, n_events_):
             ref_jets_ev, reco_jets_ev = ref_jets[ev_i], reco_jets[ev_i]
-            for j_i, (ref_j, reco_j) in enumerate(zip(ref_jets_ev, reco_jets_ev)):
+            for j_i, (ref_j, reco_j) in enumerate(zip(ref_jets_ev, reco_jets_ev, strict=False)):
                 dR = ref_j.delta_R(reco_j)
                 if dR < dr_cut and ref_j.pt > pt_min and abs(ref_j.eta) < eta_max:
                     residual_dict[name]["pt"].append(reco_j.pt - ref_j.pt)
@@ -58,7 +58,7 @@ def compute_jet_residual_dict(matched_jets_dict, dr_cut=0.1, leading_N_jets=999,
         f_matched = matched_count / ref_count
         residual_dict[name]["f_matched"] = f_matched
 
-    for key in residual_dict.keys():
+    for key in residual_dict:
         for var in residual_dict[key].keys():
             residual_dict[key][var] = np.array(residual_dict[key][var])
 
@@ -73,10 +73,10 @@ def plot_jet_residuals(residual_dict, pt_relative=True, stylesheet=None, separat
         "pt_rel": "Jet $(p_T^{reco} - p_T^{truth})/p_T^{truth}$",
         "e": "Jet $E^{reco} - E^{truth}$ [GeV]",
         "e_rel": "Jet $(E^{reco} - E^{truth})/E^{truth}$",
-        "eta": "Jet $\eta^{reco} - \eta^{truth}$",
-        "phi": "Jet $\phi^{reco} - \phi^{truth}$",
-        "dR": "Jet $\Delta R \\left( truth, \\; reco \\right)$",
-        "nconst": "$\Delta$ number of jet constituents",
+        "eta": r"Jet $\eta^{reco} - \eta^{truth}$",
+        "phi": r"Jet $\phi^{reco} - \phi^{truth}$",
+        "dR": "Jet $\\Delta R \\left( truth, \\; reco \\right)$",
+        "nconst": r"$\Delta$ number of jet constituents",
     }
 
     vars = ["pt", "dR", "nconst", "e_rel"]  # 'eta', 'phi']
@@ -94,8 +94,8 @@ def plot_jet_residuals(residual_dict, pt_relative=True, stylesheet=None, separat
             ax = fig.add_subplot(gs[v_i])
 
         comb = np.hstack([residual_dict[key][var] for key in residual_dict.keys()])
-        _min, _max = np.percentile(comb, 2), np.percentile(comb, 98)  # COCOA
-        # _min, _max = np.percentile(comb, 5), np.percentile(comb, 95) # CLIC
+        # _min, _max = np.percentile(comb, 2), np.percentile(comb, 98)  # COCOA
+        _min, _max = np.percentile(comb, 5), np.percentile(comb, 95)  # CLIC
         abs_max = max(abs(_min), abs(_max))
         bins = np.linspace(-abs_max, abs_max, 50)
         if var == "dR":
@@ -120,7 +120,7 @@ def plot_jet_residuals(residual_dict, pt_relative=True, stylesheet=None, separat
                     res[var],
                     label_length=_LABEL_LEN[name],
                     metrics="mean std iqr",
-                    f=residual_dict[name]["f_matched"],
+                    f=res["f_matched"],
                     bins=bins,
                     histtype=_HISTTYPES[name],
                     label=_LABELS[name],
@@ -157,7 +157,7 @@ def plot_jet_res_boxplot(residual_dict, var="pt", bins=None, stylesheet=None):
 
     boxplot_data = []
     labels = []
-    for bin_i, (bin_min, bin_max) in enumerate(zip(bin_mins, bin_maxs)):
+    for bin_i, (bin_min, bin_max) in enumerate(zip(bin_mins, bin_maxs, strict=False)):
         bin_data = []
         for name, res in residual_dict.items():
             mask = (res[f"ref_{var}"] > bin_min) & (res[f"ref_{var}"] < bin_max)
@@ -169,9 +169,9 @@ def plot_jet_res_boxplot(residual_dict, var="pt", bins=None, stylesheet=None):
     ax.hlines(0, -1, len(bin_mids) * (len(residual_dict) + 1), color="black", linestyle="--", alpha=0.5, label="_nolegend_")
 
     # Plot box plots
-    for i, (bin_mid, data) in enumerate(zip(bin_mids, boxplot_data)):
+    for i, (bin_mid, data) in enumerate(zip(bin_mids, boxplot_data, strict=False)):
         positions = np.arange(len(data)) + i * (len(data) + 1)
-        for j, (name, d) in enumerate(zip(residual_dict.keys(), data)):
+        for j, (name, d) in enumerate(zip(residual_dict.keys(), data, strict=False)):
             ax.boxplot(
                 d,
                 positions=[positions[j]],
@@ -188,13 +188,13 @@ def plot_jet_res_boxplot(residual_dict, var="pt", bins=None, stylesheet=None):
     ax.set_xticks(np.arange(len(bin_mids)) * (len(residual_dict) + 1) + len(residual_dict) / 2)
     if var == "pt":
         xlabel = "Jet $p_T^{truth}$ [GeV]"
-        ax.set_xticklabels([f"{bin_min}-{bin_max}" for bin_min, bin_max in zip(bin_mins, bin_maxs)])
+        ax.set_xticklabels([f"{bin_min}-{bin_max}" for bin_min, bin_max in zip(bin_mins, bin_maxs, strict=False)])
     elif var == "eta":
-        xlabel = "Jet $\eta^{truth}$"
-        ax.set_xticklabels([f"{bin_min:.1f}-{bin_max:.1f}" for bin_min, bin_max in zip(bin_mins, bin_maxs)])
+        xlabel = r"Jet $\eta^{truth}$"
+        ax.set_xticklabels([f"{bin_min:.1f}-{bin_max:.1f}" for bin_min, bin_max in zip(bin_mins, bin_maxs, strict=False)])
     elif var == "e":
         xlabel = "Jet $E^{truth}$ [GeV]"
-        ax.set_xticklabels([f"{bin_min}-{bin_max}" for bin_min, bin_max in zip(bin_mins, bin_maxs)])
+        ax.set_xticklabels([f"{bin_min}-{bin_max}" for bin_min, bin_max in zip(bin_mins, bin_maxs, strict=False)])
     ax.set_xlabel(xlabel)
     ax.set_ylabel("Jet ($p_T^{reco} - p_T^{truth}) / p_T^{truth}$")
     ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
@@ -231,7 +231,7 @@ def plot_jet_response_old(residual_dict, pt_bins=None, stylesheet=None, separate
         y_vals1 = np.full(len(pt_mids), np.nan)
         y_vals2 = np.full(len(pt_mids), np.nan)
 
-        for pt_i, (pt_min, pt_max) in enumerate(zip(pt_mins, pt_maxs)):
+        for pt_i, (pt_min, pt_max) in enumerate(zip(pt_mins, pt_maxs, strict=False)):
             mask = (res[f"ref_{pt_or_e}"] > pt_min) & (res[f"ref_{pt_or_e}"] < pt_max)
             if np.sum(mask) == 0:
                 continue
@@ -247,10 +247,10 @@ def plot_jet_response_old(residual_dict, pt_bins=None, stylesheet=None, separate
         ax1.plot(pt_mids, y_vals1, label=_LABELS[name], color=_COLORS[name], linestyle=_LINE_STYLES[name], marker="o")
         ax2.plot(pt_mids, y_vals2, label=_LABELS[name], color=_COLORS[name], linestyle=_LINE_STYLES[name], marker="o")
 
-    ax1.set_ylabel("Jet $\sigma \\left( p_T^{reco} / p_T^{truth} \\right) / \mu \\left( p_T^{reco} / p_T^{truth} \\right)$")
+    ax1.set_ylabel("Jet $\\sigma \\left( p_T^{reco} / p_T^{truth} \\right) / \\mu \\left( p_T^{reco} / p_T^{truth} \\right)$")
     ax2.set_ylabel("Jet $IQR \\left( p_T^{reco} / p_T^{truth} \\right) / median \\left( p_T^{reco} / p_T^{truth} \\right)$")
     if use_energy:
-        ax1.set_ylabel("Jet $\sigma \\left( E^{reco} / E^{truth} \\right) / \mu \\left( E^{reco} / E^{truth} \\right)$")
+        ax1.set_ylabel("Jet $\\sigma \\left( E^{reco} / E^{truth} \\right) / \\mu \\left( E^{reco} / E^{truth} \\right)$")
         ax2.set_ylabel("Jet $IQR \\left( E^{reco} / E^{truth} \\right) / median \\left( E^{reco} / E^{truth} \\right)$")
 
     for ax in [ax1, ax2]:
@@ -277,16 +277,16 @@ def plot_jet_response(residual_dict, pt_bins=None, stylesheet=None, separate_fig
         if std is not None:
             std = std
         elif iqr is not None:
-            ### IQR ≈ 1.35 * std
+            # IQR ≈ 1.35 * std
             std = iqr / 1.35
         else:
             raise ValueError("Either std or iqr must be provided")
 
-        ### SE(Median) ≈ 1.253 * std / sqrt(N)
+        # SE(Median) ≈ 1.253 * std / sqrt(N)
         return 1.253 * std / np.sqrt(n)
 
     def error_on_iqr(n, iqr):
-        ### SE(IQR) ≈ 1.16 * IQR / sqrt(N)
+        # SE(IQR) ≈ 1.16 * IQR / sqrt(N)
         return 1.16 * iqr / np.sqrt(n)
 
     _COLORS, _LABELS, _HISTTYPES, _ALPHAS, _LINE_STYLES, _LABEL_LEN = update_stylesheet(stylesheet)
@@ -329,7 +329,7 @@ def plot_jet_response(residual_dict, pt_bins=None, stylesheet=None, separate_fig
         y_iqrs = np.full(len(pt_mids), np.nan)
         ns = np.full(len(pt_mids), np.nan)
 
-        for pt_i, (pt_min, pt_max) in enumerate(zip(pt_mins, pt_maxs)):
+        for pt_i, (pt_min, pt_max) in enumerate(zip(pt_mins, pt_maxs, strict=False)):
             mask = (res[f"ref_{pt_or_e}"] > pt_min) & (res[f"ref_{pt_or_e}"] < pt_max)
             if np.sum(mask) == 0:
                 continue
@@ -412,7 +412,7 @@ def plot_jet_response_gaussian_fit(residual_dict, pt_bins=None, stylesheet=None,
 
     response_dict = {k: np.full(len(pt_mids), np.nan) for k in residual_dict.keys()}
 
-    for pt_i, (pt_min, pt_max) in enumerate(zip(pt_mins, pt_maxs)):
+    for pt_i, (pt_min, pt_max) in enumerate(zip(pt_mins, pt_maxs, strict=False)):
         res_dict_pt_i = {}
         for name, res in residual_dict.items():
             mask = (res[f"ref_{pt_or_e}"] > pt_min) & (res[f"ref_{pt_or_e}"] < pt_max)
@@ -463,10 +463,10 @@ def plot_jet_response_gaussian_fit(residual_dict, pt_bins=None, stylesheet=None,
     fig, ax = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI)
     for name, response in response_dict.items():
         ax.plot(pt_mids, response, label=_LABELS[name], color=_COLORS[name], linestyle=_LINE_STYLES[name], marker="o")
-    ax.set_ylabel("Jet $\sigma \\left( p_T^{reco} / p_T^{truth} \\right) / \mu \\left( p_T^{reco} / p_T^{truth} \\right)$")
+    ax.set_ylabel("Jet $\\sigma \\left( p_T^{reco} / p_T^{truth} \\right) / \\mu \\left( p_T^{reco} / p_T^{truth} \\right)$")
     ax.set_xlabel("Jet $p_T^{truth}$ [GeV]")
     if use_energy:
-        ax.set_ylabel("Jet $\sigma \\left( E^{reco} / E^{truth} \\right) / \mu \\left( E^{reco} /E^{truth} \\right)$")
+        ax.set_ylabel("Jet $\\sigma \\left( E^{reco} / E^{truth} \\right) / \\mu \\left( E^{reco} /E^{truth} \\right)$")
         ax.set_xlabel("Jet $E^{truth}$ [GeV]")
     ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
     ax.minorticks_on()
@@ -487,7 +487,7 @@ def plot_jet_marginals(jet_dict, nleading=1, stylesheet=None):
     fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW * 2), dpi=FIG_DPI)
     gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
 
-    varname_dict = {"pt": "Jet $p_T$ [GeV]", "eta": "Jet $\eta$", "phi": "Jet $\phi$"}
+    varname_dict = {"pt": "Jet $p_T$ [GeV]", "eta": r"Jet $\eta$", "phi": r"Jet $\phi$"}
     jet_dict_mod = {}
 
     for i, (name, jets) in enumerate(jet_dict.items()):
@@ -549,7 +549,7 @@ def compute_event_energy_residuals(ref, comp_dict):
             ev_eres_dict[name]["charged"].append(comp_dict[name]["e"][ev_i][_ch_mask_ev].sum() - ref_ch_energy_ev)
             ev_eres_dict[name]["neutral"].append(comp_dict[name]["e"][ev_i][~_ch_mask_ev].sum() - ref_neut_energy_ev)
 
-    for name in ev_eres_dict.keys():
+    for name in ev_eres_dict:
         ev_eres_dict[name]["charged"] = np.array(ev_eres_dict[name]["charged"])
         ev_eres_dict[name]["neutral"] = np.array(ev_eres_dict[name]["neutral"])
 
@@ -584,7 +584,7 @@ def plot_event_neut_energy_res(ev_eres_dict, stylesheet=None):
             )
 
         ax.set_title(f"$p_T = ${pt_key} GeV")
-        ax.set_xlabel("$E_\mathrm{neutral} / E_{\pi^+}$")
+        ax.set_xlabel(r"$E_\mathrm{neutral} / E_{\pi^+}$")
         ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
         ax.minorticks_on()
         ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
@@ -630,7 +630,7 @@ def plot_met_res_and_ht_res(truth_pt, truth_phi, comp_dict, stylesheet=None, sep
 
     comb_met = []
     comb_ht = []
-    for name in met_res_dict.keys():
+    for name in met_res_dict:
         comb_met.append(met_res_dict[name])
         comb_ht.append(ht_res_dict[name])
     comb_met = np.hstack(comb_met)
@@ -683,8 +683,7 @@ def plot_met_res_and_ht_res(truth_pt, truth_phi, comp_dict, stylesheet=None, sep
         ax.set_ylabel("Events")
     if separate_figures:
         return fig1, fig2
-    else:
-        return fig1
+    return fig1
 
 
 def get_invariant_mass(jets, option="two-jet"):

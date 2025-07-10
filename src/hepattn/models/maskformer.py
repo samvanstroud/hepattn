@@ -52,6 +52,7 @@ class MaskFormer(nn.Module):
             A list of variable names that passed to tasks without embedding.
         """
         super().__init__()
+
         self.input_nets = input_nets
         self.encoder = encoder
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(**decoder_layer_config) for _ in range(num_decoder_layers)])
@@ -230,7 +231,7 @@ class MaskFormer(nn.Module):
         ----------
         outputs:
             The outputs produces the forward pass of the model.
-        outputs:
+        targets:
             The data containing the targets.
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
@@ -255,13 +256,20 @@ class MaskFormer(nn.Module):
                     else:
                         layer_costs = cost
 
-            costs[layer_name] = layer_costs.detach()
+            # Added to allow completely turning off inter layer loss
+            # Possibly redundant as completely switching them off performs worse
+            if layer_costs is not None:
+                layer_costs = layer_costs.detach()
 
-        batch_idxs = torch.arange(targets["particle_valid"].shape[0]).unsqueeze(1)
+            costs[layer_name] = layer_costs
+
         # Permute the outputs for each output in each layer
-        for layer_name in costs:
+        for layer_name, cost in costs.items():
+            if cost is None:
+                continue
+
             # Get the indicies that can permute the predictions to yield their optimal matching
-            pred_idxs = self.matcher(costs[layer_name], targets["particle_valid"])
+            pred_idxs = self.matcher(cost, targets["particle_valid"])
 
             # Apply the permutation in place
             for task in self.tasks:
@@ -273,6 +281,8 @@ class MaskFormer(nn.Module):
         for layer_name in outputs:
             losses[layer_name] = {}
             for task in self.tasks:
+                if layer_name != "final" and not task.has_intermediate_loss:
+                    continue
                 losses[layer_name][task.name] = task.loss(outputs[layer_name], targets)
 
         return losses

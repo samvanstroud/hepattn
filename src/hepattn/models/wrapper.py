@@ -64,7 +64,7 @@ class ModelWrapper(LightningModule):
 
             # If the task returned a non-empty metrics dict, log it
             if task_metrics:
-                self.log_dict({f"{stage}/final_{task.name}_{k}": v for k, v in task_metrics.items()})
+                self.log_dict({f"{stage}/final_{task.name}_{k}": v for k, v in task_metrics.items()}, sync_dist=True)
 
     def log_metrics(self, preds, targets, stage):
         # First log any task metrics
