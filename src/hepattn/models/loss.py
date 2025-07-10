@@ -285,13 +285,6 @@ def kl_div_cost(pred_logits, true, eps=1e-8):
     return (-true[:, None, :] * torch.log(pred_logits[:, :, None] + eps)).mean(-1)
 
 
-# def kl_div_cost(pred_logits, true, eps=1e-8):
-#     with torch.autocast(device_type="cuda", enabled=False):
-#         log_pred = torch.log(pred_logits + eps)
-#         cost = -torch.einsum("bql,btl->bqt", log_pred, true)
-#     return cost
-
-
 def regr_mse_loss(pred, targets):
     return torch.nn.functional.mse_loss(pred, targets, reduction="none")
 
