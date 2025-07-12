@@ -40,6 +40,9 @@ class Task(nn.Module, ABC):
     def query_mask(self, outputs, **kwargs):
         return None
 
+    def loss_kwargs(self, outputs: dict[str, dict[str, Tensor]], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        return {}
+
 
 class ObjectValidTask(Task):
     def __init__(
@@ -53,6 +56,7 @@ class ObjectValidTask(Task):
         dim: int,
         null_weight: float = 1.0,
         mask_queries: bool = False,
+        has_intermediate_loss: bool = False,
     ):
         """Task used for classifying whether object candidates / seeds should be
         taken as reconstructed / pred objects or not.
@@ -77,7 +81,7 @@ class ObjectValidTask(Task):
             Weight applied to the null class in the loss. Useful if many instances of
             the target class are null, and we need to reweight to overcome class imbalance.
         """
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss)
 
         self.name = name
         self.input_object = input_object
@@ -137,9 +141,10 @@ class HitFilterTask(Task):
         threshold: float = 0.1,
         mask_keys: bool = False,
         loss_fn: Literal["bce", "focal", "both"] = "bce",
+        has_intermediate_loss: bool = False,
     ):
         """Task used for classifying whether hits belong to reconstructable objects or not."""
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss)
 
         self.name = name
         self.hit_name = hit_name
@@ -209,8 +214,9 @@ class ObjectHitMaskTask(Task):
         target_field: str = "valid",
         logit_scale: float = 1.0,
         pred_threshold: float = 0.5,
+        has_intermediate_loss: bool = False,
     ):
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss)
 
         self.name = name
         self.input_hit = input_hit
@@ -299,8 +305,9 @@ class RegressionTask(Task):
         fields: list[str],
         loss_weight: float,
         cost_weight: float,
+        has_intermediate_loss: bool = False,
     ):
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss)
 
         self.name = name
         self.output_object = output_object
@@ -518,8 +525,9 @@ class ObjectRegressionTask(RegressionTask):
         loss_weight: float,
         cost_weight: float,
         dim: int,
+        has_intermediate_loss: bool = False,
     ):
-        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight)
+        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, has_intermediate_loss=has_intermediate_loss)
 
         self.input_object = input_object
         self.inputs = [input_object + "_embed"]
@@ -559,8 +567,9 @@ class ObjectHitRegressionTask(RegressionTask):
         loss_weight: float,
         cost_weight: float,
         dim: int,
+        has_intermediate_loss: bool = False,
     ):
-        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight)
+        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, has_intermediate_loss=has_intermediate_loss)
 
         self.input_hit = input_hit
         self.input_object = input_object
@@ -687,6 +696,7 @@ class ObjectClassificationTask(Task):
         loss_class_weights: list[float] | None = None,
         null_weight: float = 1.0,
         mask_queries: bool = False,
+        has_intermediate_loss: bool = False,
     ):
         """Task used for object classification.
 
@@ -712,7 +722,7 @@ class ObjectClassificationTask(Task):
             Weight applied to the null class in the loss. Useful if many instances of
             the target class are null, and we need to reweight to overcome class imbalance.
         """
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss)
 
         self.name = name
         self.input_object = input_object
@@ -786,9 +796,10 @@ class IncidenceRegressionTask(Task):
         costs: dict[str, float],
         net: nn.Module,
         node_net: nn.Module | None = None,
+        has_intermediate_loss: bool = False,
     ):
         """Incidence regression task."""
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss)
         self.name = name
         self.input_hit = input_hit
         self.input_object = input_object
@@ -855,6 +866,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         use_incidence: bool = True,
         use_nodes: bool = False,
         split_charge_neutral_loss: bool = False,
+        has_intermediate_loss: bool = False,
     ):
         """Regression task that uses incidence information to predict regression targets.
 
@@ -865,7 +877,14 @@ class IncidenceBasedRegressionTask(RegressionTask):
         add_momentum : bool
             Whether to add scalar momentum to the predictions, computed from the px, py, pz predictions
         """
-        super().__init__(name=name, output_object=output_object, target_object=target_object, fields=fields, loss_weight=loss_weight)
+        super().__init__(
+            name=name,
+            output_object=output_object,
+            target_object=target_object,
+            fields=fields,
+            loss_weight=loss_weight,
+            has_intermediate_loss=has_intermediate_loss,
+        )
         self.input_hit = input_hit
         self.input_object = input_object
         self.scaler = FeatureScaler(scale_dict_path=scale_dict_path)
@@ -882,6 +901,19 @@ class IncidenceBasedRegressionTask(RegressionTask):
 
         self.inputs = [input_object + "_embed"] + [input_hit + "_" + field for field in fields]
         self.outputs = [output_object + "_regr", output_object + "_proxy_regr"]
+
+    def loss_kwargs(self, outputs: dict[str, dict[str, Tensor]], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        # Adding this to get access to the classification task output
+        classification = outputs.get("classification")
+
+        if classification is None:
+            return {"output_class": None}
+
+        class_prob = classification.get(self.output_object + "_class_prob")
+        if class_prob is None:
+            return {"output_class": None}
+
+        return {"output_class": class_prob.detach().argmax(-1)}
 
     def get_charged(self, pred: Tensor, target: Tensor) -> Tensor:
         """Get a boolean mask for charged particles based on their class."""
@@ -946,10 +978,13 @@ class IncidenceBasedRegressionTask(RegressionTask):
         cost = self.cost_weight * torch.sqrt(dphi**2 + deta**2)
         return {"regression": cost}
 
-    def loss(self, outputs, targets):
+    def loss(self, outputs, targets, output_class):
+        if output_class is None:
+            raise RuntimeError("'output_class' is empty for the IncidenceBasedRegressionTask.")
+
         loss = None
         target_class = targets[self.target_object + "_class"]
-        output_class = outputs["classification"][self.output_object + "_class_prob"].detach().argmax(-1)
+        # output_class = outputs["classification"][self.output_object + "_class_prob"].detach().argmax(-1)
         for i, field in enumerate(self.fields):
             target = targets[self.target_object + "_" + field]
             output = outputs[self.output_object + "_regr"][..., i]
