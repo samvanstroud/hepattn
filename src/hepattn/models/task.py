@@ -289,9 +289,14 @@ class ObjectHitMaskTask(Task):
 
         sample_weight = target + self.null_weight * (1 - target)
         losses = {}
-        for loss_fn, loss_weight in self.losses.items():
+        for loss_fn, loss_params in self.losses.items():
+            if isinstance(loss_params, dict):
+                loss_weight = loss_params["loss_weight"]
+                norm_weight = loss_params["norm_weight"]
+            else:
+                loss_weight = loss_params
             losses[loss_fn] = loss_weight * loss_fns[loss_fn](
-                output, target, object_valid_mask=object_pad, input_pad_mask=hit_pad, sample_weight=sample_weight
+                output, target, object_valid_mask=object_pad, input_pad_mask=hit_pad, norm_weight=norm_weight, sample_weight=sample_weight
             )
         return losses
 
@@ -883,6 +888,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
             target_object=target_object,
             fields=fields,
             loss_weight=loss_weight,
+            cost_weight=cost_weight,
             has_intermediate_loss=has_intermediate_loss,
         )
         self.input_hit = input_hit

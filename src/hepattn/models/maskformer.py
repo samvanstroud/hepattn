@@ -208,10 +208,10 @@ class MaskFormer(nn.Module):
             outputs["final"][task.name] = task(x)
 
             # Need this for incidence-based regression task
-            if task.name == "incidence":
+            if isinstance(task, IncidenceRegressionTask):
                 # Assume that the incidence task has only one output
                 x["incidence"] = outputs["final"][task.name][task.outputs[0]].detach()
-            if task.name == "classification":
+            if isinstance(task, ObjectClassificationTask):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
 

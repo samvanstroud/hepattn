@@ -1,4 +1,4 @@
-name: CLIC_Pflow_FullDiceFocFix_bf16_mixed_merge
+name: CLIC_Pflow_FullDiceFocFix_bf16_mixed_merge_avgloss_cost_no_norm
 seed_everything: 42
 
 data:
@@ -178,9 +178,15 @@ model:
                 pred_threshold: 0.1
                 logit_scale: 4
                 losses:
-                  mask_bce: 5.0
-                  mask_dice: 1.0
-                  mask_focal: 2.0
+                  mask_bce:
+                    loss_weight: 5.0
+                    norm_weight: 0.5
+                  mask_dice:
+                    loss_weight: 1.0
+                    norm_weight: 0.5
+                  mask_focal:
+                    loss_weight: 2.0
+                    norm_weight: 0.5
                 costs:
                   mask_bce: 5.0
                   mask_dice: 1.0
