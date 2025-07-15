@@ -23,12 +23,13 @@ class MaskFormerDecoderLayer(nn.Module):
         attn_kwargs: dict | None = None,
         mask_attention: bool = True,
         bidirectional_ca: bool = True,
+        extra_norm: bool = False,
     ) -> None:
         super().__init__()
 
         self.mask_attention = mask_attention
         self.bidirectional_ca = bidirectional_ca
-
+        self.extra_norm = extra_norm
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
@@ -40,6 +41,12 @@ class MaskFormerDecoderLayer(nn.Module):
         if self.bidirectional_ca:
             self.kv_ca = residual(Attention(dim, **attn_kwargs))
             self.kv_dense = residual(Dense(dim, **dense_kwargs))
+
+        try:
+            self.norm = getattr(nn, norm)(dim, elementwise_affine=False)
+        except AttributeError as e:
+            raise ValueError(f"Unsupported norm: {norm}. Must be a valid torch.nn module.") from e
+
 
     def forward(self, q: Tensor, kv: Tensor, attn_mask: Tensor | None = None, q_mask: Tensor | None = None, kv_mask: Tensor | None = None) -> Tensor:
         if self.mask_attention:
@@ -55,6 +62,8 @@ class MaskFormerDecoderLayer(nn.Module):
         q = self.q_ca(q, kv=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         q = self.q_sa(q, q_mask=q_mask)
         q = self.q_dense(q)
+        if self.extra_norm:
+            q = self.norm(q)
 
         # Update key/hit embeddings with the query/object embeddings
         if self.bidirectional_ca:
@@ -64,6 +73,10 @@ class MaskFormerDecoderLayer(nn.Module):
 
             kv = self.kv_ca(kv, kv=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
             kv = self.kv_dense(kv)
+            if self.extra_norm:
+                kv = self.norm(kv)
+
+        
 
         return q, kv
 
