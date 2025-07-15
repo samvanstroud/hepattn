@@ -10,7 +10,7 @@ class AttnMaskLogger(Callback):
         if attn_mask is None:
             return
 
-        cmap = ListedColormap(['#4575b4', '#d73027'])  # blue for 0, red for 1
+        cmap = ListedColormap(['#002b7f', '#ffff33'])  # blue for 0, yellow for 1
         im = ax.imshow(attn_mask.numpy().astype(int), aspect="auto", cmap=cmap, vmin=0, vmax=1, interpolation='nearest')
             
         # im = ax.imshow(attn_mask.numpy(), aspect="auto", cmap='RdYlBu_r', vmin=0, vmax=1)
