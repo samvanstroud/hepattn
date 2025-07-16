@@ -141,7 +141,7 @@ class MaskFormer(nn.Module):
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
-        self.step_+=1
+        self.log_step+=1
 
         assert "key" not in input_names, "'key' input name is reserved."
         assert "query" not in input_names, "'query' input name is reserved."
@@ -268,7 +268,7 @@ class MaskFormer(nn.Module):
             if (
                 self.log_attn_mask
                 and (attn_mask is not None)
-                and (self.step_ % 1000 == 0)
+                and (self.log_step % 1000 == 0)
             ):
                 # Store for callback to log later
                 attn_mask_im = attn_mask[0].detach().cpu().clone()
@@ -282,9 +282,14 @@ class MaskFormer(nn.Module):
                 # query_sort_idx = torch.argsort(query_sort_value, dim=-1)
                 # attn_mask_im = attn_mask_im.index_select(0, query_sort_idx[0].to(attn_mask_im.device))
 
-                self._last_attn_mask = attn_mask_im
-                self._last_attn_mask_step = self.step_
-                self._last_attn_mask_layer = layer_index
+                if not hasattr(self, "attn_masks_to_log"):
+                    self.attn_masks_to_log = {}
+                if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
+                    self.attn_masks_to_log[layer_index] = {
+                        "mask": attn_mask_im,
+                        "step": self.log_step,
+                        "layer": layer_index,
+                    }
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
