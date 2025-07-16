@@ -29,7 +29,7 @@ class AttnMaskLogger(Callback):
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
         if hasattr(model, '_attn_masks_to_log'):
-            for layer_index, mask_info in model._attn_masks_to_log.items():
+            for mask_info in model._attn_masks_to_log.values():
                 mask = mask_info["mask"]
                 step = mask_info["step"]
                 layer = mask_info["layer"]
@@ -40,7 +40,7 @@ class AttnMaskLogger(Callback):
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
         if hasattr(model, '_attn_masks_to_log'):
-            for layer_index, mask_info in model._attn_masks_to_log.items():
+            for mask_info in model._attn_masks_to_log.values():
                 mask = mask_info["mask"]
                 step = mask_info["step"]
                 layer = mask_info["layer"]
