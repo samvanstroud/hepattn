@@ -138,7 +138,16 @@ class FourierPositionEncoder(nn.Module):
 
 
 class QueryPositionEncoder(nn.Module):
-    def __init__(self, input_name: str, fields: list[str], dim: int, sym_fields: list[str] | None = None, alpha=1000, per_input_dim: int | None = None, remainder_dim: int | None = None):
+    def __init__(
+        self,
+        input_name: str,
+        fields: list[str],
+        dim: int,
+        sym_fields: list[str] | None = None,
+        alpha=1000,
+        per_input_dim: int | None = None,
+        remainder_dim: int | None = None,
+    ):
         """Positional encoder.
 
         Parameters
@@ -188,7 +197,9 @@ class QueryPositionEncoder(nn.Module):
             while remaining > 0:
                 # Take either the full per_input_dim or the remaining amount
                 current_size = min(self.per_input_dim, remaining)
-                encodings.append(torch.zeros_like(encodings[0])[..., : current_size])
+                encodings.append(
+                    torch.zeros_like(encodings[0])[..., : current_size]
+                )
                 remaining -= current_size
         encodings = torch.cat(encodings, dim=-1)
         return encodings

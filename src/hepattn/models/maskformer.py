@@ -128,7 +128,7 @@ class MaskFormer(nn.Module):
         # Check if we should re-add at this layer
         if self.query_readd_layers is not None and layer_index not in self.query_readd_layers:
             return 0.0
-            
+        
         if self.query_readd_strategy == "fixed_scale":
             return self.pe_scale_factor
         elif self.query_readd_strategy == "learned_gate":
@@ -304,7 +304,7 @@ class MaskFormer(nn.Module):
 
             # Re-add original query embeddings (similar to SAM's prompt token re-addition)
             if (self.query_posenc is not None) and (self.preserve_original_queries):
-                    x["query_embed"] = x["query_embed"] + readd_scale * x["query_posenc"]
+                x["query_embed"] = x["query_embed"] + readd_scale * x["query_posenc"]
 
             # Re-add original key embeddings if requested
             if self.preserve_original_keys:
@@ -414,10 +414,10 @@ class MaskFormer(nn.Module):
             Dictionary containing layer selection information
         """
         if self.query_readd_layers is None:
-            readd_layers = list(range(len(self.decoder_layers)))
+            readd_layers = range(len(self.decoder_layers))
             num_readd_layers = len(self.decoder_layers)
         else:
-            readd_layers = sorted(list(self.query_readd_layers))
+            readd_layers = sorted(self.query_readd_layers)
             num_readd_layers = len(self.query_readd_layers)
             
         return {
