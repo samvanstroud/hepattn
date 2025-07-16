@@ -62,12 +62,12 @@ class MaskFormer(nn.Module):
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
         self.log_attn_mask = log_attn_mask
-        self.step_ = 0
+        self.log_step = 0
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
-        self.step_+=1
+        self.log_step+=1
 
         assert "key" not in input_names, "'key' input name is reserved."
         assert "query" not in input_names, "'query' input name is reserved."
@@ -167,12 +167,16 @@ class MaskFormer(nn.Module):
             if (
                 self.log_attn_mask
                 and (attn_mask is not None)
-                and (self.step_ % 1000 == 0)
+                and (self.log_step % 1000 == 0)
             ):
-                # Store for callback to log later
-                self._last_attn_mask = attn_mask[0].detach().cpu().clone()
-                self._last_attn_mask_step = self.step_
-                self._last_attn_mask_layer = layer_index
+                if not hasattr(self, "_attn_masks_to_log"):
+                    self._attn_masks_to_log = {}
+                if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
+                    self._attn_masks_to_log[layer_index] = {
+                        "mask": attn_mask[0].detach().cpu().clone(),
+                        "step": self.log_step,
+                        "layer": layer_index,
+                    }
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
