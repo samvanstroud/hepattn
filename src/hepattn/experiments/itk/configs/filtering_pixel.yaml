@@ -1,11 +1,9 @@
-name: ITk_pixel_region135_eta4_900mev
+name: ITk_filtering_pixel_region135_3pix_eta4_900mev_FFPE
 
 data:
   train_dir: /share/rcifdata/maxhart/data/itk/train/
   val_dir: /share/rcifdata/maxhart/data/itk/val/
   test_dir: /share/rcifdata/maxhart/data/itk/test/
-
-  hit_eval_test: /share/rcifdata/maxhart/hepattn-test/hepattn/logs/ITk_pixel_region135_eta4_pt1_20250422-T132414/ckpts/epoch=029-val_loss=0.40065_test_eval.h5
 
   num_workers: 10
   num_train: -1
@@ -26,6 +24,9 @@ data:
 
   inputs:
     pixel:
+      # Used to ID the hit for dumping
+      - hit_id
+
       # TrackML style global coordinates derived from x/y/z
       - x
       - y
@@ -182,21 +183,20 @@ model:
                     input_size: 34
                     output_size: &dim 256
                 posenc:
-                  class_path: hepattn.models.PositionEncoder
+                  class_path: hepattn.models.FourierPositionEncoder
                   init_args:
                     input_name: pixel
                     fields:
                       - r
                       - eta
                       - phi
-                    sym_fields:
-                      - phi
                     dim: *dim
+                    scale: 1.0
 
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 12
+          num_layers: 10
           dim: *dim
           attn_type: flash
           window_size: 1024
@@ -215,3 +215,4 @@ model:
                 target_field: on_valid_particle
                 dim: *dim
                 threshold: 0.1
+                loss_fn: bce

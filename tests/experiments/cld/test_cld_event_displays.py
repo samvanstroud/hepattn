@@ -15,7 +15,7 @@ torch.manual_seed(42)
 
 @pytest.fixture
 def cld_datamodule():
-    config_path = Path("src/hepattn/experiments/cld/configs/tracking.yaml")
+    config_path = Path("src/hepattn/experiments/cld/configs/base.yaml")
     config = yaml.safe_load(config_path.read_text())["data"]
     config["num_workers"] = 0
 

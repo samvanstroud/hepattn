@@ -1,0 +1,83 @@
+name: TIDE_10M_250_40trk_F32_tagging_sudo_TSS
+
+data:
+  inputs:
+    sudo:
+        # Track paramaters in global frame
+        - pt
+        - eta
+        - phi
+        - theta
+        - z0
+        - d0
+        - q
+        - qopt
+        # Track paramaters in the ROI frame
+        - dtheta
+        - deta
+        - dphi
+        - dz0
+        # Vertex location in global frame
+        - vx
+        - vy
+        - vz
+        # Hit summary statistics
+        - num_pix
+        - num_sct
+        - num_shared_pix
+        - num_shared_sct
+        - num_layer_0_pix
+        - num_layer_1_pix
+        - num_shared_layer_0_pix
+        - num_shared_layer_1_pix
+
+model:
+  model:
+    class_path: hepattn.models.tagger.Tagger
+    init_args:
+      dim: &dim 256
+      input_nets:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: sudo
+                fields:
+                  # Track paramaters in global frame
+                  - eta
+                  - phi
+                  - z0
+                  - d0
+                  - q
+                  - qopt
+                  # Track paramaters in the ROI frame
+                  - deta
+                  - dphi
+                  - dz0
+                  # Vertex location in global frame
+                  - vx
+                  - vy
+                  - vz
+                  # Hit summary statistics
+                  - num_pix
+                  - num_sct
+                  - num_shared_pix
+                  - num_shared_sct
+                  - num_layer_0_pix
+                  - num_layer_1_pix
+                  - num_shared_layer_0_pix
+                  - num_shared_layer_1_pix
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 20
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.FourierPositionEncoder
+                  init_args:
+                    input_name: sudo
+                    dim: *dim
+                    fields:
+                      - deta
+                      - dphi

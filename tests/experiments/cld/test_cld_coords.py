@@ -12,7 +12,7 @@ plt.rcParams["figure.dpi"] = 300
 
 @pytest.fixture
 def cld_datamodule():
-    config_path = Path("src/hepattn/experiments/cld/configs/regression.yaml")
+    config_path = Path("src/hepattn/experiments/cld/configs/base.yaml")
     config = yaml.safe_load(config_path.read_text())["data"]
     config["num_workers"] = 0
     config["batch_size"] = 10

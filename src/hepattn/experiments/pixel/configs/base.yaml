@@ -1,0 +1,265 @@
+name: pixel_enriched_noclass
+
+data:
+  train_dir: /share/rcifdata/maxhart/data/pixsplit/mc23_prepped_enriched/train/
+  val_dir: /share/rcifdata/maxhart/data/pixsplit/mc23_prepped_enriched/val/
+  test_dir: /share/rcifdata/maxhart/data/pixsplit/mc23_prepped_enriched/test/
+
+  num_train: 1000000
+  num_val: 10000
+  num_test: 10000
+
+  # Number of threads to use for the dataloader
+  num_workers: 8
+
+  # Number of clusters per batch
+  batch_size: 100
+
+  # If specified only clusters with these multiplicities will be given
+  cluster_multiplicities:
+
+  # If specified, clusters with this multiplicity are retained at the spcified rate
+  cluster_multiplicity_subsample_frac:
+
+  # Maximum x / y for a particle to be marked as a valid target
+  particle_max_x: 8
+  particle_max_y: 8
+
+  # Whether to consider particles without a barcode as valid or not
+  particle_allow_notruth: true
+
+  # Whether to consider secondary particles as valid or not
+  particle_allow_secondary: true
+
+  # Which detector regions should be included, 0 is barrel and +/-2 is endcap
+  cluster_regions: [-2, -1, 0, 1, 2]
+
+  # Which tracker layers should be included
+  cluster_layers: [0, 1, 2, 3]
+
+  # The minimum and maximum cluster multiplicities to allow
+  cluster_min_multiplicity: 1
+  cluster_max_multiplicity: &cluster_max_multiplicity 8
+
+  # The maximum x/y width in pixels of a cluster for it to not be dropped
+  cluster_max_width_x: 16
+  cluster_max_width_y: 16
+
+  # The maximum absolute global eta of a cluster for it to not be dropped
+  cluster_max_abs_eta: 2.8
+  
+  # If set to true, clusters containing a notruth particle will be dropped
+  cluster_allow_notruth_particle: true
+
+  # If set to false, clusters containing any particle that did not pass the particle selection are dropped
+  cluster_allow_dropped_particle: false  
+
+  inputs:
+    cluster:
+      - bec
+      - layer
+      - width_x
+      - width_y
+      - pitch_vector
+      - charge_matrix
+      - global_x
+      - global_y
+      - global_z
+      - global_r
+      - global_theta
+      - global_eta
+      - global_phi
+      - leading_theta
+      - leading_phi
+
+    pixel:
+      - x
+      - y
+      - charge
+      - cluster_layer
+      - cluster_bec
+      - cluster_global_eta
+      - cluster_global_phi
+      - cluster_leading_theta
+      - cluster_leading_phi
+
+  targets:
+    particle:
+      - x
+      - y
+      - phi
+      - theta
+      - p
+      - barcode
+      - primary
+      - secondary
+      - notruth
+      - pdgid
+      - class_label
+    
+    cluster:
+      - multiplicity
+
+# Training stuff here
+trainer:
+  max_epochs: 15
+  accelerator: gpu
+  devices: 1
+  precision: 32
+  log_every_n_steps: 10
+  default_root_dir: logs
+  gradient_clip_val: 0.1
+  accumulate_grad_batches: 1
+  enable_progress_bar: True
+  val_check_interval: 1000
+
+  # Specify loggers here
+  logger:
+    class_path: lightning.pytorch.loggers.CometLogger
+    init_args:
+      project_name: pixel
+      # We are not using conda and log manually anyway
+      log_env_details: false
+
+  # Specify any callback here
+  callbacks:
+    - class_path: hepattn.callbacks.SaveConfig
+    - class_path: hepattn.callbacks.Checkpoint
+      init_args:
+        monitor: train/loss
+        every_n_train_steps: 1000
+    - class_path: hepattn.callbacks.PredictionWriter
+      init_args:
+        write_inputs: false
+        write_outputs: false
+        write_preds: true
+        write_targets: false
+        write_losses: false
+    - class_path: lightning.pytorch.callbacks.ModelSummary
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    - class_path: lightning.pytorch.callbacks.TQDMProgressBar
+      init_args:
+        refresh_rate: 50
+
+model:
+  optimizer: lion
+
+  lrs_config:
+    initial: 1e-5
+    max: 1e-4
+    end: 1e-5
+    pct_start: 0.01
+    skip_scheduler: false
+    weight_decay: 1e-5
+
+  mtl: false
+
+  model:
+    class_path: hepattn.models.MaskFormer
+    init_args:
+      dim: &dim 128
+      num_queries: *cluster_max_multiplicity
+      input_sort_field: x
+      use_attn_masks: false
+      use_query_masks: false
+
+      input_nets:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: pixel
+                fields:
+                  - x
+                  - y
+                  - charge
+                  - cluster_layer
+                  - cluster_bec
+                  - cluster_global_eta
+                  - cluster_global_phi
+                  - cluster_leading_theta
+                  - cluster_leading_phi
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 9
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.FourierPositionEncoder
+                  init_args:
+                    input_name: pixel
+                    dim: *dim
+                    fields:
+                      - x
+                      - y
+
+      encoder:
+        class_path: hepattn.models.Encoder
+        init_args:
+          num_layers: 2
+          dim: *dim
+          attn_type: torch
+
+      num_decoder_layers: 2
+      decoder_layer_config:
+        dim: *dim
+        mask_attention: false
+
+      matcher:
+        class_path: hepattn.models.matcher.Matcher
+        init_args:
+          default_solver: scipy
+          adaptive_solver: false
+          adaptive_check_interval: 1000
+
+      tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.ObjectValidTask
+              init_args:
+                name: track_valid
+                input_object: query
+                output_object: track
+                target_object: particle
+                losses:
+                  object_bce: 1.0
+                costs:
+                  object_bce: 1.0
+                dim: *dim
+                null_weight: 1.0
+
+            - class_path: hepattn.models.task.ObjectGaussianRegressionTask
+              init_args:
+                name: track_regr
+                input_object: query
+                output_object: track
+                target_object: particle
+                fields:
+                  - x
+                  - y
+                  # - theta
+                  # - phi
+                loss_weight: 1.0
+                cost_weight: 1.0
+                dim: *dim
+
+            # - class_path: hepattn.models.task.ClassificationTask
+            #   init_args:
+            #     name: track_class
+            #     input_object: query
+            #     output_object: track
+            #     target_object: particle
+            #     classes:
+            #       - primary
+            #       - secondary
+            #       - notruth
+            #     class_weights:
+            #       primary: 1.00
+            #       secondary: 8.68
+            #       notruth: 2.04
+            #     loss_weight: 0.1
+            #     dim: *dim
+
+

@@ -2,7 +2,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoderLayer
-
+from hepattn.models.task import ObjectHitMaskTask
 
 class MaskFormer(nn.Module):
     def __init__(
@@ -14,11 +14,13 @@ class MaskFormer(nn.Module):
         tasks: nn.ModuleList,
         num_queries: int,
         dim: int,
+        target_object: str = "particle",
+        pooling: nn.Module | None = None,
         matcher: nn.Module | None = None,
         input_sort_field: str | None = None,
         use_attn_masks: bool = True,
         use_query_masks: bool = True,
-        intermediate_losses: bool = True,
+        log_attn_mask: bool = False,
     ):
         """
         Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -42,32 +44,36 @@ class MaskFormer(nn.Module):
             The number of object-level queries to initialize and decode.
         dim : int
             The dimensionality of the query and key embeddings.
+        target_object : str
+            The target object name which is used to mark valid/invalid objects during matching.
         input_sort_field : str or None, optional
             An optional key used to sort the input objects (e.g., for windowed attention).
         use_attn_masks : bool, optional
             If True, attention masks will be used to control which input objects are attended to.
         use_query_masks : bool, optional
             If True, query masks will be used to control which queries are valid during attention.
-        intermediate_losses : bool, optional
-            If True, intermediate losses will be applied at each decoder layer.
         """
         super().__init__()
 
         self.input_nets = input_nets
         self.encoder = encoder
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(**decoder_layer_config) for _ in range(num_decoder_layers)])
+        self.pooling = pooling
         self.tasks = tasks
+        self.target_object = target_object
         self.matcher = matcher
         self.num_queries = num_queries
         self.query_initial = nn.Parameter(torch.randn(num_queries, dim))
         self.input_sort_field = input_sort_field
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
-        self.intermediate_losses = intermediate_losses
+        self.log_attn_mask = log_attn_mask
+        self.log_step = 0
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
+        self.log_step+=1
 
         assert "key" not in input_names, "'key' input name is reserved."
         assert "query" not in input_names, "'query' input name is reserved."
@@ -118,7 +124,12 @@ class MaskFormer(nn.Module):
 
         # Generate the queries that represent objects
         x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
-        x["query_valid"] = torch.full((batch_size, self.num_queries), True)
+        x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
+
+        # Do any pooling if desired
+        if self.pooling is not None:
+            x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
+            x[f"{self.pooling.output_name}_embed"] = x | x_pooled
 
         # Pass encoded inputs through decoder to produce outputs
         outputs = {}
@@ -164,6 +175,20 @@ class MaskFormer(nn.Module):
             else:
                 attn_mask = None
 
+            if (
+                self.log_attn_mask
+                and (attn_mask is not None)
+                and (self.log_step % 1000 == 0)
+            ):
+                if not hasattr(self, "attn_masks_to_log"):
+                    self.attn_masks_to_log = {}
+                if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
+                    self.attn_masks_to_log[layer_index] = {
+                        "mask": attn_mask[0].detach().cpu().clone(),
+                        "step": self.log_step,
+                        "layer": layer_index,
+                    }
+
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=x.get("key_valid")
@@ -172,6 +197,11 @@ class MaskFormer(nn.Module):
             # Unmerge the updated features back into the separate input types
             for input_name in input_names:
                 x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
+
+            # Do any pooling if desired
+            if self.pooling is not None:
+                x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
+                x[f"{self.pooling.output_name}_embed"] = x | x_pooled
 
         # Get the final outputs - we don't need to compute attention masks or update things here
         outputs["final"] = {}
@@ -216,14 +246,16 @@ class MaskFormer(nn.Module):
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
-        batch_idxs = torch.arange(targets["particle_valid"].shape[0]).unsqueeze(1)
+        batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
-            if not self.intermediate_losses and layer_name != "final":
-                continue
-
             layer_costs = None
+
             # Get the cost contribution from each of the tasks
             for task in self.tasks:
+                # Skip tasks that do not contribute intermediate losses
+                if layer_name != "final" and not task.has_intermediate_loss:
+                    continue
+
                 # Only use the cost from the final set of predictions
                 task_costs = task.cost(layer_outputs[task.name], targets)
 
@@ -234,28 +266,32 @@ class MaskFormer(nn.Module):
                     else:
                         layer_costs = cost
 
-            costs[layer_name] = layer_costs.detach()
+            if layer_costs is not None:
+                costs[layer_name] = layer_costs.detach()
 
         # Permute the outputs for each output in each layer
-        for layer_name in outputs:
-            if not self.intermediate_losses and layer_name != "final":
-                continue
-
+        for layer_name in costs:
             # Get the indicies that can permute the predictions to yield their optimal matching
-            pred_idxs = self.matcher(costs[layer_name], targets["particle_valid"])
+            pred_idxs = self.matcher(costs[layer_name], targets[f"{self.target_object}_valid"])
 
             # Apply the permutation in place
             for task in self.tasks:
+                # Some tasks, such as hit-level or sample-level tasks, do not need permutation
+                if hasattr(task, "permute_loss"):
+                    if not task.permute_loss:
+                        continue
+
                 for output_name in task.outputs:
                     outputs[layer_name][task.name][output_name] = outputs[layer_name][task.name][output_name][batch_idxs, pred_idxs]
 
         # Compute the losses for each task in each block
         losses = {}
         for layer_name in outputs:
-            if not self.intermediate_losses and layer_name != "final":
-                continue
             losses[layer_name] = {}
             for task in self.tasks:
+                # Skip tasks that are not ObjectHitMaskTask for intermediate layers
+                if layer_name != "final" and not isinstance(task, ObjectHitMaskTask):
+                    continue
                 losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses
