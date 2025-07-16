@@ -169,10 +169,10 @@ class MaskFormer(nn.Module):
                 and (attn_mask is not None)
                 and (self.log_step % 1000 == 0)
             ):
-                if not hasattr(self, "_attn_masks_to_log"):
-                    self._attn_masks_to_log = {}
+                if not hasattr(self, "attn_masks_to_log"):
+                    self.attn_masks_to_log = {}
                 if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
-                    self._attn_masks_to_log[layer_index] = {
+                    self.attn_masks_to_log[layer_index] = {
                         "mask": attn_mask[0].detach().cpu().clone(),
                         "step": self.log_step,
                         "layer": layer_index,

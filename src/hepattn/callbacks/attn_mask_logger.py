@@ -28,22 +28,22 @@ class AttnMaskLogger(Callback):
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
-        if hasattr(model, '_attn_masks_to_log'):
-            for mask_info in model._attn_masks_to_log.values():
+        if hasattr(model, 'attn_masks_to_log'):
+            for mask_info in model.attn_masks_to_log.values():
                 mask = mask_info["mask"]
                 step = mask_info["step"]
                 layer = mask_info["layer"]
                 self._log_attention_mask(pl_module, mask, step, layer, "local_ca_mask_val")
             # Clear after logging
-            delattr(model, '_attn_masks_to_log')
+            delattr(model, 'attn_masks_to_log')
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
-        if hasattr(model, '_attn_masks_to_log'):
-            for mask_info in model._attn_masks_to_log.values():
+        if hasattr(model, 'attn_masks_to_log'):
+            for mask_info in model.attn_masks_to_log.values():
                 mask = mask_info["mask"]
                 step = mask_info["step"]
                 layer = mask_info["layer"]
                 self._log_attention_mask(pl_module, mask, step, layer, "local_ca_mask")
             # Clear after logging
-            delattr(model, '_attn_masks_to_log')
+            delattr(model, 'attn_masks_to_log')
