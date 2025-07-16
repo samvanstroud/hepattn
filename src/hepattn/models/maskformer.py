@@ -101,11 +101,9 @@ class MaskFormer(nn.Module):
         self.pe_scale_factor = pe_scale_factor
         self.log_attn_mask = log_attn_mask
         self.log_step = 0
-
         # Initialize query re-addition components
         self.query_readd_strategy = query_readd_strategy
         self.query_readd_layers = query_readd_layers
-        
         # Initialize learned gates for query re-addition if using learned_gate strategy
         if query_readd_strategy == "learned_gate":
             self.query_readd_gates = nn.Parameter(
@@ -441,7 +439,6 @@ class MaskFormer(nn.Module):
         else:
             readd_layers = sorted(self.query_readd_layers)
             num_readd_layers = len(self.query_readd_layers)
-            
         return {
             "readd_layers": readd_layers,
             "num_readd_layers": num_readd_layers,
