@@ -47,7 +47,20 @@ def get_best_epoch(config_path: Path) -> Path:
 
 class CLI(LightningCLI):
     def add_arguments_to_parser(self, parser) -> None:
-        parser.add_argument("--name", default="hepattn", help="Name for this training run.")
+        parser.add_argument(
+            "--name",
+            default="hepattn",
+            help="Name for this training run.",
+        )
+
+        parser.add_argument(
+            "--matmul_precision",
+            type=str,
+            choices=["highest", "high", "medium", "low"],
+            default="high",
+            help="Precision setting for float32 matrix multiplications.",
+        )
+
         parser.link_arguments("name", "trainer.logger.init_args.experiment_name")
         parser.link_arguments("name", "model.name")
         parser.link_arguments("trainer.default_root_dir", "trainer.logger.init_args.save_dir")
@@ -92,9 +105,16 @@ class CLI(LightningCLI):
             if isinstance(n_devices, list) and len(n_devices) > 1:
                 raise ValueError("Testing requires --trainer.devices=1")
 
+        # Set the matmul precision
+        torch.set_float32_matmul_precision(sc["matmul_precision"])
+
     def after_instantiate_classes(self) -> None:
-        """After instantiating classes, set the checkpoint path if not provided."""
-        if self.subcommand == "test" and not self.trainer.ckpt_path:
-            config = self.config[self.subcommand]["config"]
-            assert len(config) == 1
-            self.trainer.ckpt_path = get_best_epoch(Path(config[0].rel_path))
+        sc = self.config[self.subcommand]
+
+        if self.subcommand == "test":
+            ckpt_path = sc["ckpt_path"] or get_best_epoch(Path(sc["config"][0].rel_path))
+            # Workaround to store ckpt dir for prediction writer since trainer.ckpt_path gets set to none somewhere
+            # TODO: Figure out what causes trainer.ckpt_path to be set to none
+            self.trainer.ckpt_path = ckpt_path
+            self.trainer.ckpt_dir = Path(ckpt_path).parent
+            self.trainer.ckpt_name = str(Path(ckpt_path).stem)

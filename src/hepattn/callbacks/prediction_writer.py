@@ -43,10 +43,8 @@ class PredictionWriter(Callback):
     @property
     def output_path(self) -> Path:
         # The output dataset will be saved in the same directory as the checkpoint
-        out_dir = Path(self.trainer.ckpt_path).parent
-        out_basename = str(Path(self.trainer.ckpt_path).stem)
         split = Path(self.dataset.dirpath).name
-        return Path(out_dir / f"{out_basename}_{split}_eval.h5")
+        return Path(self.trainer.ckpt_dir / f"{self.trainer.ckpt_name}_{split}_eval.h5")
 
     def on_test_batch_end(self, trainer, pl_module, test_step_outputs, batch, batch_idx):
         inputs, targets = batch

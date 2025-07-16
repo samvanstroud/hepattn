@@ -103,21 +103,26 @@ class ROIDataset(Dataset):
         # At the start, we load enough files so that we will have enough for the requested sample size
         # As we read through the dataset, some ROIs will be discarded, and so we will load more
         # files on-demand then as we need
-        total_num_rois = 0
         for file_path in self.available_file_paths:
             self.register_file(file_path)
-            num_rois = len(self.roi_id_to_file_path)
-            total_num_rois += num_rois
+            total_num_rois = len(self.roi_id_to_file_path)
 
-            if total_num_rois >= self.num_samples:
-                print(f"Finished registering {total_num_rois} ROIs from {len(self.file_paths)} files")
+            if len(self.roi_id_to_file_path) >= self.num_samples:
                 break
+
+        print(f"Finished registering {len(self.roi_id_to_file_path)} ROIs from {len(self.file_paths)} files")
 
     def register_file(self, file_path):
         with h5py.File(file_path, "r") as file:
             roi_ids = list(file.keys())
 
             for roi_id in roi_ids:
+                # Check we are not duplicating ROI IDs
+                msg = f"Attempted to add duplicate ROI ID {roi_id}"
+                assert roi_id not in self.unevaluated_roi_ids, msg
+                assert roi_id not in self.roi_id_to_file_path, msg
+                assert roi_id not in self.roi_id_to_idx, msg
+
                 self.roi_id_to_file_path[roi_id] = file_path
                 self.unevaluated_roi_ids.append(roi_id)
 
@@ -160,6 +165,11 @@ class ROIDataset(Dataset):
             roi["sudo_valid"] &= roi["sudo_d0"] <= self.track_max_d0
             roi["sudo_valid"] &= roi["sudo_z0"] <= self.track_max_z0
 
+            # Add pseudorack specific fields
+            # B hadron pt is already in GeV
+            roi["sudo_bhad_pt"] = file[f"{roi_id}/sudo_bhad_pt"][:]
+            roi["sudo_from_bhad"] = roi["sudo_bhad_pt"] > 0
+
             # Calculate the ROI reference point
             for coord in ["vx", "vy", "vz", "d0", "z0"]:
                 roi[f"sisp_{coord}"] = file[f"{roi_id}/sisp_{coord}"][:]
@@ -167,10 +177,25 @@ class ROIDataset(Dataset):
 
             roi["roi_theta"] = 2 * np.arctan(np.exp(-roi[f"roi_eta"]))
 
+            # Origin codes found at: https://gitlab.cern.ch/Atlas-Inner-Tracking/ctide-ambiguity-solver-analyser/-/
+            # blob/master/source/CTIDEAmbiguitySolverAnalyser/CTIDEAmbiguitySolverAnalyser/CTIDEAmbiguitySolverAnalyserAlg.h#L706
+            # Order of defintion is important and defines the labelling priority
+            track_orgin_class_ids = {
+                "b": [0, 1],
+                "c": [2, 3],
+                "tau": [4, 5],
+                "other": [6],
+            }
+
             for track in ["sudo", "sisp", "reco"]:
                 # Load in track fields
                 for field in ["pt", "eta", "phi", "z0", "d0", "vx", "vy", "vz", "q", "origin"]:
                     roi[f"{track}_{field}"] = file[f"{roi_id}/{track}_{field}"][:]
+
+                for origin_class, origin_ids in track_orgin_class_ids.items():
+                    roi[f"{track}_from_{origin_class}"] = np.full_like(roi[f"{track}_origin"], False, bool)
+                    for origin_id in origin_ids:
+                        roi[f"{track}_from_{origin_class}"] = roi[f"{track}_from_{origin_class}"] | np.isclose(roi[f"{track}_origin"], origin_id)
 
                 # Make extra track fields
                 roi[f"{track}_px"] = roi[f"{track}_pt"] * np.cos(roi[f"{track}_phi"])
@@ -192,6 +217,20 @@ class ROIDataset(Dataset):
                 field_scalings = {"deta": 100.0, "dphi": 100.0, "dtheta": 100.0, "qopt": 10.0, "dz0": 0.1, "d0": 1.0}
                 for field, scaling in field_scalings.items():
                     roi[f"{track}_scaled_{field}"] = scaling * roi[f"{track}_{field}"]
+
+            # Apply an ROI label based on the track origin
+            for origin_class in track_orgin_class_ids:
+                roi[f"roi_has_{origin_class}"] = np.any(roi[f"sudo_from_{origin_class}"], keepdims=True)
+
+            # roi["roi_has_b"] = np.any(roi[f"sudo_bhad_pt"] >= 5.0, keepdims=True)
+
+            # Used to keep track of which ROIs have already been assigned a label for the labelling priority
+            assigned_class = np.array([False])
+            for origin_class in track_orgin_class_ids:
+                # If the ROI has not been labelled and has a track of an origin in it, label it as that origin
+                roi[f"roi_is_{origin_class}"] = roi[f"roi_has_{origin_class}"] & (~assigned_class)
+                # Now mark the ROI as labelled
+                assigned_class = assigned_class | roi[f"roi_is_{origin_class}"]
 
             def load_csr_matrix(index_field, data_field, dtype):
                 # Load the CSR data
@@ -229,7 +268,7 @@ class ROIDataset(Dataset):
                 return None
 
             # Load the track-hit regression targets
-            for field in ["loc_x", "loc_y", "phi", "theta", "energy"]:
+            for field in ["loc_x", "loc_y", "phi", "theta", "energy", "mod_x0", "mod_x1"]:
                 try:
                     roi[f"sudo_pix_{field}"] = load_csr_matrix(f"sudo_pix_valid", f"sudo_pix_{field}", np.float32)
                 except ValueError as e:
@@ -278,9 +317,13 @@ class ROIDataset(Dataset):
                 # Mark the hits as valid inputs
                 roi[f"{hit}_valid"] = np.full_like(roi[f"{hit}_x"], True)
 
-            # Add the charge and log charge for the pixel
-            roi[f"pix_charge"] = file[f"{roi_id}/pix_charge"][:]
-            roi[f"pix_log_charge"] = np.log10(1.0 + np.clip(roi[f"pix_charge"], a_min=0.0, a_max=1e12))
+                # Add layer and BEC info
+                roi[f"{hit}_bec"] = file[f"{roi_id}/{hit}_bec"][:]
+                roi[f"{hit}_layer"] = file[f"{roi_id}/{hit}_layer"][:]
+
+                # Add charge info
+                roi[f"{hit}_charge"] = file[f"{roi_id}/{hit}_charge"][:]
+                roi[f"{hit}_log_charge"] = np.log10(1.0 + np.clip(roi[f"{hit}_charge"], a_min=0.0, a_max=1e12))
 
             # Pixel specific fields
             for field in ["lshift", "pitches"]:
@@ -309,6 +352,24 @@ class ROIDataset(Dataset):
             # Drop any ROIs that dropped more tracks than allowed
             if num_dropped_tracks > self.roi_max_num_dropped_tracks:
                 return None
+
+            # Calculate track summary statistics
+            for track in ["sudo", "sisp", "reco"]:
+                for hit in ["pix", "sct"]:
+                    # Number of hits
+                    roi[f"{track}_num_{hit}"] = roi[f"{track}_{hit}_valid"].sum(-1)
+                    # Number of shared hits
+                    hit_is_shared = roi[f"{track}_{hit}_valid"].sum(-2) > 1
+                    roi[f"{track}_num_shared_{hit}"] = (roi[f"{track}_{hit}_valid"] & hit_is_shared[None, :]).sum(-1)
+
+                # Number of hits on pixel layers
+                for layer in [0, 1, 2]:
+                    pix_on_layer = np.isclose(roi["pix_layer"], layer)  # Avoid FPE
+                    pix_is_shared = roi[f"{track}_pix_valid"].sum(-2) > 1
+                    pix_shared_on_layer = pix_on_layer & pix_is_shared
+
+                    roi[f"{track}_num_layer_{layer}_pix"] = (roi[f"{track}_pix_valid"] & pix_on_layer[None, :]).sum(-1)
+                    roi[f"{track}_num_shared_layer_{layer}_pix"] = (roi[f"{track}_pix_valid"] & pix_shared_on_layer[None, :]).sum(-1)
 
             # Drop any invalid track slots
             for track in ["sudo", "sisp", "reco"]:
@@ -436,11 +497,18 @@ class ROICollator:
                 size = (self.max_num_obj, hit_max_sizes[hit])
 
             k = f"{target_name}_valid"
-            batched_targets[k] = pad_and_concat([t[k] for t in targets], size, False)
+            if target_name == "roi":
+                batched_targets[k] = torch.cat([t[k] for t in targets]).squeeze(-1)
+            else:
+                batched_targets[k] = pad_and_concat([t[k] for t in targets], size, False)
 
             for field in fields:
                 k = f"{target_name}_{field}"
-                batched_targets[k] = pad_and_concat([t[k] for t in targets], size, torch.nan)
+
+                if target_name == "roi":
+                    batched_targets[k] = torch.cat([t[k] for t in targets]).squeeze(-1)
+                else:
+                    batched_targets[k] = pad_and_concat([t[k] for t in targets], size, torch.nan)
 
         # Batch the metadata
         batched_targets["sample_id"] = torch.cat([t["sample_id"] for t in targets], dim=-1)
