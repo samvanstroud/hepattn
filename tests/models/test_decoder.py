@@ -22,7 +22,7 @@ class TestMaskFormerDecoderLayer:
     def sample_data(self):
         q = torch.randn(BATCH_SIZE, NUM_QUERIES, DIM)
         kv = torch.randn(BATCH_SIZE, SEQ_LEN, DIM)
-        attn_mask = torch.zeros(BATCH_SIZE, 1, NUM_QUERIES, SEQ_LEN, dtype=torch.bool)
+        attn_mask = torch.zeros(BATCH_SIZE, NUM_QUERIES, SEQ_LEN, dtype=torch.bool)
         kv_mask = None
         return q, kv, attn_mask, kv_mask
 

@@ -122,16 +122,6 @@ class TestCLDDataModule:
             fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
             fig.savefig(Path("tests/outputs/cld/cld_event_trkr_vtxd_uv.png"))
 
-            # axes_spec = [{"x": "pos.c", "y": "pos.eta", "input_names": ["trkr","vtxd"]}]
-
-            # fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
-            # fig.savefig(Path("tests/outputs/cld/cld_event_trkr_vtxd_ceta.png"))
-
-            axes_spec = [{"x": "pos.r", "y": "pos.eta", "input_names": ["trkr", "vtxd"]}]
-
-            fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
-            fig.savefig(Path("tests/outputs/cld/cld_event_trkr_vtxd_reta.png"))
-
             # Plot the full event with all subsytems
             axes_spec = [
                 {
