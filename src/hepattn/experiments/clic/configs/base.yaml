@@ -1,4 +1,4 @@
-name: CLIC_Pflow_FullDiceFocFix_bf16_mixed_merge_avgloss_cost_no_norm
+name: CLIC_Pflow_FullDiceFocFix
 seed_everything: 42
 
 data:
@@ -156,7 +156,6 @@ model:
                   object_ce: 2
                 costs:
                   object_ce: 2
-                has_intermediate_loss: true
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
@@ -167,6 +166,7 @@ model:
                 null_weight: 0.5
                 loss_class_weights: [1.0, 3.0, 8.0, 1.5, 1.0]
                 mask_queries: false
+                has_intermediate_loss: true
 
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
@@ -178,22 +178,16 @@ model:
                 pred_threshold: 0.1
                 logit_scale: 4
                 losses:
-                  mask_bce:
-                    loss_weight: 5.0
-                    norm_weight: 0.5
-                  mask_dice:
-                    loss_weight: 1.0
-                    norm_weight: 0.5
-                  mask_focal:
-                    loss_weight: 2.0
-                    norm_weight: 0.5
+                  mask_bce: 5.0
+                  mask_dice: 1.0
+                  mask_focal: 2.0
                 costs:
                   mask_bce: 5.0
                   mask_dice: 1.0
                   mask_focal: 2.0
-                has_intermediate_loss: true
                 dim: *dim
                 null_weight: 1.0
+                has_intermediate_loss: true
 
             - class_path: hepattn.models.task.IncidenceRegressionTask
               init_args:

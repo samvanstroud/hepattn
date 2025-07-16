@@ -63,7 +63,7 @@ def object_ce_cost(pred_logits, targets):
     return -torch.gather(probs, dim=2, index=index)
 
 
-def mask_dice_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=None, norm_weight=1.0, sample_weight=None):  # noqa: ARG001
+def mask_dice_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=None, sample_weight=None):  # noqa: ARG001
     """
     Compute the DICE loss for binary masks.
 
@@ -72,34 +72,24 @@ def mask_dice_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=
         targets: [batch_size, num_objects, num_inputs] - ground truth binary masks
         object_valid_mask: [batch_size, num_objects] - mask indicating valid target objects
         input_pad_mask: [batch_size, num_inputs] - mask indicating valid inputs (not used by DICE)
-        norm_weight: balance between different normalisation approach (weight = 1 completely normalises the loss per objects)
         sample_weight: Not used by DICE!
 
     Returns:
         loss: Scalar tensor representing the DICE loss
     """
-
-    assert 0.0 <= norm_weight <= 1.0, f"norm_weight for mask_dice_loss must be between 0 and 1, got {norm_weight}"
-
-    # only condition on valid object masks
+    # only condition on  valid object masks
     if object_valid_mask is not None:
         pred_logits = pred_logits[object_valid_mask]
         targets = targets[object_valid_mask]
 
     probs = pred_logits.sigmoid()
+    if input_pad_mask is not None:
+        probs = probs * input_pad_mask.unsqueeze(1)
+
     numerator = 2 * (probs * targets).sum(-1)
     denominator = probs.sum(-1) + targets.sum(-1)
     loss = 1 - (numerator + 1) / (denominator + 1)
-    loss = norm_weight * loss.sum() / len(probs)
-
-    if input_pad_mask is not None:
-        probs_pad = probs * input_pad_mask.unsqueeze(1)
-        numerator_pad = 2 * (probs_pad * targets).sum(-1)
-        denominator_pad = probs_pad.sum(-1) + targets.sum(-1)
-        loss_pad = 1 - (numerator_pad + 1) / (denominator_pad + 1)
-        loss += (1 - norm_weight) * loss_pad.mean()
-
-    return loss
+    return loss.mean()
 
 
 def mask_dice_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None):
@@ -146,7 +136,7 @@ def mask_iou_cost(pred_logits, targets, input_pad_mask=None, eps=1e-6):
     return cost
 
 
-def mask_focal_loss(pred_logits, targets, gamma=2.0, object_valid_mask=None, input_pad_mask=None, norm_weight=1.0, sample_weight=None):
+def mask_focal_loss(pred_logits, targets, gamma=2.0, object_valid_mask=None, input_pad_mask=None, sample_weight=None):
     """
     Compute the focal loss for binary classification.
 
@@ -156,15 +146,11 @@ def mask_focal_loss(pred_logits, targets, gamma=2.0, object_valid_mask=None, inp
         gamma: Focusing parameter for the focal loss
         object_valid_mask: [batch_size, num_objects] - mask indicating valid target objects
         input_pad_mask: [batch_size, num_inputs] - mask indicating valid inputs
-        norm_weight: balance between different normalisation approach (weight = 1 completely normalises the loss per objects)
         sample_weight: Optional sample weights for each element
 
     Returns:
         loss: Scalar tensor representing the focal loss
     """
-
-    assert 0.0 <= norm_weight <= 1.0, f"norm_weight for mask_focal_loss must be between 0 and 1, got {norm_weight}"
-
     if object_valid_mask is not None:
         pred_logits = pred_logits[object_valid_mask]
         targets = targets[object_valid_mask]
@@ -173,24 +159,20 @@ def mask_focal_loss(pred_logits, targets, gamma=2.0, object_valid_mask=None, inp
     pred = pred_logits.sigmoid()
     ce_loss = F.binary_cross_entropy_with_logits(pred_logits, targets.type_as(pred_logits), weight=sample_weight, reduction="none")
 
-    p_t = pred * targets + (1 - pred) * (1 - targets)
-    loss = ce_loss * ((1 - p_t) ** gamma)
-    loss = norm_weight * loss.mean(1).sum() / len(pred)
-
     # Apply input padding mask
     if input_pad_mask is not None:
-        ce_loss_pad = ce_loss * input_pad_mask.unsqueeze(1)
-        pred_pad = pred * input_pad_mask.unsqueeze(1)
+        ce_loss = ce_loss * input_pad_mask.unsqueeze(1)
+        pred = pred * input_pad_mask.unsqueeze(1)
 
-        p_t_pad = pred_pad * targets + (1 - pred_pad) * (1 - targets)
-        loss_pad = ce_loss_pad * ((1 - p_t_pad) ** gamma)
+    p_t = pred * targets + (1 - pred) * (1 - targets)
+    loss = ce_loss * ((1 - p_t) ** gamma)
 
-        # normalise by valid elements such that each mask contributes equally
+    # normalise by valid elements such that each mask contributes equally
+    if input_pad_mask is not None:
         valid_counts = input_pad_mask.sum(-1, keepdim=True)
-        loss_pad = loss_pad.sum(-1) / valid_counts
-        loss += (1 - norm_weight) * loss_pad.mean()
-
-    return loss
+        loss = loss.sum(-1) / valid_counts
+        return loss.mean()
+    return loss.mean(-1).mean()
 
 
 def mask_focal_cost(pred_logits, targets, gamma=2.0, input_pad_mask=None, sample_weight=None):
@@ -225,7 +207,7 @@ def mask_focal_cost(pred_logits, targets, gamma=2.0, input_pad_mask=None, sample
     return cost
 
 
-def mask_bce_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=None, norm_weight=1.0, sample_weight=None):
+def mask_bce_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=None, sample_weight=None):
     """
     Compute the binary cross-entropy loss for binary masks.
 
@@ -234,33 +216,28 @@ def mask_bce_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=N
         targets: [batch_size, num_objects, num_inputs] - ground truth binary masks
         object_valid_mask: [batch_size, num_objects] - mask indicating valid target objects
         input_pad_mask: [batch_size, num_inputs] - mask indicating valid inputs
-        norm_weight: balance between different normalisation approach (weight = 1 completely normalises the loss per objects)
         sample_weight: Optional sample weights for each element.  Recommended to use focal instead.
 
     Returns:
         loss: Scalar tensor representing the binary cross-entropy loss
     """
-
-    assert 0.0 <= norm_weight <= 1.0, f"norm_weight for mask_bce_loss must be between 0 and 1, got {norm_weight}"
-
     if object_valid_mask is not None:
         pred_logits = pred_logits[object_valid_mask]
         targets = targets[object_valid_mask]
         sample_weight = sample_weight[object_valid_mask] if sample_weight is not None else None
 
-    bce_loss = F.binary_cross_entropy_with_logits(pred_logits, targets, weight=sample_weight, reduction="none")
-    loss = norm_weight * bce_loss.mean(-1).sum() / len(pred_logits)
+    loss = F.binary_cross_entropy_with_logits(pred_logits, targets, weight=sample_weight, reduction="none")
 
     # Apply input padding mask
     if input_pad_mask is not None:
-        loss_pad = bce_loss * input_pad_mask.unsqueeze(1)
+        loss = loss * input_pad_mask.unsqueeze(1)
 
-        # normalise by valid elements such that each mask contributes equally
+    # normalise by valid elements such that each mask contributes equally
+    if input_pad_mask is not None:
         valid_counts = input_pad_mask.sum(-1, keepdim=True)
-        loss_pad = loss_pad.sum(-1) / valid_counts
-        loss += (1 - norm_weight) * loss_pad.mean()
-
-    return loss
+        loss = loss.sum(-1) / valid_counts
+        return loss.mean()
+    return loss.mean(-1).mean()
 
 
 def mask_bce_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None):
