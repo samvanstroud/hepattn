@@ -1,4 +1,3 @@
-# noqa: EXE002
 """Top level training script, powered by the lightning CLI."""
 
 import pathlib
