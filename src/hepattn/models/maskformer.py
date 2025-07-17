@@ -20,7 +20,16 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         use_attn_masks: bool = True,
         use_query_masks: bool = True,
+        query_posenc: nn.Module | None = None,
+        preserve_original_queries: bool = False,
+        preserve_original_keys: bool = False,
+        preserve_input_posenc: bool = False,
         log_attn_mask: bool = False,
+        pe_scale_factor: float = 1,
+        # New parameters for flexible query re-addition
+        query_readd_strategy: str = "fixed_scale",  # "fixed_scale", "learned_gate", "layer_specific"
+        query_readd_layers: list[int] | None = None,  # Specific layers to re-add at (None = all layers)
+        query_readd_gate_init: float = 0.1,  # Initial value for learned gates
     ):
         """
         Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -52,6 +61,24 @@ class MaskFormer(nn.Module):
             If True, attention masks will be used to control which input objects are attended to.
         use_query_masks : bool, optional
             If True, query masks will be used to control which queries are valid during attention.
+        query_posenc : nn.Module or None, optional
+            Optional positional encoding module for queries.
+        preserve_original_queries : bool, optional
+            If True, original query embeddings will be re-added at each layer.
+        preserve_original_keys : bool, optional
+            If True, original key embeddings will be re-added at each layer.
+        preserve_input_posenc : bool, optional
+            If True, input positional encodings will be re-added at each layer.
+        log_attn_mask : bool, optional
+            If True, attention masks will be logged for debugging.
+        pe_scale_factor : float, optional
+            Scale factor for positional encoding re-addition.
+        query_readd_strategy : str, optional
+            Strategy for query re-addition: "fixed_scale", "learned_gate", or "layer_specific".
+        query_readd_layers : list[int] or None, optional
+            Specific layers to re-add queries at (None = all layers).
+        query_readd_gate_init : float, optional
+            Initial value for learned gates in query re-addition.
         """
         super().__init__()
 
@@ -67,8 +94,54 @@ class MaskFormer(nn.Module):
         self.input_sort_field = input_sort_field
         self.use_attn_masks = use_attn_masks
         self.use_query_masks = use_query_masks
+        self.query_posenc = query_posenc
+        self.preserve_original_queries = preserve_original_queries
+        self.preserve_original_keys = preserve_original_keys
+        self.preserve_input_posenc = preserve_input_posenc
+        self.pe_scale_factor = pe_scale_factor
         self.log_attn_mask = log_attn_mask
         self.log_step = 0
+
+        # Initialize query re-addition components
+        self.query_readd_strategy = query_readd_strategy
+        self.query_readd_layers = query_readd_layers
+        # Initialize learned gates for query re-addition if using learned_gate strategy
+        if query_readd_strategy == "learned_gate":
+            self.query_readd_gates = nn.Parameter(
+                torch.full((num_decoder_layers,), query_readd_gate_init)
+            )
+        elif query_readd_strategy == "layer_specific":
+            # Layer-specific learned scales
+            self.query_readd_scales = nn.Parameter(
+                torch.full((num_decoder_layers,), query_readd_gate_init)
+            )
+    
+
+    def _compute_query_readd_scale(self, layer_index: int) -> float:
+        """Compute the scale factor for query re-addition based on the chosen strategy.
+        
+        Parameters
+        ----------
+        layer_index : int
+            Current decoder layer index
+            
+        Returns
+        -------
+        float
+            Scale factor for re-addition
+        """
+        # Check if we should re-add at this layer
+        if self.query_readd_layers is not None and layer_index not in self.query_readd_layers:
+            return 0.0
+        
+        if self.query_readd_strategy == "fixed_scale":
+            return self.pe_scale_factor
+        elif self.query_readd_strategy == "learned_gate":
+            return torch.sigmoid(self.query_readd_gates[layer_index]) * self.pe_scale_factor
+        elif self.query_readd_strategy == "layer_specific":
+            return torch.sigmoid(self.query_readd_scales[layer_index]) * self.pe_scale_factor
+        else:
+            raise ValueError(f"Unknown query re-addition strategy: {self.query_readd_strategy}")
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
@@ -98,6 +171,19 @@ class MaskFormer(nn.Module):
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in input_names], dim=-2)
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in input_names], dim=-1)
 
+        # Store input positional encodings if we need to preserve them
+        if self.preserve_input_posenc:
+            input_posencs = []
+            for input_net in self.input_nets:
+                if input_net.posenc is not None:
+                    # Get just the positional encoding part
+                    posenc = input_net.posenc(inputs)
+                    input_posencs.append(posenc)
+                else:
+                    raise ValueError(f"Input net {input_net.input_name} has no positional encoding.")
+
+            x["key_posenc"] = torch.concatenate(input_posencs, dim=-2)
+
         # calculate the batch size and combined number of input constituents
         batch_size = x["key_valid"].shape[0]
         num_constituents = x["key_valid"].shape[-1]
@@ -114,6 +200,9 @@ class MaskFormer(nn.Module):
 
         # Pass merged input hits through the encoder
         if self.encoder is not None:
+            if self.preserve_original_keys:
+                x["key_embed_original"] = x["key_embed"].clone()
+
             # Note that a padded feature is a feature that is not valid!
             x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x.get(f"key_{self.input_sort_field}"), kv_mask=x.get("key_valid"))
 
@@ -126,10 +215,20 @@ class MaskFormer(nn.Module):
         x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
         x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
 
+        # Add positional encoding to the queries
+        if self.query_posenc is not None:
+            device = x["key_embed"].device
+            if self.preserve_original_queries:
+                x["query_posenc"] = self.query_posenc(inputs, batch_size, self.num_queries, device)
+                x["query_embed"] = x["query_embed"] + x["query_posenc"]
+            else:
+                x["query_embed"] = x["query_embed"] + self.query_posenc(inputs, batch_size, self.num_queries, device)
+
         # Do any pooling if desired
         if self.pooling is not None:
             x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
             x[f"{self.pooling.output_name}_embed"] = x | x_pooled
+
 
         # Pass encoded inputs through decoder to produce outputs
         outputs = {}
@@ -180,11 +279,23 @@ class MaskFormer(nn.Module):
                 and (attn_mask is not None)
                 and (self.log_step % 1000 == 0)
             ):
+                # Store for callback to log later
+                attn_mask_im = attn_mask[0].detach().cpu().clone()
+
+                key_sort_value_ = x.get(f"key_phi")
+                key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
+                attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
+
+                # # Suppose query_phi = ... (shape [batch_size, num_queries])
+                # query_sort_value = x.get(f"query_phi")
+                # query_sort_idx = torch.argsort(query_sort_value, dim=-1)
+                # attn_mask_im = attn_mask_im.index_select(0, query_sort_idx[0].to(attn_mask_im.device))
+
                 if not hasattr(self, "attn_masks_to_log"):
                     self.attn_masks_to_log = {}
                 if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
                     self.attn_masks_to_log[layer_index] = {
-                        "mask": attn_mask[0].detach().cpu().clone(),
+                        "mask": attn_mask_im,
                         "step": self.log_step,
                         "layer": layer_index,
                     }
@@ -193,6 +304,24 @@ class MaskFormer(nn.Module):
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=x.get("key_valid")
             )
+            
+            # Compute re-addition scale if we're using query re-addition strategies
+            if self.preserve_original_queries and self.query_readd_strategy is not None:
+                readd_scale = self._compute_query_readd_scale(layer_index)
+            else:
+                readd_scale = self.pe_scale_factor
+
+            # Re-add original query embeddings (similar to SAM's prompt token re-addition)
+            if (self.query_posenc is not None) and (self.preserve_original_queries):
+                x["query_embed"] = x["query_embed"] + readd_scale * x["query_posenc"]
+
+            # Re-add original key embeddings if requested
+            if self.preserve_original_keys:
+                x["key_embed"] = x["key_embed"] + readd_scale * x["key_embed_original"]
+
+            # Re-add input positional encodings if requested
+            if self.preserve_input_posenc:
+                x["key_embed"] = x["key_embed"] + readd_scale * x["key_posenc"]
 
             # Unmerge the updated features back into the separate input types
             for input_name in input_names:
@@ -295,3 +424,29 @@ class MaskFormer(nn.Module):
                 losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses
+
+    def get_readd_layers_info(self) -> dict:
+        """Get information about which layers are being used for query re-addition.
+        
+        Returns
+        -------
+        dict
+            Dictionary containing layer selection information
+        """
+        if self.query_readd_layers is None:
+            readd_layers = range(len(self.decoder_layers))
+            num_readd_layers = len(self.decoder_layers)
+        else:
+            readd_layers = sorted(self.query_readd_layers)
+            num_readd_layers = len(self.query_readd_layers)
+        return {
+            "readd_layers": readd_layers,
+            "num_readd_layers": num_readd_layers,
+            "total_layers": len(self.decoder_layers),
+            "readd_frequency": num_readd_layers / len(self.decoder_layers),
+            "strategy": self.query_readd_strategy,
+            "layer_range": None,
+            "layer_step": None,
+            "layer_freq": None,
+            "layer_pattern": None,
+        }
