@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +29,15 @@ class InferenceTimer(Callback):
                 return self.old_forward(*args, **kwargs)
 
         model.forward = new_forward
+
+        matmul_precision = torch.get_float32_matmul_precision()
+        if matmul_precision in {"high", "highest"}:
+            warnings.warn(
+                f"""The current float32 matmul precision is set to {matmul_precision},
+            which may impact inference times. Consider if `low` or `medium` matmul
+            precision can be used instead.""",
+                UserWarning,
+            )
 
     def on_test_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if self._tmp_dims is not None:

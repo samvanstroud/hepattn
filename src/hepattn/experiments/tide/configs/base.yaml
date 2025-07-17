@@ -1,11 +1,11 @@
-name: TIDE_1M_100_32trk_F32_0drop
+name: TIDE_32trk_F32
 
 data:
   batch_size: 100
   train_dir: data/tide/prepped/
   val_dir: data/tide/prepped/
   test_dir: data/tide/prepped/
-  num_workers: 14
+  num_workers: 10
   num_train: 1000000
   num_test: 10000
   num_val: 10000
@@ -127,31 +127,58 @@ data:
       - eta
       - phi
       - theta
-      - vx
-      - vy
-      - vz
       - z0
       - d0
       - q
       - qopt
+      # Vertex location in global frame
+      - vx
+      - vy
+      - vz
       # Track paramaters in ROI frame
+      - dtheta
       - deta
       - dphi
-      # Pseudotrack specific params
-      #- bhadpt
+      - dz0
+      # Scaled fields for the regression
+      - scaled_dz0
+      - scaled_d0
+      - scaled_qopt
+      - scaled_dtheta
+      - scaled_dphi
+      # Pseudotrack specific fields
+      - origin
+      - bhad_pt
+      - from_b
+      - from_c
+      - from_tau
+      - from_other
+      # Hit summary statistics
+      - num_pix
+      - num_sct
+      - num_shared_pix
+      - num_shared_sct
+      - num_layer_0_pix
+      - num_layer_1_pix
+      - num_shared_layer_0_pix
+      - num_shared_layer_1_pix
 
     sisp:
       # Track paramaters in global frame
       - pt
       - eta
       - phi
+      - theta
       - z0
       - d0
       - q
       - qopt
       # Track paramaters in ROI frame
+      - dtheta
       - deta
       - dphi
+      - dz0
+      # Vertex location in global frame
       - vx
       - vy
       - vz
@@ -161,13 +188,17 @@ data:
       - pt
       - eta
       - phi
+      - theta
       - z0
       - d0
       - q
       - qopt
       # Track paramaters in ROI frame
+      - dtheta
       - deta
       - dphi
+      - dz0
+      # Vertex location in global frame
       - vx
       - vy
       - vz
@@ -176,6 +207,16 @@ data:
       - eta
       - phi
       - energy
+      # Whether the ROI contains a b/c/tau/other
+      - has_b
+      - has_c
+      - has_tau
+      - has_other
+      # Whether the ROI is marked as a b/c/tau/other
+      - is_b
+      - is_c
+      - is_tau
+      - is_other
 
     sudo_pix:
       - loc_x
@@ -244,9 +285,9 @@ model:
       dim: &dim 256
       num_queries: *num_tracks
       input_sort_field: phi
-      record_intermediate_embeddings: false
       use_attn_masks: true
       use_query_masks: false
+      target_object: sudo
 
       input_nets:
         class_path: torch.nn.ModuleList
@@ -363,13 +404,11 @@ model:
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 8
+          num_layers: 4
           dim: *dim
           attn_type: torch
-          # window_size: 1024
-          # window_wrap: false
 
-      num_decoder_layers: 8
+      num_decoder_layers: 4
       decoder_layer_config:
         dim: *dim
         mask_attention: true
@@ -394,7 +433,7 @@ model:
                 losses:
                   object_bce: 1.0
                 costs:
-                  object_bce: 100.0
+                  object_bce: 10.0
                 dim: *dim
                 null_weight: 1.0
                 mask_queries: false
@@ -407,9 +446,9 @@ model:
                 output_object: pred
                 target_object: sudo
                 losses:
-                  mask_bce: 100.0
+                  mask_bce: 10.0
                 costs:
-                  mask_bce: 100.0
+                  mask_bce: 10.0
                 dim: *dim
                 null_weight: 1.0
 
@@ -421,8 +460,8 @@ model:
                 output_object: pred
                 target_object: sudo
                 losses:
-                  mask_bce: 50.0
+                  mask_bce: 5.0
                 costs:
-                  mask_bce: 50.0
+                  mask_bce: 5.0
                 dim: *dim
                 null_weight: 1.0

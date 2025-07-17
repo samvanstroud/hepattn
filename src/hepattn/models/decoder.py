@@ -19,6 +19,7 @@ class MaskFormerDecoderLayer(nn.Module):
         self,
         dim: int,
         norm: str = "LayerNorm",
+        depth: int = 0,
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
         mask_attention: bool = True,
@@ -34,6 +35,13 @@ class MaskFormerDecoderLayer(nn.Module):
 
         # handle hybridnorm
         qkv_norm = hybrid_norm
+        attn_norm = norm if not hybrid_norm else None
+        dense_post_norm = not hybrid_norm
+
+        # handle hybridnorm
+        qkv_norm = hybrid_norm
+        if depth == 0:
+            hybrid_norm = False
         attn_norm = norm if not hybrid_norm else None
         dense_post_norm = not hybrid_norm
 
@@ -57,12 +65,10 @@ class MaskFormerDecoderLayer(nn.Module):
             if hybrid_norm:
                 self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
                 self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
-
         try:
             self.norm = getattr(nn, norm)(dim, elementwise_affine=False)
         except AttributeError as e:
             raise ValueError(f"Unsupported norm: {norm}. Must be a valid torch.nn module.") from e
-
 
     def forward(self, q: Tensor, kv: Tensor, attn_mask: Tensor | None = None, q_mask: Tensor | None = None, kv_mask: Tensor | None = None) -> Tensor:
         if self.mask_attention:

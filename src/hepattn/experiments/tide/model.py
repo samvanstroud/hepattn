@@ -20,6 +20,9 @@ class TIDEModel(ModelWrapper):
 
         hits = ["pix", "sct"]
 
+        if "pred_valid" not in preds:
+            return
+
         pred_valid = preds["pred_valid"]["pred_valid"]
         true_valid = targets["sudo_valid"]
 
