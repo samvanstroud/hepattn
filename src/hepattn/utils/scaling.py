@@ -1,5 +1,8 @@
-import torch
 from collections import defaultdict
+from pathlib import Path
+
+import torch
+import yaml
 
 
 class VarTransform:
@@ -20,7 +23,7 @@ class VarTransform:
             max_ = self.config.get("max", 1.0)
             self.shift = (max_ + min_) / 2
             self.scale = (max_ - min_) / 2
-        assert self.type in ["std", "min_max", "min_max_sym"], f"Unknown scaling type {self.type}"
+        assert self.type in {"std", "min_max", "min_max_sym"}, f"Unknown scaling type {self.type}"
 
     def transform(self, x, shift=None, scale=None):
         if shift is None:
@@ -44,9 +47,9 @@ class VarTransform:
         x = x * scale + shift
         if self.fn == "log":
             return torch.exp(x)
-        elif self.fn == "log1p":
+        if self.fn == "log1p":
             return torch.expm1(x)
-        elif self.fn == "sqrt":
+        if self.fn == "sqrt":
             return torch.pow(x, 2)
 
         return x
@@ -74,9 +77,7 @@ class FeatureScaler:
         scale_dict_path : str
             Path to the YAML file containing scaling parameters for features.
         """
-        import yaml
-
-        with open(scale_dict_path, "r") as f:
+        with Path.open(scale_dict_path) as f:
             self.scale_dict = yaml.safe_load(f)
         self.transforms = defaultdict(get_empty_transform)
         for name, config in self.scale_dict.items():

@@ -1,4 +1,4 @@
-name: CLIC_Pflow_FullDiceFocFix
+name: CLIC_Pflow_FullDiceFocFix_tuneweights
 seed_everything: 42
 
 data:
@@ -153,9 +153,9 @@ model:
                 target_object: particle
                 num_classes: 5
                 losses:
-                  object_ce: 2
+                  object_ce: 1
                 costs:
-                  object_ce: 2
+                  object_ce: 1
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
@@ -179,11 +179,11 @@ model:
                 logit_scale: 4
                 losses:
                   mask_bce: 5.0
-                  mask_dice: 1.0
+                  mask_dice: 0.75
                   mask_focal: 2.0
                 costs:
                   mask_bce: 5.0
-                  mask_dice: 1.0
+                  mask_dice: 0.75
                   mask_focal: 2.0
                 dim: *dim
                 null_weight: 1.0

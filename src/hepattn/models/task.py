@@ -274,10 +274,12 @@ class ObjectHitMaskTask(Task):
         output = outputs[self.output_object_hit + "_logit"].detach().to(torch.float32)
         target = targets[self.target_object_hit + "_" + self.target_field].detach().to(output.dtype)
 
+        hit_pad = targets[self.input_hit + "_valid"]
+
         costs = {}
         # sample_weight = target + self.null_weight * (1 - target)
         for cost_fn, cost_weight in self.costs.items():
-            costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target)
+            costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target, input_pad_mask=hit_pad)
         return costs
 
     def loss(self, outputs, targets):

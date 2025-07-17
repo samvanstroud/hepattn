@@ -1,6 +1,5 @@
-import numpy as np
 import energyflow as ef
-
+import numpy as np
 
 # def compute_substructure_leading(pt, eta, phi, jets, n_procs=1, event_number=None):
 
@@ -34,7 +33,7 @@ def compute_substructure_leading(pt, eta, phi, mass, jets, n_procs=1, event_numb
 
     selected_event_numbers = []
     pt_eta_phi_massess = []
-    for pt_i, eta_i, phi_i, mass_i, j, ev_i in zip(pt, eta, phi, mass, jets, event_number):
+    for pt_i, eta_i, phi_i, mass_i, j, ev_i in zip(pt, eta, phi, mass, jets, event_number, strict=False):
         if len(j) == 0:
             continue
         const_idxs = j[0].constituent_idxs

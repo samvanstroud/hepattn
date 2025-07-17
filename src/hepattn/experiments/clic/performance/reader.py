@@ -1,8 +1,12 @@
-import uproot
-import numpy as np
-from tqdm import tqdm
+# ruff: noqa: FIX004
+
 import gc
-from .helper_dicts import pdgid_class_dict, class_mass_dict
+
+import numpy as np
+import uproot
+from tqdm import tqdm
+
+from .helper_dicts import class_mass_dict, pdgid_class_dict
 
 
 def load_pred_hgpflow(pred_path, threshold=0.5, num_events=None):
@@ -15,7 +19,9 @@ def load_pred_hgpflow(pred_path, threshold=0.5, num_events=None):
     hgpflow_dict = {}
     for var in tqdm(vars_to_load, desc="Loading HGPFlow predictions...", total=len(vars_to_load)):
         new_var = var.replace("hgpflow_", "")
-        hgpflow_dict[new_var] = np.array([x[m] for x, m in zip(tree[var].array(library="np", entry_stop=num_events), mask)], dtype=object)
+        hgpflow_dict[new_var] = np.array(
+            [x[m] for x, m in zip(tree[var].array(library="np", entry_stop=num_events), mask, strict=False)], dtype=object
+        )
     # hgpflow_dict["event_number"] = tree["event_number"].array(library="np", entry_stop=num_events).astype(int) - 55_000 # HACK
 
     # HACK: to fix event numbers we just arange them manually
@@ -46,7 +52,9 @@ def load_pred_mpflow(pred_path, threshold=0.5, num_events=None):
     mpflow_dict = {}
     for var in tqdm(vars_to_load, desc="Loading mpflow predictions...", total=len(vars_to_load)):
         new_var = var.replace("mpflow_", "")
-        mpflow_dict[new_var] = np.array([x[m] for x, m in zip(tree[var].array(library="np", entry_stop=num_events), mask)], dtype=object)
+        mpflow_dict[new_var] = np.array(
+            [x[m] for x, m in zip(tree[var].array(library="np", entry_stop=num_events), mask, strict=False)], dtype=object
+        )
     mpflow_dict["event_number"] = tree["event_number"].array(library="np", entry_stop=num_events).astype(int)  # - 643_00 # HACK
 
     # compute mass and energy
@@ -82,7 +90,7 @@ def load_pred_mlpf(pred_path, truth_event_number_offset):
     mlpf_dict = {}
     for var in tqdm(vars_to_load, desc="Loading MLPF predictions...", total=len(vars_to_load)):
         new_var = var.replace("pred_", "")
-        mlpf_dict[new_var] = np.array([x[m] for x, m in zip(tree[var].array(library="np"), mlpf_mask_cl)], dtype=object)
+        mlpf_dict[new_var] = np.array([x[m] for x, m in zip(tree[var].array(library="np"), mlpf_mask_cl, strict=False)], dtype=object)
 
     # class remapping
     mlpf_dict["class"] = np.array([np.array([class_remap[x] for x in cls]) for cls in mlpf_dict["cl"]], dtype=object)
@@ -110,9 +118,9 @@ def load_pred_mlpf(pred_path, truth_event_number_offset):
 
 
 def load_truth_clic(truth_path, event_number_offset=0):
-    scale_E_pT = 1
+    scale_e_pt = 1
     # pt_min_gev = 0.1
-    print("\033[96m" + f"E, pT will be scaled by {scale_E_pT}" + "\033[0m")
+    print("\033[96m" + f"E, pT will be scaled by {scale_e_pt}" + "\033[0m")
 
     tree = uproot.open(truth_path)["events"]
     n_events = tree.num_entries
@@ -140,7 +148,7 @@ def load_truth_clic(truth_path, event_number_offset=0):
     # filter out events with no tracks and no topoclusters
     track_topo_mask = (n_tracks > 0) | (n_topos > 0)
     print(f"Number of events with at least one track or topocluster: {np.sum(track_topo_mask)} out of {n_events}")
-    print(np.argwhere(track_topo_mask == False))
+    print(np.argwhere(~track_topo_mask))
     for var in vars_to_load:
         truth_dict[var] = truth_dict[var][track_topo_mask]
     n_events = len(truth_dict["particle_pt"])
@@ -174,7 +182,7 @@ def load_truth_clic(truth_path, event_number_offset=0):
         for var in ["particle_pt", "particle_eta", "particle_phi", "particle_e", "particle_class", "particle_gen_status"]:
             truth_dict[var][i] = truth_dict[var][i][mask]
 
-    if "event_number" in tree.keys():
+    if "event_number" in tree:
         truth_dict["event_number"] = tree["event_number"].array(library="np").astype(int)
     else:
         truth_dict["event_number"] = np.arange(len(truth_dict["particle_pt"])) + event_number_offset
@@ -198,7 +206,7 @@ def load_hgpflow_target(target_path, drop_res=True, num_events=None, event_numbe
         for key, val in hgpflow_target_dict_tmp.items():
             if key == "event_number":
                 continue
-            hgpflow_target_dict_tmp[key] = np.array([x[m] for x, m in zip(val, mask)], dtype=object)
+            hgpflow_target_dict_tmp[key] = np.array([x[m] for x, m in zip(val, mask, strict=False)], dtype=object)
 
     # unique_sorted_ev_num = np.sort(np.unique(hgpflow_target_dict_tmp['event_number']))
     # hgpflow_target_dict = {}

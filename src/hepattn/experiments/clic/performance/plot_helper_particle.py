@@ -1,13 +1,12 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.colors import LogNorm
-from sklearn.metrics import confusion_matrix
 
-from .utils import get_cmap, custom_hist_v1, custom_hist_v2, update_stylesheet
-from .style_sheet import FIG_W, FIG_H_1ROW, FIG_DPI, LABELS
+from . import style_sheet
+from .utils import custom_hist_v2, get_cmap, update_stylesheet
 
-FIG_W = 12
-FIG_H_1ROW = 4.5
+FIG_W = style_sheet.FIG_W
+FIG_H_1ROW = style_sheet.FIG_H_1ROW
 FIG_DPI = 300
 
 
@@ -46,23 +45,23 @@ def plot_scatter(ref_dict, comp_dict, comp_name, ref_name="truth"):
             ax.minorticks_on()
             ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
             ax.set_xlabel(f"{ref_name} {var}")
-            ax.set_ylabel(f"{LABELS[comp_name]} {var}")
+            ax.set_ylabel(f"{style_sheet.LABELS[comp_name]} {var}")
             ax.set_title(f"({cl_name})")
 
     return fig
 
 
-def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False, qs=None, stylesheet=None):
+def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False, qs=None, stylesheet=None):  # noqa: ARG001
     """
     Args:
         data_dicts: {name: (ref_dict, comp_dict), ...}
             ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
     """
 
-    _COLORS, _LABELS, _HISTTYPES, _ALPHAS, _LINE_STYLES, _LABEL_LEN = update_stylesheet(stylesheet)
+    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
 
     residual_dict = {}
-    for name in data_dicts.keys():
+    for name in data_dicts:
         residual_dict[name] = {"pt": [], "eta": [], "phi": [], "ref_class": []}
     abs_max_dict = {"Charged": {"pt": 0, "eta": 0, "phi": 0}, "Neutral": {"pt": 0, "eta": 0, "phi": 0}}
     if qs is None:
@@ -93,8 +92,8 @@ def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False,
 
     xlabel_dict = {
         "pt": "$p_T^{reco} - p_T^{truth}$ [GeV]" if not pt_relative else "$(p_T^{reco} - p_T^{truth})/p_T^{truth}$",
-        "eta": "$\eta^{reco} - \eta^{truth}$",
-        "phi": "$\phi^{reco} - \phi^{truth}$",
+        "eta": r"$\eta^{reco} - \eta^{truth}$",
+        "phi": r"$\phi^{reco} - \phi^{truth}$",
     }
 
     for name, res_dict in residual_dict.items():
@@ -113,11 +112,11 @@ def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False,
                     label_length=-1,
                     metrics="mean std iqr",
                     bins=bins,
-                    histtype=_HISTTYPES[name],
-                    label=_LABELS[name],
-                    color=_COLORS[name],
-                    linestyle=_LINE_STYLES[name],
-                    alpha=_ALPHAS[name],
+                    histtype=_histtypes[name],
+                    label=_labels[name],
+                    color=_colors[name],
+                    linestyle=_line_styles[name],
+                    alpha=_alphas[name],
                 )
 
                 ax.minorticks_on()
@@ -137,17 +136,17 @@ def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False,
     return fig
 
 
-def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log_y=False, qs=None, stylesheet=None, separate_figures=False):
+def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log_y=False, qs=None, stylesheet=None, separate_figures=False):  # noqa: ARG001
     """
     Args:
         data_dicts: {name: (ref_dict, comp_dict), ...}
             ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
     """
 
-    _COLORS, _LABELS, _HISTTYPES, _ALPHAS, _LINE_STYLES, _LABEL_LEN = update_stylesheet(stylesheet)
+    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
 
     residual_dict = {}
-    for name in data_dicts.keys():
+    for name in data_dicts:
         residual_dict[name] = {"pt": [], "eta": [], "phi": [], "ref_class": [], "f": {}}
     abs_max_dict = {"Neutral hadron": {"pt": 0, "eta": 0, "phi": 0}, "Photon": {"pt": 0, "eta": 0, "phi": 0}}
     if qs is None:
@@ -170,7 +169,7 @@ def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log
         residual_dict[name]["ref_class"] = ref_dict["class"]
 
         # f computation
-        for cl_name, cl in zip(["Neutral hadron", "Photon"], [3, 4]):
+        for cl_name, cl in zip(["Neutral hadron", "Photon"], [3, 4], strict=False):
             f = np.sum(ref_dict["class"] == cl) / (np.sum(ref_dict["class"] == cl) + np.sum(ref_dict_unmatched["class"] == cl))
             residual_dict[name]["f"][cl_name] = f
 
@@ -180,9 +179,9 @@ def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log
     if separate_figures:
         figs = []
         axs = []
-        for i in range(n_row):
+        for _i in range(n_row):
             tmp_axs = []
-            for j in range(n_col):
+            for _j in range(n_col):
                 fig, ax = plt.subplots(figsize=(FIG_W / 3, FIG_H_1ROW), dpi=FIG_DPI)
                 figs.append(fig)
                 tmp_axs.append(ax)
@@ -194,8 +193,8 @@ def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log
 
     xlabel_dict = {
         "pt": "$p_T^{reco} - p_T^{truth}$ [GeV]" if not pt_relative else "$(p_T^{reco} - p_T^{truth})/p_T^{truth}$",
-        "eta": "$\eta^{reco} - \eta^{truth}$",
-        "phi": "$\phi^{reco} - \phi^{truth}$",
+        "eta": r"$\eta^{reco} - \eta^{truth}$",
+        "phi": r"$\phi^{reco} - \phi^{truth}$",
     }
 
     for name, res_dict in residual_dict.items():
@@ -212,11 +211,11 @@ def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log
                     metrics="mean std iqr",
                     f=res_dict["f"][cl_name],
                     bins=bins,
-                    histtype=_HISTTYPES[name],
-                    label=_LABELS[name],
-                    color=_COLORS[name],
-                    linestyle=_LINE_STYLES[name],
-                    alpha=_ALPHAS[name],
+                    histtype=_histtypes[name],
+                    label=_labels[name],
+                    color=_colors[name],
+                    linestyle=_line_styles[name],
+                    alpha=_alphas[name],
                 )
 
                 ax.minorticks_on()
@@ -241,10 +240,11 @@ def plot_eff_fr_purity(eff_fr_purity_input_dict, stylesheet=None):
     Compute efficiency, fake rate, and purity in pt bins separated by class
         efficiency = N(truth particles of this class matched to pflow particles) / N(total truth particles of this class)
         fake rate  = N(pflow particles of this class not matched to truth particles) / N(total pflow particles of this class)
-        purity     = N(truth particles of this class that are matched to pflow particles of this class) / N(total truth particles of this class that are matched to pflow particles)
+        purity     = N(truth particles of this class that are matched to pflow particles of this class)
+                     / N(total truth particles of this class that are matched to pflow particles)
     """
 
-    _COLORS, _LABELS, _HISTTYPES, _ALPHAS, _LINE_STYLES, _LABEL_LEN = update_stylesheet(stylesheet)
+    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
 
     # subplots of eff, fr, and purity versus pt stacked vertically
     # All classes are drawn on same axis
@@ -269,33 +269,37 @@ def plot_eff_fr_purity(eff_fr_purity_input_dict, stylesheet=None):
 
         # initialize binned arrays to zero for each class
         binned_arrays = ["n_truth_matched", "n_truth_tot", "eff", "n_pflow_unmatched", "n_pflow_tot", "fr", "n_class_matched", "purity"]
-        for cl_name, cl_dict in eff_fr_dict.items():
+        for cl_dict in eff_fr_dict.values():
             for arr in binned_arrays:
                 cl_dict[arr] = np.zeros(n_bins)
 
         # compute efficiency, fake rate, and purity in one go
-        for cl_name, cl_dict in eff_fr_dict.items():
-            for bin in range(len(pt_bins) - 1):
+        for cl_dict in eff_fr_dict.values():
+            for bin_idx in range(len(pt_bins) - 1):
                 truth_mask_matched = (
-                    (truth_pt_matched > pt_bins[bin]) & (truth_pt_matched <= pt_bins[bin + 1]) & (truth_class_matched == cl_dict["class"])
+                    (truth_pt_matched > pt_bins[bin_idx]) & (truth_pt_matched <= pt_bins[bin_idx + 1]) & (truth_class_matched == cl_dict["class"])
                 )
                 truth_mask_unmatched = (
-                    (truth_pt_unmatched > pt_bins[bin]) & (truth_pt_unmatched <= pt_bins[bin + 1]) & (truth_class_unmatched == cl_dict["class"])
+                    (truth_pt_unmatched > pt_bins[bin_idx])
+                    & (truth_pt_unmatched <= pt_bins[bin_idx + 1])
+                    & (truth_class_unmatched == cl_dict["class"])
                 )
                 pflow_mask_matched = (
-                    (pflow_pt_matched > pt_bins[bin]) & (pflow_pt_matched <= pt_bins[bin + 1]) & (pflow_class_matched == cl_dict["class"])
+                    (pflow_pt_matched > pt_bins[bin_idx]) & (pflow_pt_matched <= pt_bins[bin_idx + 1]) & (pflow_class_matched == cl_dict["class"])
                 )
                 pflow_mask_unmatched = (
-                    (pflow_pt_unmatched > pt_bins[bin]) & (pflow_pt_unmatched <= pt_bins[bin + 1]) & (pflow_class_unmatched == cl_dict["class"])
+                    (pflow_pt_unmatched > pt_bins[bin_idx])
+                    & (pflow_pt_unmatched <= pt_bins[bin_idx + 1])
+                    & (pflow_class_unmatched == cl_dict["class"])
                 )
 
-                cl_dict["n_truth_matched"][bin] += np.sum(truth_mask_matched)
-                cl_dict["n_truth_tot"][bin] += np.sum(truth_mask_matched) + np.sum(truth_mask_unmatched)
-                cl_dict["n_pflow_unmatched"][bin] += np.sum(pflow_mask_unmatched)
-                cl_dict["n_pflow_tot"][bin] += np.sum(pflow_mask_matched) + np.sum(pflow_mask_unmatched)
-                cl_dict["n_class_matched"][bin] += np.sum(truth_mask_matched & (pflow_class_matched == cl_dict["class"]))
+                cl_dict["n_truth_matched"][bin_idx] += np.sum(truth_mask_matched)
+                cl_dict["n_truth_tot"][bin_idx] += np.sum(truth_mask_matched) + np.sum(truth_mask_unmatched)
+                cl_dict["n_pflow_unmatched"][bin_idx] += np.sum(pflow_mask_unmatched)
+                cl_dict["n_pflow_tot"][bin_idx] += np.sum(pflow_mask_matched) + np.sum(pflow_mask_unmatched)
+                cl_dict["n_class_matched"][bin_idx] += np.sum(truth_mask_matched & (pflow_class_matched == cl_dict["class"]))
 
-            ### ratios
+            # ratios
             cl_dict["eff"] = cl_dict["n_truth_matched"] / (cl_dict["n_truth_tot"] + 1e-8)
             cl_dict["fr"] = cl_dict["n_pflow_unmatched"] / (cl_dict["n_pflow_tot"] + 1e-8)
             cl_dict["purity"] = cl_dict["n_class_matched"] / (cl_dict["n_truth_matched"] + 1e-8)
@@ -305,11 +309,11 @@ def plot_eff_fr_purity(eff_fr_purity_input_dict, stylesheet=None):
                 pt_bin_mids,
                 bins=pt_bins,
                 weights=cl_dict["eff"],
-                ls=_LINE_STYLES[name],
-                label=f"{cl_name} ({_LABELS[name]})",
+                ls=_line_styles[name],
+                label=f"{cl_name} ({_labels[name]})",
                 histtype="step",
                 linewidth=1,
-                color=_COLORS[name][cl_name],
+                color=_colors[name][cl_name],
             )
 
         for cl_name, cl_dict in eff_fr_dict.items():
@@ -317,11 +321,11 @@ def plot_eff_fr_purity(eff_fr_purity_input_dict, stylesheet=None):
                 pt_bin_mids,
                 bins=pt_bins,
                 weights=cl_dict["fr"],
-                ls=_LINE_STYLES[name],
-                label=f"{cl_name} ({_LABELS[name]})",
+                ls=_line_styles[name],
+                label=f"{cl_name} ({_labels[name]})",
                 histtype="step",
                 linewidth=1,
-                color=_COLORS[name][cl_name],
+                color=_colors[name][cl_name],
             )
 
         for cl_name, cl_dict in eff_fr_dict.items():
@@ -329,11 +333,11 @@ def plot_eff_fr_purity(eff_fr_purity_input_dict, stylesheet=None):
                 pt_bin_mids,
                 bins=pt_bins,
                 weights=cl_dict["purity"],
-                ls=_LINE_STYLES[name],
-                label=f"{cl_name} ({_LABELS[name]})",
+                ls=_line_styles[name],
+                label=f"{cl_name} ({_labels[name]})",
                 histtype="step",
                 linewidth=1,
-                color=_COLORS[name][cl_name],
+                color=_colors[name][cl_name],
             )
 
     ax1.set_xlabel("Truth $p_\\mathrm{T}$ [GeV]")

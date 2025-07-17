@@ -1,11 +1,12 @@
+# noqa: EXE002
 """Top level training script, powered by the lightning CLI."""
 
 import pathlib
-import comet_ml
+
 from lightning.pytorch.cli import ArgsType
 
-from hepattn.experiments.clic.pflow_data import PflowDataModule
 from hepattn.experiments.clic.lightning_module import MPflow
+from hepattn.experiments.clic.pflow_data import PflowDataModule
 from hepattn.utils.cli import CLI
 
 config_dir = pathlib.Path(__file__).parent / "configs"

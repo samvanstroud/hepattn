@@ -1,17 +1,18 @@
 from collections import defaultdict
+
 import numpy as np
-from tqdm import tqdm
-from .jet_helper import JetHelper, compute_jets
-from .cheap_jet import CheapJet
-from .reader import (
-    load_pred_hgpflow,
-    load_pred_mpflow,
-    load_pred_mlpf,
-    load_truth_clic,
-    load_hgpflow_target,
-)
 from scipy.optimize import linear_sum_assignment
-from .utils import deltaR, delta_r
+from tqdm import tqdm
+
+from .jet_helper import JetHelper, compute_jets
+from .reader import (
+    load_hgpflow_target,
+    load_pred_hgpflow,
+    load_pred_mlpf,
+    load_pred_mpflow,
+    load_truth_clic,
+)
+from .utils import delta_r
 
 
 class Performance:
@@ -32,7 +33,7 @@ class Performance:
         elif isinstance(num_events, int):
             # if num_events is an int, we assume it is the same for all networks
             # and convert it to a dict with the network names as keys
-            num_events = {net_name: num_events for net_name in networks.keys()}
+            num_events = dict.fromkeys(networks.keys(), num_events)
 
         self.data = {}
         for net_name, pred_path in networks.items():
@@ -48,7 +49,7 @@ class Performance:
 
     def reorder_and_find_intersection(self):
         self.common_event_numbers = self.truth_dict["event_number"]
-        for net_name, net_dict in self.data.items():
+        for net_dict in self.data.values():
             self.common_event_numbers = np.intersect1d(self.common_event_numbers, net_dict["event_number"])
 
         print("common event count:", len(self.common_event_numbers))
@@ -131,12 +132,12 @@ class Performance:
         if n_ref_jets == 0 or n_comp_jets == 0:
             return [[], []]
 
-        dR_matrix = np.zeros((n_ref_jets, n_comp_jets))
+        dr_matrix = np.zeros((n_ref_jets, n_comp_jets))
         for i in range(n_ref_jets):
             for j in range(n_comp_jets):
-                dR_matrix[i, j] = ref_jets[i].delta_R(comp_jets[j])
+                dr_matrix[i, j] = ref_jets[i].delta_r(comp_jets[j])
 
-        row_indices, col_indices = linear_sum_assignment(dR_matrix, maximize=False)
+        row_indices, col_indices = linear_sum_assignment(dr_matrix, maximize=False)
         ref_jets_matched = [ref_jets[i] for i in row_indices]
         comp_jets_matched = [comp_jets[i] for i in col_indices]
 
@@ -149,7 +150,9 @@ class Performance:
 
     def match_jets_all_ev(self, ref_jets, comp_jets):
         ref_jets_matched, comp_jets_matched = [], []
-        for ev_i, (ref_jets_ev, comp_jets_ev) in enumerate(tqdm(zip(ref_jets, comp_jets), total=len(ref_jets), desc="Matching jets...")):
+        for _ev_i, (ref_jets_ev, comp_jets_ev) in enumerate(
+            tqdm(zip(ref_jets, comp_jets, strict=False), total=len(ref_jets), desc="Matching jets...")
+        ):
             ref_jets_ev_matched, comp_jets_ev_matched = self.match_jets_single_ev(ref_jets_ev, comp_jets_ev)
             ref_jets_matched.append(ref_jets_ev_matched)
             comp_jets_matched.append(comp_jets_ev_matched)
@@ -158,7 +161,7 @@ class Performance:
 
     def match_jets(self):
         self.truth_dict["matched_pandora_jets"] = self.match_jets_all_ev(self.truth_dict["truth_jets"], self.truth_dict["pandora_jets"])
-        for net_name, net_dict in self.data.items():
+        for net_dict in self.data.values():
             net_dict["matched_jets"] = self.match_jets_all_ev(self.truth_dict["truth_jets"], net_dict["jets"])
             if "proxy_jets" in net_dict:
                 net_dict["matched_proxy_jets"] = self.match_jets_all_ev(self.truth_dict["truth_jets"], net_dict["proxy_jets"])
@@ -169,13 +172,13 @@ class Performance:
 
         cost_delpt_sq = (np.expand_dims(ref_pt, axis=1) - np.expand_dims(comp_pt, axis=0)) ** 2
         cost_delpt_sq_by_pt_sq = cost_delpt_sq / np.expand_dims(ref_pt, axis=1) ** 2
-        cost_deltaR = delta_r(  # deltaR(
+        cost_deltar = delta_r(  # deltaR(
             np.expand_dims(ref_eta, axis=1),
             np.expand_dims(comp_eta, axis=0),
             np.expand_dims(ref_phi, axis=1),
             np.expand_dims(comp_phi, axis=0),
         )
-        cost = np.sqrt(cost_delpt_sq_by_pt_sq + cost_deltaR**2)
+        cost = np.sqrt(cost_delpt_sq_by_pt_sq + cost_deltar**2)
 
         ref_ch_mask = ref_cl <= 2
         comp_ch_mask = comp_cl <= 2
@@ -249,7 +252,7 @@ class Performance:
                 return_unmatched,
             )
 
-            for key in ref_particles_matched.keys():
+            for key in ref_particles_matched:
                 ref_particles_matched[key].append(ref_particles_ev_matched[key])
                 comp_particles_matched[key].append(comp_particles_ev_matched[key])
                 if return_unmatched:
@@ -257,7 +260,7 @@ class Performance:
                     comp_particles_unmatched[key].append(comp_particles_ev_unmatched[key])
 
         if flatten:
-            for key in ref_particles_matched.keys():
+            for key in ref_particles_matched:
                 ref_particles_matched[key] = np.hstack(ref_particles_matched[key])
                 comp_particles_matched[key] = np.hstack(comp_particles_matched[key])
                 if return_unmatched:
@@ -287,12 +290,12 @@ class Performance:
                         net_dict["proxy_pt"],
                         net_dict["proxy_eta"],
                         net_dict["proxy_phi"],
-                        net_dict[f"class"],
+                        net_dict["class"],
                     ),
                     flatten,
                     return_unmatched,
                 )
-            net_dict[f"matched_particles"] = self.hung_match_all_ev(
+            net_dict["matched_particles"] = self.hung_match_all_ev(
                 (
                     self.truth_dict["particle_pt"],
                     self.truth_dict["particle_eta"],

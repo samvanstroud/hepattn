@@ -1,11 +1,11 @@
-### see https://pdg.lbl.gov/2007/reviews/montecarlorpp.pdf
-###  0: charged hadrons
-###  1: electrons
-###  2: muons
-###  3: neutral hadrons
-###  4: photons
-###  5: residual
-### -1: neutrinos
+# see https://pdg.lbl.gov/2007/reviews/montecarlorpp.pdf
+# 0: charged hadrons
+# 1: electrons
+# 2: muons
+# 3: neutral hadrons
+# 4: photons
+# 5: residual
+# -1: neutrinos
 
 pdgid_class_dict = {
     -211: 0,
@@ -130,14 +130,14 @@ pdgid_class_dict = {
 }
 
 
-### see https://pdg.lbl.gov/2007/reviews/montecarlorpp.pdf
-###  0: charged hadrons
-###  1: electrons
-###  2: muons
-###  3: neutral hadrons
-###  4: photons
-###  5: residual
-### -1: neutrinos
+# see https://pdg.lbl.gov/2007/reviews/montecarlorpp.pdf
+# 0: charged hadrons
+# 1: electrons
+# 2: muons
+# 3: neutral hadrons
+# 4: photons
+# 5: residual
+# -1: neutrinos
 
 class_mass_dict = {
     0: 0.2760,  # ch had

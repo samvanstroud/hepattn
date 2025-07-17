@@ -4,7 +4,7 @@ FIG_DPI = 200
 
 
 LABELS = {
-    ### algorithms
+    # algorithms
     "truth": "Truth",
     "ppflow": "PPflow",
     "pandora": "Pandora",
@@ -15,17 +15,17 @@ LABELS = {
     "hgpflow_mini": "HGPflow mini",
     "hgpflow_target": "HGPflow target",
     "mlpf": "MLPF",
-    ### particles
+    # particles
     0: "ch. had",
-    1: "$e^\pm$",
-    2: "$\mu^\pm$",
+    1: r"$e^\pm$",
+    2: r"$\mu^\pm$",
     3: "nu. had",
-    4: "$\gamma$",
+    4: r"$\gamma$",
     5: "resid.",
 }
 
 COLORS = {
-    ### algorithms
+    # algorithms
     "truth": "black",
     "ppflow": "gray",
     "pandora": "gray",
@@ -36,7 +36,7 @@ COLORS = {
     "hgpflow_mini": "blue",
     "hgpflow_target": "red",
     "mlpf": "teal",
-    ### particles
+    # particles
     0: "red",
     1: "orange",
     2: "magenta",

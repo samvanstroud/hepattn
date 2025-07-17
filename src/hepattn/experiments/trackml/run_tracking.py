@@ -71,7 +71,6 @@ class TrackMLTracker(ModelWrapper):
         self.log(f"{stage}/num_particles", torch.mean(true_num.float()), sync_dist=True)
 
 
-
 def main(args: ArgsType = None) -> None:
     CLI(
         model_class=TrackMLTracker,

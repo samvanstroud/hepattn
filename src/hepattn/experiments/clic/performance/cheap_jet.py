@@ -1,5 +1,4 @@
 import numpy as np
-import fastjet as fj
 
 
 class CheapJet:
@@ -29,7 +28,7 @@ class CheapJet:
     def __add__(self, other):
         raise NotImplementedError("This is not implemented yet.")
 
-    def delta_R(self, other):
+    def delta_r(self, other):
         deta = self.eta - other.eta
         dphi = self.phi - other.phi
         dphi = (dphi + np.pi) % (2 * np.pi) - np.pi

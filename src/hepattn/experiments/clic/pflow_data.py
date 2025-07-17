@@ -1,13 +1,11 @@
-from collections import defaultdict
+import gc
 from pathlib import Path
 
-import gc
-import yaml
-
-import uproot
 import lightning as L
 import numpy as np
 import torch
+import uproot
+from lightning import seed_everything
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
@@ -46,7 +44,8 @@ class CLICDataset(Dataset):
         super().__init__()
 
         self.sampling_seed = 42
-        np.random.seed(self.sampling_seed)  # https://stackoverflow.com/questions/52375356/is-there-a-way-to-set-random-state-for-all-pandas-function
+        np.random.default_rng(self.sampling_seed)
+        seed_everything(self.sampling_seed, workers=True)
 
         self.scaler = FeatureScaler(scale_dict_path)
 
@@ -106,8 +105,8 @@ class CLICDataset(Dataset):
             if var == "topo_e":
                 self.n_topos = np.array([len(x) for x in self.full_data_array[var]])
 
-        self.track_variables = [key for key in self.full_data_array.keys() if "track" in key]
-        self.topo_variables = [key for key in self.full_data_array.keys() if "topo" in key]
+        self.track_variables = [key for key in self.full_data_array if "track" in key]
+        self.topo_variables = [key for key in self.full_data_array if "topo" in key]
         # self.event_number = tree["eventNumber"].array(library="np", entry_stop=self.num_events)
         self.event_number = np.arange(len(self.n_tracks))
 
@@ -131,16 +130,16 @@ class CLICDataset(Dataset):
             self.full_data_array[var] = np.concatenate(self.full_data_array[var][mask])
             if var == "particle_pdgid":
                 self.particle_class = torch.tensor([self.class_labels[x] for x in self.full_data_array[var]])
-            if var in ["track_phi", "track_phi_int", "topo_phi", "particle_phi"]:
+            if var in {"track_phi", "track_phi_int", "topo_phi", "particle_phi"}:
                 self.full_data_array[var] = normalize_phi(self.full_data_array[var])
 
         # transform variables and transform to tensors
         for key, val in self.full_data_array.items():
             self.full_data_array[key] = torch.tensor(val)
 
-        self.topo_cumsum = np.cumsum([0] + self.n_topos.tolist())
-        self.track_cumsum = np.cumsum([0] + self.n_tracks.tolist())
-        self.particle_cumsum = np.cumsum([0] + self.n_particles.tolist())
+        self.topo_cumsum = np.cumsum([0, *self.n_topos.tolist()])
+        self.track_cumsum = np.cumsum([0, *self.n_tracks.tolist()])
+        self.particle_cumsum = np.cumsum([0, *self.n_particles.tolist()])
 
         # needed for batch sampling
         self.n_nodes = self.n_tracks + self.n_topos
@@ -193,7 +192,7 @@ class CLICDataset(Dataset):
         track_tanlambda = self.full_data_array["track_tanlambda"][track_start:track_end]
         track_omega = self.full_data_array["track_omega"][track_start:track_end]
 
-        ## topo features
+        # topo features
         topo_e = self.full_data_array["topo_e"][topo_start:topo_end]
         topo_eta = self.full_data_array["topo_eta"][topo_start:topo_end]
         topo_phi = self.full_data_array["topo_phi"][topo_start:topo_end]
@@ -606,8 +605,6 @@ class CLICDataset(Dataset):
             113: 3,  # rho0
             130: 3,  # K0L
             310: 3,  # K0S
-            -311: 3,
-            311: 3,  # K0
             -313: 3,
             313: 3,  # K*0
             -421: 3,

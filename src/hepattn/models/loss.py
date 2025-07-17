@@ -285,6 +285,72 @@ def kl_div_cost(pred_logits, true, eps=1e-8):
     return (-true[:, None, :] * torch.log(pred_logits[:, :, None] + eps)).mean(-1)
 
 
+def mask_kl_div_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=None, sample_weight=None, eps=1e-8):  # noqa: ARG001
+    """
+    KL divergence loss for hit-object assignment (recommend using energy_fractions as input).
+
+    Args:
+        pred_logits: [batch_size, num_objects, num_inputs] - predicted logits
+        targets: [batch_size, num_objects, num_inputs] - ground truth
+        object_valid_mask: [batch_size, num_objects] - mask indicating valid target objects
+        input_pad_mask: [batch_size, num_inputs] - mask indicating valid inputs
+        sample_weight: not used
+
+    Returns:
+        loss: KL loss
+    """
+
+    if object_valid_mask is not None:
+        pred_logits = pred_logits[object_valid_mask]
+        targets = targets[object_valid_mask]
+
+    if input_pad_mask is not None:
+        pred_logits = pred_logits.masked_fill(~input_pad_mask.unsqueeze(1), float("-inf"))
+        targets = targets * input_pad_mask.unsqueeze(1)
+        # Renormalise to keep targets sums to 1 for each object
+        targets = targets / (targets.sum(-1, keepdim=True) + eps)
+
+    pred_probs = torch.softmax(pred_logits, dim=-1)
+    loss = -targets * torch.log(pred_probs + eps)
+
+    # Apply input padding mask such that each mask contributes equally
+    if input_pad_mask is not None:
+        valid_counts = input_pad_mask.sum(-1, keepdim=True)
+        loss = loss.sum(-1) / (valid_counts + eps)
+        return loss.mean()
+    return loss.mean(-1).mean()
+
+
+def mask_kl_div_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None, eps=1e-8):  # noqa: ARG001
+    """
+    Compute KL costs.
+
+    Args:
+        pred_logits: [batch_size, num_objects, num_inputs] - predicted logits
+        targets: [batch_size, num_objects, num_inputs] - ground truth
+        input_pad_mask: [batch_size, num_inputs] - mask indicating valid inputs
+        sample_weight: Not used
+
+    Returns:
+        cost: [batch_size, num_objects, num_objects] - KL cost
+    """
+
+    if input_pad_mask is not None:
+        pred_logits = pred_logits.masked_fill(~input_pad_mask.unsqueeze(1), float("-inf"))
+        targets = targets * input_pad_mask.unsqueeze(1)
+        # Renormalise to keep targets sums to 1 for each object
+        targets = targets / (targets.sum(-1, keepdim=True) + eps)
+
+    pred_probs = torch.softmax(pred_logits, dim=-1)
+
+    # Context manager necessary to overwrite global autocast to ensure float32 cost is returned
+    with torch.autocast(device_type="cuda", enabled=False):
+        log_pred = torch.log(pred_probs + eps)
+        cost = torch.einsum("bnm,btm->bnt", -log_pred, targets)
+
+    return cost
+
+
 def regr_mse_loss(pred, targets):
     return torch.nn.functional.mse_loss(pred, targets, reduction="none")
 
@@ -309,6 +375,7 @@ cost_fns = {
     "mask_focal": mask_focal_cost,
     "mask_iou": mask_iou_cost,
     "kl_div": kl_div_cost,
+    "mask_kl_div": mask_kl_div_cost,
 }
 
 loss_fns = {
@@ -318,4 +385,5 @@ loss_fns = {
     "mask_dice": mask_dice_loss,
     "mask_focal": mask_focal_loss,
     "kl_div": kl_div_loss,
+    "mask_kl_div": mask_kl_div_loss,
 }
