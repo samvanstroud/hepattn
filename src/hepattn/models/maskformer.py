@@ -94,7 +94,7 @@ class MaskFormer(nn.Module):
         self.preserve_input_posenc = preserve_input_posenc
         self.pe_scale_factor = pe_scale_factor
         self.log_attn_mask = log_attn_mask
-        self.step_ = 0
+        self.log_step = 0
 
         # Initialize query re-addition components
         self.query_readd_strategy = query_readd_strategy

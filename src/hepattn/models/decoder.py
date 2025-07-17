@@ -24,23 +24,39 @@ class MaskFormerDecoderLayer(nn.Module):
         mask_attention: bool = True,
         bidirectional_ca: bool = True,
         extra_norm: bool = False,
+        hybrid_norm: bool = False,
     ) -> None:
         super().__init__()
 
         self.mask_attention = mask_attention
         self.bidirectional_ca = bidirectional_ca
         self.extra_norm = extra_norm
+
+        # handle hybridnorm
+        qkv_norm = hybrid_norm
+        attn_norm = norm if not hybrid_norm else None
+        dense_post_norm = not hybrid_norm
+
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim, norm=norm)
-        self.q_ca = residual(Attention(dim, **attn_kwargs))
-        self.q_sa = residual(Attention(dim, **attn_kwargs))
-        self.q_dense = residual(Dense(dim, **dense_kwargs))
+
+        if hybrid_norm:
+            self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+            self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+            self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
+        else:
+            self.q_ca = residual(Attention(dim, **attn_kwargs))
+            self.q_sa = residual(Attention(dim, **attn_kwargs))
+            self.q_dense = residual(Dense(dim, **dense_kwargs))
 
         if self.bidirectional_ca:
             self.kv_ca = residual(Attention(dim, **attn_kwargs))
             self.kv_dense = residual(Dense(dim, **dense_kwargs))
+            if hybrid_norm:
+                self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+                self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         try:
             self.norm = getattr(nn, norm)(dim, elementwise_affine=False)
