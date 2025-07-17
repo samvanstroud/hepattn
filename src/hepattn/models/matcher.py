@@ -96,6 +96,7 @@ class Matcher(nn.Module):
         self.parallel_solver = parallel_solver
         self.n_jobs = n_jobs
         self.step = 0
+        self.verbose = verbose
 
     def compute_matching(self, costs, object_valid_mask=None):
         if object_valid_mask is None:
