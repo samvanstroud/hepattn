@@ -1,3 +1,4 @@
+import torch
 from torch import Tensor, nn
 
 from hepattn.utils.tensor_utils import concat_tensors, get_module_dtype, get_torch_dtype
