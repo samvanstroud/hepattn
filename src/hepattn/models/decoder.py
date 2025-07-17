@@ -19,6 +19,7 @@ class MaskFormerDecoderLayer(nn.Module):
         self,
         dim: int,
         norm: str = "LayerNorm",
+        depth: int = 0,
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
         mask_attention: bool = True,
@@ -32,6 +33,8 @@ class MaskFormerDecoderLayer(nn.Module):
 
         # handle hybridnorm
         qkv_norm = hybrid_norm
+        if depth == 0:
+            hybrid_norm = False
         attn_norm = norm if not hybrid_norm else None
         dense_post_norm = not hybrid_norm
 

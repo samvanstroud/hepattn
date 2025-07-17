@@ -57,7 +57,7 @@ class MaskFormer(nn.Module):
 
         self.input_nets = input_nets
         self.encoder = encoder
-        self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(**decoder_layer_config) for _ in range(num_decoder_layers)])
+        self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
         self.pooling = pooling
         self.tasks = tasks
         self.target_object = target_object
