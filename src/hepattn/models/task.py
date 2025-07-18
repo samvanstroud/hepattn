@@ -12,7 +12,7 @@ from hepattn.utils.scaling import FeatureScaler
 
 
 class Task(nn.Module, ABC):
-    def __init__(self, has_intermediate_loss: bool = False):
+    def __init__(self, has_intermediate_loss: bool):
         super().__init__()
         self.has_intermediate_loss = has_intermediate_loss
 
@@ -56,7 +56,7 @@ class ObjectValidTask(Task):
         dim: int,
         null_weight: float = 1.0,
         mask_queries: bool = False,
-        has_intermediate_loss: bool = False,
+        has_intermediate_loss: bool = True,
     ):
         """Task used for classifying whether object candidates / seeds should be
         taken as reconstructed / pred objects or not.
@@ -141,7 +141,7 @@ class HitFilterTask(Task):
         threshold: float = 0.1,
         mask_keys: bool = False,
         loss_fn: Literal["bce", "focal", "both"] = "bce",
-        has_intermediate_loss: bool = False,
+        has_intermediate_loss: bool = True,
     ):
         """Task used for classifying whether hits belong to reconstructable objects or not."""
         super().__init__(has_intermediate_loss=has_intermediate_loss)
@@ -214,7 +214,7 @@ class ObjectHitMaskTask(Task):
         target_field: str = "valid",
         logit_scale: float = 1.0,
         pred_threshold: float = 0.5,
-        has_intermediate_loss: bool = False,
+        has_intermediate_loss: bool = True,
     ):
         super().__init__(has_intermediate_loss=has_intermediate_loss)
 
@@ -307,7 +307,7 @@ class RegressionTask(Task):
         fields: list[str],
         loss_weight: float,
         cost_weight: float,
-        has_intermediate_loss: bool = False,
+        has_intermediate_loss: bool = True,
     ):
         super().__init__(has_intermediate_loss=has_intermediate_loss)
 
@@ -527,7 +527,7 @@ class ObjectRegressionTask(RegressionTask):
         loss_weight: float,
         cost_weight: float,
         dim: int,
-        has_intermediate_loss: bool = False,
+        has_intermediate_loss: bool = True,
     ):
         super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, has_intermediate_loss=has_intermediate_loss)
 
@@ -569,7 +569,7 @@ class ObjectHitRegressionTask(RegressionTask):
         loss_weight: float,
         cost_weight: float,
         dim: int,
-        has_intermediate_loss: bool = False,
+        has_intermediate_loss: bool = True,
     ):
         super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, has_intermediate_loss=has_intermediate_loss)
 
@@ -698,7 +698,7 @@ class ObjectClassificationTask(Task):
         loss_class_weights: list[float] | None = None,
         null_weight: float = 1.0,
         mask_queries: bool = False,
-        has_intermediate_loss: bool = False,
+        has_intermediate_loss: bool = True,
     ):
         """Task used for object classification.
 
@@ -798,7 +798,7 @@ class IncidenceRegressionTask(Task):
         costs: dict[str, float],
         net: nn.Module,
         node_net: nn.Module | None = None,
-        has_intermediate_loss: bool = False,
+        has_intermediate_loss: bool = True,
     ):
         """Incidence regression task."""
         super().__init__(has_intermediate_loss=has_intermediate_loss)
@@ -868,7 +868,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         use_incidence: bool = True,
         use_nodes: bool = False,
         split_charge_neutral_loss: bool = False,
-        has_intermediate_loss: bool = False,
+        has_intermediate_loss: bool = True,
     ):
         """Regression task that uses incidence information to predict regression targets.
 
