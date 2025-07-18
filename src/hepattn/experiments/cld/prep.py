@@ -698,7 +698,6 @@ def preprocess_files(in_dir: str, out_dir: str, overwrite: bool, parallel: bool 
     out_dir : str
         Directory of where to save output numpy files
     """
-
     num_events_per_file = 1000
 
     in_dir = Path(in_dir)

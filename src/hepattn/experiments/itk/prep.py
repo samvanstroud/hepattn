@@ -19,7 +19,6 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
     overwrite : bool
         Whether to overwrite existing output files or not, by default false
     """
-
     for parts_in_path in Path(in_dir).glob("**/*-particles.csv"):
         event_name = parts_in_path.stem.replace("-particles", "")
         truth_in_path = Path(in_dir) / Path(event_name + "-truth.csv")

@@ -84,8 +84,7 @@ class DetectorRotations:
             self.rot[v, l, m] = rot
 
     def _extract_rotation_matrix(self, mod):
-        """
-        Extract the rotation matrix from module dataframe
+        """Extract the rotation matrix from module dataframe
         """
         return np.matrix([
             [mod.rot_xu.item(), mod.rot_xv.item(), mod.rot_xw.item()],
@@ -139,7 +138,6 @@ class DetectorPixelSize:
 
 def cartesian_to_spherical(x, y, z):
     """Adapted/copied from ExaTrkX's preprocessing. See docstring above."""
-
     r3 = np.sqrt(x**2 + y**2 + z**2)
     phi = np.arctan2(y, x)
     theta = np.arccos(z / r3)
@@ -148,13 +146,11 @@ def cartesian_to_spherical(x, y, z):
 
 def theta_to_eta(theta):
     """Adapted/copied from ExaTrkX's preprocessing. See docstring above."""
-
     return -np.log(np.tan(0.5 * theta))
 
 
 def get_all_local_angles(hits: DF, cells: DF, detector: dict) -> tuple[S, S, S]:
     """Adapted/copied from ExaTrkX's preprocessing. See docstring above."""
-
     direction_count_u = cells.groupby(["hit_id"]).ch0.agg(["min", "max"])
     direction_count_v = cells.groupby(["hit_id"]).ch1.agg(["min", "max"])
     nb_u = direction_count_u["max"] - direction_count_u["min"] + 1
@@ -178,7 +174,6 @@ def get_all_local_angles(hits: DF, cells: DF, detector: dict) -> tuple[S, S, S]:
 
 def get_all_rotated(hits: DF, detector: dict, l_u: S, l_v: S, l_w: S):
     """Adapted/copied from ExaTrkX's preprocessing. See docstring above."""
-
     vols = hits["volume_id"].to_numpy()
     layers = hits["layer_id"].to_numpy()
     modules = hits["module_id"].to_numpy()
@@ -195,7 +190,6 @@ def get_all_rotated(hits: DF, detector: dict, l_u: S, l_v: S, l_w: S):
 
 def extract_dir_new(hits: DF, cells: DF, detector: dict) -> DF:
     """Adapted/copied from ExaTrkX's preprocessing. See docstring above."""
-
     l_u, l_v, l_w = get_all_local_angles(hits, cells, detector)
     g_matrix_all = get_all_rotated(hits, detector, l_u, l_v, l_w)
     hit_ids, cell_counts, cell_vals = (
@@ -231,7 +225,6 @@ def extract_dir_new(hits: DF, cells: DF, detector: dict) -> DF:
 
 def augment_hit_features(hits: DF, cells: DF, detector_proc: dict):
     """Adapted/copied from ExaTrkX's preprocessing. See docstring above."""
-
     assert hits["hit_id"].nunique() == cells["hit_id"].nunique(), "different number of unique hit ids in hits & cells"
 
     hits["cell_count"] = cells.groupby(["hit_id"]).value.count().to_numpy().astype(np.float32)
@@ -245,7 +238,6 @@ def augment_hit_features(hits: DF, cells: DF, detector_proc: dict):
 
 def append_cell_features(hits: DF, cells: DF, detector_config: str) -> DF:
     """Add additional features to the hits dataframe and return it."""
-
     assert hits["hit_id"].nunique() == cells["hit_id"].nunique(), "earlier different number of unique hit ids in hits & cells"
 
     # add in channel-specific info

@@ -25,7 +25,6 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
     overwrite : bool
         Whether to overwrite existing output files or not, by default false
     """
-
     # Load in the detector geometry config file
     detector_config_path = Path(in_dir).parent / "detectors.csv"
     assert detector_config_path.is_file(), f"Missing detector config at {detector_config_path}"

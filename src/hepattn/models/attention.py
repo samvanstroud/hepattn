@@ -96,7 +96,7 @@ def projection_packed(
     bias : Tensor | None
         The optional packed bias tensor of the input linear projection with shape (3 * dim).
 
-    Returns
+    Returns:
     -------
     q_proj, k_proj, v_proj : tuple
         The projected queries, keys, and values tensors.
@@ -282,8 +282,7 @@ class Attention(nn.Module):
         score_mod: _score_mod_signature | None = None,
         initial_values: dict | None = None,
     ) -> Tensor:
-        """
-        Multi-head attention forward pass.
+        """Multi-head attention forward pass.
 
         Parameters
         ----------

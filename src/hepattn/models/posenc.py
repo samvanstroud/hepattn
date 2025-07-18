@@ -24,7 +24,7 @@ def pos_enc_symmetric(xs, dim, alpha=1000):
     alpha : float, optional
         Scaling factor for the positional encoding, by default 100.
 
-    Returns
+    Returns:
     -------
     torch.Tensor
         Symmetric positional encoding.
@@ -49,7 +49,7 @@ def pos_enc(xs, dim, alpha=1000):
     alpha : float, optional
         Scaling factor for the positional encoding, by default 100.
 
-    Returns
+    Returns:
     -------
     torch.Tensor
         Positional encoding.
@@ -98,7 +98,7 @@ class PositionEncoder(nn.Module):
         inputs : dict
             Dictionary of inputs.
 
-        Returns
+        Returns:
         -------
         torch.Tensor
             Positional encoding of the input variables.
@@ -114,8 +114,7 @@ class PositionEncoder(nn.Module):
 
 
 class FourierPositionEncoder(nn.Module):
-    """
-    An implementation of Gaussian Fourier positional encoding.
+    """An implementation of Gaussian Fourier positional encoding.
 
     "Fourier Features Let Networks Learn High Frequency Functions in Low Dimensional Domains"
     see https://arxiv.org/abs/2006.10739

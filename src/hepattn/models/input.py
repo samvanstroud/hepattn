@@ -50,7 +50,7 @@ class InputNet(nn.Module):
         inputs : dict
             Input data consisting of a dictionary the requested input features.
 
-        Returns
+        Returns:
         -------
         x : Tensor
             Tensor containing an embedding of the concatenated input features.

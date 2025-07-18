@@ -28,7 +28,7 @@ def get_best_epoch(config_path: Path) -> Path:
     config_path : Path
         Path to saved training config file.
 
-    Returns
+    Returns:
     -------
     Path
         Path to best checkpoint for the training run.

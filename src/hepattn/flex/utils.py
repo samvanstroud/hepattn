@@ -67,8 +67,7 @@ def visualize_attention_scores(
     head_idx: int = 0,
     scale: float | None = None,
 ):
-    """
-    Generate and save a visualization of attention scores.
+    """Generate and save a visualization of attention scores.
 
     Args:
         query (Tensor): Query tensor of shape (batch_size, num_heads, seq_len_q, head_dim).

@@ -8,9 +8,8 @@ from .utils import custom_hist_v1, custom_hist_v2, update_stylesheet
 
 
 def compute_jet_residual_dict(matched_jets_dict, dr_cut=0.1, leading_n_jets=999, pt_min=10, eta_max=2.5, n_events=None, entry_start=0):
-    """
-    Args:
-        matched_jets: {name: (truth, reco), ...]
+    """Args:
+    matched_jets: {name: (truth, reco), ...]
     """
     residual_dict = {}
     for name in matched_jets_dict:

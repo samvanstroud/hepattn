@@ -11,11 +11,9 @@ FIG_DPI = 300
 
 
 def plot_scatter(ref_dict, comp_dict, comp_name, ref_name="truth"):
+    """Args:
+    ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
     """
-    Args:
-        ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
-    """
-
     cmap = get_cmap("lin_seg")
 
     n_row, n_col = 2, 3
@@ -52,12 +50,10 @@ def plot_scatter(ref_dict, comp_dict, comp_name, ref_name="truth"):
 
 
 def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False, qs=None, stylesheet=None):  # noqa: ARG001
+    """Args:
+    data_dicts: {name: (ref_dict, comp_dict), ...}
+        ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
     """
-    Args:
-        data_dicts: {name: (ref_dict, comp_dict), ...}
-            ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
-    """
-
     _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
 
     residual_dict = {}
@@ -137,12 +133,10 @@ def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False,
 
 
 def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log_y=False, qs=None, stylesheet=None, separate_figures=False):  # noqa: ARG001
+    """Args:
+    data_dicts: {name: (ref_dict, comp_dict), ...}
+        ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
     """
-    Args:
-        data_dicts: {name: (ref_dict, comp_dict), ...}
-            ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
-    """
-
     _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
 
     residual_dict = {}
@@ -236,14 +230,12 @@ def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log
 
 
 def plot_eff_fr_purity(eff_fr_purity_input_dict, stylesheet=None):
+    """Compute efficiency, fake rate, and purity in pt bins separated by class
+    efficiency = N(truth particles of this class matched to pflow particles) / N(total truth particles of this class)
+    fake rate  = N(pflow particles of this class not matched to truth particles) / N(total pflow particles of this class)
+    purity     = N(truth particles of this class that are matched to pflow particles of this class)
+                 / N(total truth particles of this class that are matched to pflow particles)
     """
-    Compute efficiency, fake rate, and purity in pt bins separated by class
-        efficiency = N(truth particles of this class matched to pflow particles) / N(total truth particles of this class)
-        fake rate  = N(pflow particles of this class not matched to truth particles) / N(total pflow particles of this class)
-        purity     = N(truth particles of this class that are matched to pflow particles of this class)
-                     / N(total truth particles of this class that are matched to pflow particles)
-    """
-
     _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
 
     # subplots of eff, fr, and purity versus pt stacked vertically

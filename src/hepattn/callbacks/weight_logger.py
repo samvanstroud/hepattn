@@ -22,7 +22,7 @@ class WeightLoggerCallback(Callback):
 
         self.log = log
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):  # noqa: ARG002
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         """Called after each training batch ends.
         Logs the mean and std of weights and biases in each layer.
         """

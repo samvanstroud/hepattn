@@ -3,8 +3,7 @@ import torch.nn.functional as F
 
 
 def object_bce_loss(pred_logits, targets, sample_weight=None):
-    """
-    Loss function for binary object classification.
+    """Loss function for binary object classification.
 
     Args:
         pred_logits: [batch_size, num_objects] - predicted logits for binary classification
@@ -18,8 +17,7 @@ def object_bce_loss(pred_logits, targets, sample_weight=None):
 
 
 def object_bce_cost(pred_logits, targets):
-    """
-    Compute batched binary object classification cost for object matching.
+    """Compute batched binary object classification cost for object matching.
     Approximate the CE loss using -probs[target_class].
     Invalid objects are handled later in the matching process.
 
@@ -41,8 +39,7 @@ def object_ce_loss(pred_probs, true, mask=None, weight=None):  # noqa: ARG001
 
 
 def object_ce_cost(pred_logits, targets):
-    """
-    Compute batched multiclass object classification cost for object matching.
+    """Compute batched multiclass object classification cost for object matching.
     Approximate the CE loss using -probs[target_class].
     Invalid objects are handled later in the matching process.
 
@@ -64,8 +61,7 @@ def object_ce_cost(pred_logits, targets):
 
 
 def mask_dice_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=None, sample_weight=None):  # noqa: ARG001
-    """
-    Compute the DICE loss for binary masks.
+    """Compute the DICE loss for binary masks.
 
     Args:
         pred_logits: [batch_size, num_objects, num_inputs] - predicted logits for binary masks
@@ -93,8 +89,7 @@ def mask_dice_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=
 
 
 def mask_dice_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None):
-    """
-    Compute DICE costs.
+    """Compute DICE costs.
     Invalid objects are handled later in the matching process.
 
     Args:
@@ -137,8 +132,7 @@ def mask_iou_cost(pred_logits, targets, input_pad_mask=None, eps=1e-6):
 
 
 def mask_focal_loss(pred_logits, targets, gamma=2.0, object_valid_mask=None, input_pad_mask=None, sample_weight=None):
-    """
-    Compute the focal loss for binary classification.
+    """Compute the focal loss for binary classification.
 
     Args:
         pred_logits: [batch_size, num_objects] - predicted logits for binary classification
@@ -176,8 +170,7 @@ def mask_focal_loss(pred_logits, targets, gamma=2.0, object_valid_mask=None, inp
 
 
 def mask_focal_cost(pred_logits, targets, gamma=2.0, input_pad_mask=None, sample_weight=None):
-    """
-    Compute focal costs for binary masks.
+    """Compute focal costs for binary masks.
     Invalid objects are handled later in the matching process.
 
     Args:
@@ -190,7 +183,6 @@ def mask_focal_cost(pred_logits, targets, gamma=2.0, input_pad_mask=None, sample
     Returns:
         cost: [batch_size, num_objects, num_objects] - focal cost matrix
     """
-
     pred = pred_logits.sigmoid()
     focal_pos = ((1 - pred) ** gamma) * F.binary_cross_entropy_with_logits(pred_logits, torch.ones_like(pred), weight=sample_weight, reduction="none")
     focal_neg = (pred**gamma) * F.binary_cross_entropy_with_logits(pred_logits, torch.zeros_like(pred), weight=sample_weight, reduction="none")
@@ -208,8 +200,7 @@ def mask_focal_cost(pred_logits, targets, gamma=2.0, input_pad_mask=None, sample
 
 
 def mask_bce_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=None, sample_weight=None):
-    """
-    Compute the binary cross-entropy loss for binary masks.
+    """Compute the binary cross-entropy loss for binary masks.
 
     Args:
         pred_logits: [batch_size, num_objects, num_inputs] - predicted logits for binary
@@ -241,8 +232,7 @@ def mask_bce_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=N
 
 
 def mask_bce_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None):
-    """
-    Compute binary cross-entropy costs for binary masks.
+    """Compute binary cross-entropy costs for binary masks.
 
     Args:
         pred_logits: [batch_size, num_objects, num_inputs] - predicted logits for binary masks
@@ -286,8 +276,7 @@ def kl_div_cost(pred_logits, true, eps=1e-8):
 
 
 def mask_kl_div_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=None, sample_weight=None, eps=1e-8):  # noqa: ARG001
-    """
-    KL divergence loss for hit-object assignment (recommend using energy_fractions as input).
+    """KL divergence loss for hit-object assignment (recommend using energy_fractions as input).
 
     Args:
         pred_logits: [batch_size, num_objects, num_inputs] - predicted logits
@@ -299,7 +288,6 @@ def mask_kl_div_loss(pred_logits, targets, object_valid_mask=None, input_pad_mas
     Returns:
         loss: KL loss
     """
-
     if object_valid_mask is not None:
         pred_logits = pred_logits[object_valid_mask]
         targets = targets[object_valid_mask]
@@ -322,8 +310,7 @@ def mask_kl_div_loss(pred_logits, targets, object_valid_mask=None, input_pad_mas
 
 
 def mask_kl_div_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None, eps=1e-8):  # noqa: ARG001
-    """
-    Compute KL costs.
+    """Compute KL costs.
 
     Args:
         pred_logits: [batch_size, num_objects, num_inputs] - predicted logits
@@ -334,7 +321,6 @@ def mask_kl_div_cost(pred_logits, targets, input_pad_mask=None, sample_weight=No
     Returns:
         cost: [batch_size, num_objects, num_objects] - KL cost
     """
-
     if input_pad_mask is not None:
         pred_logits = pred_logits.masked_fill(~input_pad_mask.unsqueeze(1), float("-inf"))
         targets = targets * input_pad_mask.unsqueeze(1)

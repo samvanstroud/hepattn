@@ -1,5 +1,4 @@
-"""
-Based on
+"""Based on
 - https://github.com/facebookresearch/MaskFormer
 - https://github.com/facebookresearch/Mask2Former
 """
@@ -77,8 +76,7 @@ class MaskFormerDecoderLayer(nn.Module):
         return q, kv
 
     def set_backend(self, attn_type: str) -> None:
-        """
-        Set the backend for the attention layers.
+        """Set the backend for the attention layers.
         This is useful for switching between different attention implementations.
         """
         self.q_ca.fn.set_backend(attn_type)

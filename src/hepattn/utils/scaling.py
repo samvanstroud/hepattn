@@ -56,10 +56,9 @@ class VarTransform:
 
 
 def get_empty_transform() -> VarTransform:
-    """
-    Get an empty VarTransform that does not apply any transformation.
+    """Get an empty VarTransform that does not apply any transformation.
 
-    Returns
+    Returns:
     -------
     VarTransform
         An instance of VarTransform with no transformation applied.
@@ -69,8 +68,7 @@ def get_empty_transform() -> VarTransform:
 
 class FeatureScaler:
     def __init__(self, scale_dict_path: str):
-        """
-        Initialize the FeatureScaler with a path to a YAML file containing scaling parameters.
+        """Initialize the FeatureScaler with a path to a YAML file containing scaling parameters.
 
         Parameters
         ----------
@@ -84,15 +82,14 @@ class FeatureScaler:
             self.transforms[name] = VarTransform(name, config)
 
     def __getitem__(self, name: str) -> VarTransform:
-        """
-        Get the VarTransform for a specific feature name.
+        """Get the VarTransform for a specific feature name.
 
         Parameters
         ----------
         name : str
             The name of the feature.
 
-        Returns
+        Returns:
         -------
         VarTransform
             The VarTransform object for the specified feature.
@@ -100,15 +97,14 @@ class FeatureScaler:
         return self.transforms[name]
 
     def transform(self, x: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """
-        Apply the scaling transformations to the input features.
+        """Apply the scaling transformations to the input features.
 
         Parameters
         ----------
         x : dict[str, torch.Tensor]
             Dictionary of features to be transformed.
 
-        Returns
+        Returns:
         -------
         dict[str, torch.Tensor]
             Dictionary of transformed features.
@@ -119,14 +115,14 @@ class FeatureScaler:
         return x
 
     def inverse_transform(self, x: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """
-        Apply the inverse scaling transformations to the input features.
+        """Apply the inverse scaling transformations to the input features.
 
         Parameters
         ----------
         x : dict[str, torch.Tensor]
             Dictionary of features to be inverse transformed.
-        Returns
+
+        Returns:
         -------
         dict[str, torch.Tensor]
             Dictionary of inverse transformed features.

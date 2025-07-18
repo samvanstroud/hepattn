@@ -15,7 +15,7 @@ def build_target_masks(object_ids, input_ids, shuffle=False):
     input_ids : Tensor
         The ids of the per-input labels
 
-    Returns
+    Returns:
     -------
     Tensor
         The truth masks
@@ -44,7 +44,7 @@ def mask_from_indices(indices: Tensor, num_masks: int | None = None) -> BoolTens
     num_masks : int
         The maximum number of masks
 
-    Returns
+    Returns:
     -------
     BoolTensor
         The sparse mask
@@ -84,7 +84,7 @@ def indices_from_mask(mask: BoolTensor, noindex: int = -1) -> Tensor:
     noindex : int
         The value to use for no index
 
-    Returns
+    Returns:
     -------
     Tensor
         The dense indices
@@ -266,7 +266,7 @@ def topk_attn(attn_scores: Tensor, k: int, dim=-1):
     dim : int, optional
         The dimension to apply top-k along, by default -1.
 
-    Returns
+    Returns:
     -------
     BoolTensor
         A boolean mask with `True` for the top-k scores.

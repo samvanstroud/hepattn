@@ -114,7 +114,6 @@ def preprocess_files(config_path: str, overwrite: bool, parallel: bool = False, 
     output_dir : str
         Directory of where to save output numpy files
     """
-
     with Path.open(config_path) as f:
         config = yaml.safe_load(f)["preprocessing"]
 

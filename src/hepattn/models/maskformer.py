@@ -4,6 +4,7 @@ from torch import Tensor, nn
 from hepattn.models.decoder import MaskFormerDecoderLayer
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 
+
 class MaskFormer(nn.Module):
     def __init__(
         self,
@@ -23,8 +24,7 @@ class MaskFormer(nn.Module):
         raw_variables: list[str] | None = None,
         log_attn_mask: bool = False,
     ):
-        """
-        Initializes the MaskFormer model, which is a modular transformer-style architecture designed
+        """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object inference with attention-based decoding and optional encoder blocks.
 
         Parameters
@@ -77,7 +77,7 @@ class MaskFormer(nn.Module):
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
-        self.log_step+=1
+        self.log_step += 1
 
         assert "key" not in input_names, "'key' input name is reserved."
         assert "query" not in input_names, "'query' input name is reserved."

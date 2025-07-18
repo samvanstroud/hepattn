@@ -70,7 +70,7 @@ def join_structured_arrays(arrays: list):
     arrays : list
         List of structured numpy arrays to join
 
-    Returns
+    Returns:
     -------
     np.array
         A merged structured array
@@ -91,8 +91,7 @@ def join_structured_arrays(arrays: list):
 
 
 def maybe_pad(x: np.ndarray, target_shape: tuple, pad_value: float = 0.0) -> np.ndarray:
-    """
-    Pads a numpy array `x` to match `target_shape`, using `pad_value`.
+    """Pads a numpy array `x` to match `target_shape`, using `pad_value`.
     numpy version of pad_to_size from hepattn.utils.tensor_utils.
 
     Parameters
@@ -104,7 +103,7 @@ def maybe_pad(x: np.ndarray, target_shape: tuple, pad_value: float = 0.0) -> np.
     pad_value : float
         The constant value to use for padding.
 
-    Returns
+    Returns:
     -------
     np.ndarray
         Padded array of shape `target_shape`.

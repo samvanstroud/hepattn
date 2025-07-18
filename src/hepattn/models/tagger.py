@@ -95,7 +95,6 @@ class Tagger(nn.Module):
         targets:
             The data containing the targets.
         """
-
         # Compute the losses for each task in each block
         losses = {}
         for layer_name in outputs:

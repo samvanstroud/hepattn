@@ -64,8 +64,7 @@ class PredictionWriter(Callback):
             self.write_sample(batch_idx, inputs, targets, outputs, preds, losses, 0)
 
     def write_sample(self, sample_id, inputs, targets, outputs, preds, losses, idx):
-        """
-        Write a single sample to the output file.
+        """Write a single sample to the output file.
         """
         # create a group for thie sample_id
         if isinstance(sample_id, Tensor):

@@ -6,8 +6,7 @@ from hepattn.models.dense import Dense
 
 class Pooling(nn.Module):
     def __init__(self, input_object: str, output_object: str, dim: int, pool_net: nn.Module | None = None) -> None:
-        """
-        A pooling module that applies optional transformation and weighted aggregation
+        """A pooling module that applies optional transformation and weighted aggregation
         over input objects.
 
         Parameters
@@ -25,7 +24,6 @@ class Pooling(nn.Module):
         output_object : str | None
             Name of output object for the pooling.
         """
-
         super().__init__()
 
         self.input_object = input_object
