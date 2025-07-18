@@ -897,6 +897,7 @@ class ObjectClassificationTask(Task):
     ):
         """Task used for object classification.
 
+
         Parameters
         ----------
         name : str
@@ -912,12 +913,15 @@ class ObjectClassificationTask(Task):
             whiel value denotes loss weight.
         costs : dict[str, float]
             Dict specifying which costs to use. Keys denote the cost function name,
-            whiel value denotes cost weight.
+            while value denotes cost weight.
         net : nn.Module
             Network that will be used to classify the object classes.
         null_weight : float
             Weight applied to the null class in the loss. Useful if many instances of
             the target class are null, and we need to reweight to overcome class imbalance.
+
+        Raises:
+            ValueError: If the input arguments are invalid.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
 

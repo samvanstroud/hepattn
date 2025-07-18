@@ -2,23 +2,19 @@ import torch
 from torch import BoolTensor, Tensor
 
 
-def build_target_masks(object_ids, input_ids, shuffle=False):
+def build_target_masks(object_ids: Tensor, input_ids: Tensor, shuffle: bool = False) -> Tensor:
     """Get the truth masks from the object ids and input_ids.
 
     The difference between this function and mask_from_indices is that mask_from_indices
     expects the indices to start from zero, and here we match based on arbitrary IDs, such as barcodes.
 
-    Parameters
-    ----------
-    object_ids : Tensor
-        The unqiue ids of the truth object labels
-    input_ids : Tensor
-        The ids of the per-input labels
+    Args:
+        object_ids (Tensor): The unique ids of the truth object labels.
+        input_ids (Tensor): The ids of the per-input labels.
+        shuffle (bool): Whether to shuffle the object_ids. Defaults to False.
 
     Returns:
-    -------
-    Tensor
-        The truth masks
+        Tensor: The truth masks.
     """
     # shuffling doesn't seem to be needed here
     if shuffle:
@@ -34,20 +30,15 @@ def mask_from_indices(indices: Tensor, num_masks: int | None = None) -> BoolTens
     Indices are arbitrary and start from 0.
 
     Examples:
-    [0, 1, 1] -> [[True, False, False], [False, True, True]]
-    [0, 1, 2]] -> [[True, False, False], [False, True, False], [False, False, True]]
+        [0, 1, 1] -> [[True, False, False], [False, True, True]]
+        [0, 1, 2]] -> [[True, False, False], [False, True, False], [False, False, True]]
 
-    Parameters
-    ----------
-    indices : Tensor
-        The dense indices
-    num_masks : int
-        The maximum number of masks
+    Args:
+        indices (Tensor): The dense indices.
+        num_masks (int | None): The maximum number of masks. If None, inferred from indices.
 
     Returns:
-    -------
-    BoolTensor
-        The sparse mask
+        BoolTensor: The sparse mask.
     """
     assert indices.ndim == 1 or indices.ndim == 2, "indices must be 1D for single sample or 2D for batch"
     if num_masks is None:
@@ -75,19 +66,17 @@ def indices_from_mask(mask: BoolTensor, noindex: int = -1) -> Tensor:
     Indices are arbitrary and start from 0.
 
     Examples:
-    [[True, False, False], [False, True, True]] -> [0, 1, 1]
+        [[True, False, False], [False, True, True]] -> [0, 1, 1]
 
-    Parameters
-    ----------
-    mask : BoolTensor
-        The sparse mask
-    noindex : int
-        The value to use for no index
+    Args:
+        mask (BoolTensor): The sparse mask.
+        noindex (int): The value to use for no index. Defaults to -1.
 
     Returns:
-    -------
-    Tensor
-        The dense indices
+        Tensor: The dense indices.
+
+    Raises:
+        ValueError: If mask is not 2D for single sample or 3D for batch.
     """
     mask = torch.as_tensor(mask)
     kwargs = {"dtype": torch.long, "device": mask.device}
@@ -118,14 +107,14 @@ def sanitise_mask(
 ) -> BoolTensor:
     """Sanitise predicted masks by removing padded inputs and null class predictions.
 
-    Parameters
-    ----------
-    mask : BoolTensor
-        The predicted mask
-    input_pad_mask : BoolTensor, optional
-        The input pad mask, where a value of True respresents a padded input, by default None
-    object_class_preds : Tensor, optional
-        Object class predictions, by default None
+    Args:
+        mask (BoolTensor): The predicted mask.
+        input_pad_mask (BoolTensor | None): The input pad mask, where a value of True represents a padded input.
+            Defaults to None.
+        object_class_preds (Tensor | None): Object class predictions. Defaults to None.
+
+    Returns:
+        BoolTensor: The sanitised mask.
     """
     if input_pad_mask is not None:
         mask.transpose(1, 2)[input_pad_mask] = False
@@ -142,14 +131,13 @@ def sigmoid_mask(
 ) -> BoolTensor:
     """Get a mask by thresholding the mask logits.
 
-    Parameters
-    ----------
-    mask_logits : Tensor
-        The mask logits
-    threshold : float, optional
-        The threshold, by default 0.5
-    **kwargs
-        Additional keyword arguments to pass to sanitise_mask
+    Args:
+        mask_logits (Tensor): The mask logits.
+        threshold (float): The threshold. Defaults to 0.5.
+        **kwargs: Additional keyword arguments to pass to sanitise_mask.
+
+    Returns:
+        BoolTensor: The thresholded mask.
     """
     mask = mask_logits.sigmoid() > threshold
     mask = sanitise_mask(mask, **kwargs)
@@ -163,14 +151,17 @@ def argmax_mask(
 ) -> BoolTensor:
     """Get a mask by taking the argmax of the mask logits.
 
-    Parameters
-    ----------
-    mask_logits : Tensor
-        The mask logits
-    weighted : bool, optional
-        Weight logits according to object class confidence, as in MaskFormer, by default False
-    **kwargs
-        Additional keyword arguments to pass to sanitise_mask
+    Args:
+        mask_logits (Tensor): The mask logits.
+        weighted (bool): Weight logits according to object class confidence, as in MaskFormer.
+            Defaults to False.
+        **kwargs: Additional keyword arguments to pass to sanitise_mask.
+
+    Returns:
+        BoolTensor: The argmax mask.
+
+    Raises:
+        ValueError: If weighted argmax is requested but object_class_preds is not provided.
     """
     if weighted and kwargs.get("object_class_preds") is None:
         raise ValueError("weighted argmax requires object_class_preds")
@@ -191,7 +182,21 @@ def mask_from_logits(
     mode: str,
     input_pad_mask: BoolTensor | None = None,
     object_class_preds: Tensor | None = None,
-):
+) -> BoolTensor:
+    """Convert logits to masks using the specified mode.
+
+    Args:
+        logits (Tensor): The input logits.
+        mode (str): The mode to use for conversion. Must be one of {"sigmoid", "argmax", "weighted_argmax"}.
+        input_pad_mask (BoolTensor | None): The input pad mask. Defaults to None.
+        object_class_preds (Tensor | None): Object class predictions. Defaults to None.
+
+    Returns:
+        BoolTensor: The converted mask.
+
+    Raises:
+        ValueError: If mode is not one of the supported modes.
+    """
     modes = {"sigmoid", "argmax", "weighted_argmax"}
     if mode == "sigmoid":
         return sigmoid_mask(logits, input_pad_mask=input_pad_mask, object_class_preds=object_class_preds)
@@ -203,12 +208,33 @@ def mask_from_logits(
 
 
 def mask_effs_purs(m_pred: BoolTensor, m_tgt: BoolTensor) -> tuple[Tensor, Tensor]:
+    """Calculate efficiency and purity for each mask.
+
+    Args:
+        m_pred (BoolTensor): The predicted masks.
+        m_tgt (BoolTensor): The target masks.
+
+    Returns:
+        tuple[Tensor, Tensor]: A tuple containing efficiency and purity tensors.
+    """
     eff = (m_pred & m_tgt).sum(-1) / m_tgt.sum(-1)
     pur = (m_pred & m_tgt).sum(-1) / m_pred.sum(-1)
     return eff, pur
 
 
-def mask_eff_pur(m_pred: BoolTensor, m_tgt: BoolTensor, flat: bool = False, reduce: bool = False):
+def mask_eff_pur(m_pred: BoolTensor, m_tgt: BoolTensor, flat: bool = False, reduce: bool = False) -> tuple[Tensor, Tensor]:
+    """Calculate efficiency and purity metrics.
+
+    Args:
+        m_pred (BoolTensor): The predicted masks.
+        m_tgt (BoolTensor): The target masks.
+        flat (bool): If True, calculate per assignment metric (edgewise). If False, calculate per object metric.
+            Defaults to False.
+        reduce (bool): If True, reduce to mean values (only applies when flat=False). Defaults to False.
+
+    Returns:
+        tuple[Tensor, Tensor]: A tuple containing efficiency and purity values.
+    """
     if flat:
         # per assignment metric (i.e. edgewise)
         eff = (m_pred & m_tgt).sum() / m_tgt.sum()
@@ -229,8 +255,21 @@ def reco_metrics(
     min_recall: float = 1.0,
     min_purity: float = 1.0,
     min_constituents: int = 0,
-):
-    """Calculate the efficiency and purity of the predicted objects."""
+) -> tuple[Tensor, Tensor]:
+    """Calculate the efficiency and purity of the predicted objects.
+
+    Args:
+        pred_mask (BoolTensor): The predicted masks.
+        tgt_mask (BoolTensor): The target masks.
+        pred_valid (Tensor | None): Valid prediction mask. If None, inferred from pred_mask. Defaults to None.
+        reduce (bool): Whether to reduce to mean values. Defaults to False.
+        min_recall (float): Minimum recall threshold. Defaults to 1.0.
+        min_purity (float): Minimum purity threshold. Defaults to 1.0.
+        min_constituents (int): Minimum number of constituents. Defaults to 0.
+
+    Returns:
+        tuple[Tensor, Tensor]: A tuple containing efficiency and fake rate metrics.
+    """
     if pred_valid is None:
         pred_valid = pred_mask.sum(-1) > 0
     else:
@@ -254,22 +293,16 @@ def reco_metrics(
     return eff, fake
 
 
-def topk_attn(attn_scores: Tensor, k: int, dim=-1):
+def topk_attn(attn_scores: Tensor, k: int, dim: int = -1) -> BoolTensor:
     """Keep only the topk scores in each row of the attention matrix.
 
-    Parameters
-    ----------
-    attn_scores : Tensor
-        The attention scores.
-    k : int
-        The number of top scores to keep.
-    dim : int, optional
-        The dimension to apply top-k along, by default -1.
+    Args:
+        attn_scores (Tensor): The attention scores.
+        k (int): The number of top scores to keep.
+        dim (int): The dimension to apply top-k along. Defaults to -1.
 
     Returns:
-    -------
-    BoolTensor
-        A boolean mask with `True` for the top-k scores.
+        BoolTensor: A boolean mask with `True` for the top-k scores.
     """
     _, topk_indices = attn_scores.topk(k, dim=dim)
     zeros = torch.zeros_like(attn_scores, dtype=bool)

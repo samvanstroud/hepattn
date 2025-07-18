@@ -284,6 +284,7 @@ def mask_kl_div_loss(pred_logits, targets, object_valid_mask=None, input_pad_mas
         object_valid_mask: [batch_size, num_objects] - mask indicating valid target objects
         input_pad_mask: [batch_size, num_inputs] - mask indicating valid inputs
         sample_weight: not used
+        eps: Small value to avoid log(0)
 
     Returns:
         loss: KL loss
@@ -317,6 +318,7 @@ def mask_kl_div_cost(pred_logits, targets, input_pad_mask=None, sample_weight=No
         targets: [batch_size, num_objects, num_inputs] - ground truth
         input_pad_mask: [batch_size, num_inputs] - mask indicating valid inputs
         sample_weight: Not used
+        eps: Small value to avoid log(0)
 
     Returns:
         cost: [batch_size, num_objects, num_objects] - KL cost

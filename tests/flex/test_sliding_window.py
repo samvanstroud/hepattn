@@ -1,12 +1,14 @@
 from pathlib import Path
 
+import pytest
 import torch
 
 from hepattn.flex import sliding_window_mask, sliding_window_mask_wrapped
 from hepattn.flex.utils import visualize_attention_scores
 
 
-def test_sliding_window(device: str = "cpu"):
+@pytest.mark.parametrize("device", ["cpu"])
+def test_sliding_window(device: str):
     """Visualize the attention scores of sliding window mask mod.
 
     Args:

@@ -1,12 +1,14 @@
 from pathlib import Path
 
+import pytest
 import torch
 
 from hepattn.flex import relative_position_wrapped, sliding_window_mask
 from hepattn.flex.utils import visualize_attention_scores
 
 
-def test_combined_mods(device="cpu"):
+@pytest.mark.parametrize("device", ["cpu"])
+def test_combined_mods(device: str):
     def make_tensor(q_len):
         return torch.ones(1, 1, q_len, 8, device=device)
 

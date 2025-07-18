@@ -45,8 +45,6 @@ class LayerScale(nn.Module):
 
 
 class Residual(nn.Module):
-    """Neatly wrap x = x + drop(scale * fn(norm(x)))."""
-
     def __init__(
         self,
         fn: nn.Module,
@@ -56,20 +54,18 @@ class Residual(nn.Module):
         layer_scale: float | None = None,
         drop_path: float = 0.0,
     ) -> None:
-        """Parameters
-        ----------
-        dim : int
-            The dimension of the input and output.
-        fn : nn.Module
-            The module to wrap. Must be non-resizing.
-        norm : str, optional
-            The normalization layer.
-        post_norm : bool, optional
-            Instead of standard pre-norm, apply norm before the residual (post-norm for the previous op).
-        layer_scale : float | None, optional
-            The initial value for the layer_scale. If None, then no layer_scale is applied.
-        drop_path : float, optional
-            The drop path rate.
+        """Neatly wrap x = x + drop(scale * fn(norm(x))).
+
+        Args:
+            dim (int): The dimension of the input and output.
+            fn (nn.Module): The module to wrap. Must be non-resizing.
+            norm (str, optional): The normalization layer.
+            post_norm (bool, optional): Instead of standard pre-norm, apply norm before the residual (post-norm for the previous op).
+            layer_scale (float | None, optional): The initial value for the layer_scale. If None, then no layer_scale is applied.
+            drop_path (float, optional): The drop path rate.
+
+        Raises:
+            ValueError: If the input arguments are invalid.
         """
         super().__init__()
         self.fn = fn

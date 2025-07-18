@@ -23,15 +23,14 @@ register_type(torch.Tensor, serializer, deserializer)
 def get_best_epoch(config_path: Path) -> Path:
     """Find the best perfoming epoch.
 
-    Parameters
-    ----------
-    config_path : Path
-        Path to saved training config file.
+    Args:
+        config_path (Path): Path to saved training config file.
 
     Returns:
-    -------
-    Path
-        Path to best checkpoint for the training run.
+        Path: Path to best checkpoint for the training run.
+
+    Raises:
+        FileNotFoundError: If no checkpoints are found in the expected directory.
     """
     ckpt_dir = Path(config_path.parent / "ckpts")
     print(f"No --ckpt_path specified, looking for best checkpoint in {ckpt_dir.resolve()!r}")

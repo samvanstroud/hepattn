@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import torch
 
 from hepattn.flex import relative_position, relative_position_wrapped
@@ -7,7 +8,8 @@ from hepattn.flex.relative_position import identity
 from hepattn.flex.utils import visualize_attention_scores
 
 
-def test_relative_position(device: str = "cpu"):
+@pytest.mark.parametrize("device", ["cpu"])
+def test_relative_position(device: str):
     """Visualize the attention scores of sliding window mask mod.
 
     Args:

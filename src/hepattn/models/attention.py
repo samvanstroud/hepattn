@@ -304,6 +304,9 @@ class Attention(nn.Module):
             Score modifier function for flex attention. If None, no score modifier is applied.
         initial_values : dict, optional
             Initial values for value residual connection.
+
+        Raises:
+            ValueError: If the input arguments are invalid.
         """
         if kv is None:
             # If self-attention, we use the same tensor for q, k, and v

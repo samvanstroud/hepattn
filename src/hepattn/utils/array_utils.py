@@ -65,15 +65,15 @@ def join_structured_arrays(arrays: list):
 
     See https://github.com/numpy/numpy/issues/7811
 
-    Parameters
-    ----------
-    arrays : list
-        List of structured numpy arrays to join
+    Args:
+        arrays (list): List of structured numpy arrays to join
 
     Returns:
-    -------
-    np.array
+        np.array: Merged structured array
         A merged structured array
+
+    Raises:
+        ValueError: If the input list is empty or if the arrays do not have the same
     """
     if not arrays:
         raise ValueError("Input list of arrays cannot be empty.")
@@ -94,19 +94,18 @@ def maybe_pad(x: np.ndarray, target_shape: tuple, pad_value: float = 0.0) -> np.
     """Pads a numpy array `x` to match `target_shape`, using `pad_value`.
     numpy version of pad_to_size from hepattn.utils.tensor_utils.
 
-    Parameters
-    ----------
-    x : np.ndarray
-        The input array to pad.
-    target_shape : tuple of int
-        The desired shape of the output array. Use -1 to match input dim.
-    pad_value : float
+    Args:
+        x (np.ndarray): The input array to pad.
+        target_shape (tuple of int): The desired shape of the output array. Use -1 to match input dim.
+        pad_value (float): The constant value to use for padding.
         The constant value to use for padding.
 
     Returns:
-    -------
-    np.ndarray
-        Padded array of shape `target_shape`.
+        np.ndarray: Padded array of shape `target_shape`.
+
+    Raises:
+        ValueError: If `target_shape` does not have the same number of dimensions as `x` or if any dimension of `x` is larger than the corresponding
+        dimension in `target_shape
     """
     current_shape = x.shape
     if len(target_shape) != x.ndim:
