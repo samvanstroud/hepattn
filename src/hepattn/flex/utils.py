@@ -37,17 +37,17 @@ def create_score_mod(
     n = torch.arange(0, key.shape[0], device=device)
 
     scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
-    _type = _ModificationType.SCORE_MOD if score_mod is not None else _ModificationType.MASK_MOD
+    type_ = _ModificationType.SCORE_MOD if score_mod is not None else _ModificationType.MASK_MOD
     ctx = nullcontext() if _compile else TransformGetItemToIndex()
 
     with ctx:
-        mod_fn = score_mod if _type == _ModificationType.SCORE_MOD else mask_mod
-        prefix = (0,) if _type == _ModificationType.SCORE_MOD else ()
+        mod_fn = score_mod if type_ == _ModificationType.SCORE_MOD else mask_mod
+        prefix = (0,) if type_ == _ModificationType.SCORE_MOD else ()
         mod = _vmap_for_bhqkv(mod_fn, prefix=prefix)
         scores = query @ key.transpose(-2, -1)
         scores *= scale_factor
         scores = scores.view(1, 1, query.shape[0], key.shape[0])
-        return mod(scores, b, h, m, n) if _type == _ModificationType.SCORE_MOD else mod(b, h, m, n)
+        return mod(scores, b, h, m, n) if type_ == _ModificationType.SCORE_MOD else mod(b, h, m, n)
 
 
 def _name_to_title(name: str) -> str:

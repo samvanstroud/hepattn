@@ -18,7 +18,7 @@ SCORE_MODS = {
 
 
 class DropPath(nn.Module):
-    """Randomly drop layers: https://arxiv.org/abs/1603.09382"""
+    """Randomly drop layers: https://arxiv.org/abs/1603.09382."""
 
     def __init__(self, drop_prob: float = 0.0):
         super().__init__()
@@ -34,7 +34,7 @@ class DropPath(nn.Module):
 
 
 class LayerScale(nn.Module):
-    """Learn residual strength: https://arxiv.org/abs/2103.17239"""
+    """Learn residual strength: https://arxiv.org/abs/2103.17239."""
 
     def __init__(self, dim: int, init_value: float = 1e-5) -> None:
         super().__init__()
@@ -45,7 +45,7 @@ class LayerScale(nn.Module):
 
 
 class Residual(nn.Module):
-    """Neatly wrap x = x + drop(scale * fn(norm(x)))"""
+    """Neatly wrap x = x + drop(scale * fn(norm(x)))."""
 
     def __init__(
         self,

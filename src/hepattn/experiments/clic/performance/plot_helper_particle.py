@@ -12,7 +12,7 @@ FIG_DPI = 300
 
 def plot_scatter(ref_dict, comp_dict, comp_name, ref_name="truth"):
     """Args:
-    ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
+    ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays.
     """
     cmap = get_cmap("lin_seg")
 
@@ -21,22 +21,22 @@ def plot_scatter(ref_dict, comp_dict, comp_name, ref_name="truth"):
     fig = plt.figure(figsize=(FIG_W, 0.8 * FIG_H_1ROW * n_row), dpi=FIG_DPI)
     gs = fig.add_gridspec(n_row, n_col, hspace=0.4, wspace=0.4)
 
-    _cl_masks = {
+    cl_masks = {
         "Charged": {"ref": ref_dict["class"] <= 2, "comp": comp_dict["class"] <= 2},
         "Neutral": {"ref": ref_dict["class"] >= 3, "comp": comp_dict["class"] >= 3},
     }
 
     for v_i, var in enumerate(["pt", "eta", "phi"]):
-        for cl_i, (cl_name, mask_dict) in enumerate(_cl_masks.items()):
-            _min = min(ref_dict[var][mask_dict["ref"]].min(), comp_dict[var][mask_dict["comp"]].min())
-            _max = max(ref_dict[var][mask_dict["ref"]].max(), comp_dict[var][mask_dict["comp"]].max())
+        for cl_i, (cl_name, mask_dict) in enumerate(cl_masks.items()):
+            min_ = min(ref_dict[var][mask_dict["ref"]].min(), comp_dict[var][mask_dict["comp"]].min())
+            max_ = max(ref_dict[var][mask_dict["ref"]].max(), comp_dict[var][mask_dict["comp"]].max())
 
             ax = fig.add_subplot(gs[cl_i, v_i])
             ax.hist2d(
                 ref_dict[var][mask_dict["ref"]],
                 comp_dict[var][mask_dict["comp"]],
                 bins=50,
-                range=((_min, _max), (_min, _max)),
+                range=((min_, max_), (min_, max_)),
                 cmap=cmap,
                 norm=LogNorm(),
             )
@@ -52,9 +52,9 @@ def plot_scatter(ref_dict, comp_dict, comp_name, ref_name="truth"):
 def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False, qs=None, stylesheet=None):  # noqa: ARG001
     """Args:
     data_dicts: {name: (ref_dict, comp_dict), ...}
-        ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
+        ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays.
     """
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, histtypes, alphas, line_styles, _label_len = update_stylesheet(stylesheet)
 
     residual_dict = {}
     for name in data_dicts:
@@ -108,11 +108,11 @@ def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False,
                     label_length=-1,
                     metrics="mean std iqr",
                     bins=bins,
-                    histtype=_histtypes[name],
-                    label=_labels[name],
-                    color=_colors[name],
-                    linestyle=_line_styles[name],
-                    alpha=_alphas[name],
+                    histtype=histtypes[name],
+                    label=labels[name],
+                    color=colors[name],
+                    linestyle=line_styles[name],
+                    alpha=alphas[name],
                 )
 
                 ax.minorticks_on()
@@ -135,9 +135,9 @@ def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False,
 def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log_y=False, qs=None, stylesheet=None, separate_figures=False):  # noqa: ARG001
     """Args:
     data_dicts: {name: (ref_dict, comp_dict), ...}
-        ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays
+        ref_dict: {'pt': [], 'eta': [], 'phi': [], 'class': []} # flat_arrays.
     """
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, histtypes, alphas, line_styles, _label_len = update_stylesheet(stylesheet)
 
     residual_dict = {}
     for name in data_dicts:
@@ -205,11 +205,11 @@ def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log
                     metrics="mean std iqr",
                     f=res_dict["f"][cl_name],
                     bins=bins,
-                    histtype=_histtypes[name],
-                    label=_labels[name],
-                    color=_colors[name],
-                    linestyle=_line_styles[name],
-                    alpha=_alphas[name],
+                    histtype=histtypes[name],
+                    label=labels[name],
+                    color=colors[name],
+                    linestyle=line_styles[name],
+                    alpha=alphas[name],
                 )
 
                 ax.minorticks_on()
@@ -234,9 +234,9 @@ def plot_eff_fr_purity(eff_fr_purity_input_dict, stylesheet=None):
     efficiency = N(truth particles of this class matched to pflow particles) / N(total truth particles of this class)
     fake rate  = N(pflow particles of this class not matched to truth particles) / N(total pflow particles of this class)
     purity     = N(truth particles of this class that are matched to pflow particles of this class)
-                 / N(total truth particles of this class that are matched to pflow particles)
+                 / N(total truth particles of this class that are matched to pflow particles).
     """
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, _histtypes, _alphas, line_styles, _label_len = update_stylesheet(stylesheet)
 
     # subplots of eff, fr, and purity versus pt stacked vertically
     # All classes are drawn on same axis
@@ -301,11 +301,11 @@ def plot_eff_fr_purity(eff_fr_purity_input_dict, stylesheet=None):
                 pt_bin_mids,
                 bins=pt_bins,
                 weights=cl_dict["eff"],
-                ls=_line_styles[name],
-                label=f"{cl_name} ({_labels[name]})",
+                ls=line_styles[name],
+                label=f"{cl_name} ({labels[name]})",
                 histtype="step",
                 linewidth=1,
-                color=_colors[name][cl_name],
+                color=colors[name][cl_name],
             )
 
         for cl_name, cl_dict in eff_fr_dict.items():
@@ -313,11 +313,11 @@ def plot_eff_fr_purity(eff_fr_purity_input_dict, stylesheet=None):
                 pt_bin_mids,
                 bins=pt_bins,
                 weights=cl_dict["fr"],
-                ls=_line_styles[name],
-                label=f"{cl_name} ({_labels[name]})",
+                ls=line_styles[name],
+                label=f"{cl_name} ({labels[name]})",
                 histtype="step",
                 linewidth=1,
-                color=_colors[name][cl_name],
+                color=colors[name][cl_name],
             )
 
         for cl_name, cl_dict in eff_fr_dict.items():
@@ -325,11 +325,11 @@ def plot_eff_fr_purity(eff_fr_purity_input_dict, stylesheet=None):
                 pt_bin_mids,
                 bins=pt_bins,
                 weights=cl_dict["purity"],
-                ls=_line_styles[name],
-                label=f"{cl_name} ({_labels[name]})",
+                ls=line_styles[name],
+                label=f"{cl_name} ({labels[name]})",
                 histtype="step",
                 linewidth=1,
-                color=_colors[name][cl_name],
+                color=colors[name][cl_name],
             )
 
     ax1.set_xlabel("Truth $p_\\mathrm{T}$ [GeV]")

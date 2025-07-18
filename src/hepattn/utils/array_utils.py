@@ -61,7 +61,7 @@ def masked_angle_diff_last_axis(ax, ay, az, mask) -> np.ma.MaskedArray:
 
 
 def join_structured_arrays(arrays: list):
-    """Join a list of structured numpy arrays. Taken from hepformer repo
+    """Join a list of structured numpy arrays. Taken from hepformer repo.
 
     See https://github.com/numpy/numpy/issues/7811
 
@@ -112,7 +112,7 @@ def maybe_pad(x: np.ndarray, target_shape: tuple, pad_value: float = 0.0) -> np.
     if len(target_shape) != x.ndim:
         raise ValueError(f"Target shape must have the same number of dimensions as x: {current_shape} vs {target_shape}")
 
-    _target_shape = []
+    target_shape_ = []
 
     for i, (current, target) in enumerate(zip(current_shape, target_shape, strict=False)):
         if target == -1:
@@ -121,9 +121,9 @@ def maybe_pad(x: np.ndarray, target_shape: tuple, pad_value: float = 0.0) -> np.
         if current > target:
             raise ValueError(f"Cannot pad: dimension {i} of x is {current}, which is larger than target {target}.")
 
-        _target_shape.append(target)
+        target_shape_.append(target)
 
-    target_shape = tuple(_target_shape)
+    target_shape = tuple(target_shape_)
 
     if current_shape == target_shape:
         return x

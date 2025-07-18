@@ -84,8 +84,7 @@ class DetectorRotations:
             self.rot[v, l, m] = rot
 
     def _extract_rotation_matrix(self, mod):
-        """Extract the rotation matrix from module dataframe
-        """
+        """Extract the rotation matrix from module dataframe."""
         return np.matrix([
             [mod.rot_xu.item(), mod.rot_xv.item(), mod.rot_xw.item()],
             [mod.rot_yu.item(), mod.rot_yv.item(), mod.rot_yw.item()],

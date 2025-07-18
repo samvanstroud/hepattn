@@ -468,7 +468,7 @@ class CLICDataset(Dataset):
         return data_dict
 
     def __getitem__(self, idx):
-        """Use .unsqueeze(0) to add in the dummy batch dimension (length 1 always)"""
+        """Use .unsqueeze(0) to add in the dummy batch dimension (length 1 always)."""
         inputs = {}
         labels = {}
 

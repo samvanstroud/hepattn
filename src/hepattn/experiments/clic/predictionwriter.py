@@ -113,7 +113,7 @@ class PflowPredictionWriter(Callback):
         # If the writer hasn't been created yet, create it now that we have the dtypes and shapes
         if self.writer is None:
             dtypes = {k: v.dtype for k, v in to_write.items()}
-            shapes = {k: (self.num_events,) + v.shape[1:] for k, v in to_write.items()}
+            shapes = {k: (self.num_events, *v.shape[1:]) for k, v in to_write.items()}
             self.writer = H5Writer(
                 jets_name="events",
                 dst=self.output_path,

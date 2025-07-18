@@ -80,7 +80,7 @@ class TrackMLDataset(Dataset):
         return int(self.num_samples)
 
     def __getitem__(self, idx):
-        """Use .unsqueeze(0) to add in the dummy batch dimension (length 1 always)"""
+        """Use .unsqueeze(0) to add in the dummy batch dimension (length 1 always)."""
         inputs = {}
         labels = {}
 

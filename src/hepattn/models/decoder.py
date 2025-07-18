@@ -1,6 +1,6 @@
 """Based on
 - https://github.com/facebookresearch/MaskFormer
-- https://github.com/facebookresearch/Mask2Former
+- https://github.com/facebookresearch/Mask2Former.
 """
 
 from functools import partial

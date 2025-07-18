@@ -8,14 +8,14 @@ def update_stylesheet(stylesheet):
     if stylesheet is None:
         stylesheet = {}
     global COLORS, LABELS, HISTTYPES, ALPHAS, LINE_STYLES, LABEL_LEN
-    _colors = stylesheet.get("COLORS", COLORS)
-    _labels = stylesheet.get("LABELS", LABELS)
-    _histtypes = stylesheet.get("HISTTYPES", HISTTYPES)
-    _alphas = stylesheet.get("ALPHAS", ALPHAS)
-    _line_styles = stylesheet.get("LINE_STYLES", LINE_STYLES)
-    _label_len = stylesheet.get("LABEL_LEN", LABEL_LEN)
+    colors = stylesheet.get("COLORS", COLORS)
+    labels = stylesheet.get("LABELS", LABELS)
+    histtypes = stylesheet.get("HISTTYPES", HISTTYPES)
+    alphas = stylesheet.get("ALPHAS", ALPHAS)
+    line_styles = stylesheet.get("LINE_STYLES", LINE_STYLES)
+    label_len = stylesheet.get("LABEL_LEN", LABEL_LEN)
 
-    return _colors, _labels, _histtypes, _alphas, _line_styles, _label_len
+    return colors, labels, histtypes, alphas, line_styles, label_len
 
 
 def deltar(eta1, phi1, eta2, phi2):

@@ -9,7 +9,7 @@ from .utils import custom_hist_v1, custom_hist_v2, update_stylesheet
 
 def compute_jet_residual_dict(matched_jets_dict, dr_cut=0.1, leading_n_jets=999, pt_min=10, eta_max=2.5, n_events=None, entry_start=0):
     """Args:
-    matched_jets: {name: (truth, reco), ...]
+    matched_jets: {name: (truth, reco), ...].
     """
     residual_dict = {}
     for name in matched_jets_dict:
@@ -65,7 +65,7 @@ def compute_jet_residual_dict(matched_jets_dict, dr_cut=0.1, leading_n_jets=999,
 
 
 def plot_jet_residuals(residual_dict, pt_relative=True, stylesheet=None, separate_figures=False):
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, histtypes, alphas, line_styles, label_len = update_stylesheet(stylesheet)
 
     xlabel_dict = {
         "pt": "Jet $p_T^{reco} - p_T^{truth}$ [GeV]",
@@ -94,8 +94,8 @@ def plot_jet_residuals(residual_dict, pt_relative=True, stylesheet=None, separat
 
         comb = np.hstack([residual_dict[key][var] for key in residual_dict])
         # _min, _max = np.percentile(comb, 2), np.percentile(comb, 98)  # COCOA
-        _min, _max = np.percentile(comb, 5), np.percentile(comb, 95)  # CLIC
-        abs_max = max(abs(_min), abs(_max))
+        min_, max_ = np.percentile(comb, 5), np.percentile(comb, 95)  # CLIC
+        abs_max = max(abs(min_), abs(max_))
         bins = np.linspace(-abs_max, abs_max, 50)
         if var == "dR":
             bins = np.linspace(0, abs_max, 50)
@@ -107,25 +107,25 @@ def plot_jet_residuals(residual_dict, pt_relative=True, stylesheet=None, separat
                 ax.hist(
                     res[var],
                     bins=bins,
-                    histtype=_histtypes[name],
-                    label=_labels[name],
-                    color=_colors[name],
-                    linestyle=_line_styles[name],
-                    alpha=_alphas[name],
+                    histtype=histtypes[name],
+                    label=labels[name],
+                    color=colors[name],
+                    linestyle=line_styles[name],
+                    alpha=alphas[name],
                 )
             else:
                 custom_hist_v2(
                     ax,
                     res[var],
-                    label_length=_label_len[name],
+                    label_length=label_len[name],
                     metrics="mean std iqr",
                     f=res["f_matched"],
                     bins=bins,
-                    histtype=_histtypes[name],
-                    label=_labels[name],
-                    color=_colors[name],
-                    linestyle=_line_styles[name],
-                    alpha=_alphas[name],
+                    histtype=histtypes[name],
+                    label=labels[name],
+                    color=colors[name],
+                    linestyle=line_styles[name],
+                    alpha=alphas[name],
                 )
         ax.set_xlabel(xlabel_dict[var])
         ax.set_ylabel("Jets")
@@ -145,7 +145,7 @@ def plot_jet_residuals(residual_dict, pt_relative=True, stylesheet=None, separat
 
 
 def plot_jet_res_boxplot(residual_dict, var="pt", bins=None, stylesheet=None):
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels_, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
 
     fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW), dpi=FIG_DPI)
     ax = fig.add_subplot(111)
@@ -162,7 +162,7 @@ def plot_jet_res_boxplot(residual_dict, var="pt", bins=None, stylesheet=None):
             mask = (res[f"ref_{var}"] > bin_min) & (res[f"ref_{var}"] < bin_max)
             bin_data.append(res["pt_rel"][mask] if np.sum(mask) != 0 else [])
             if bin_i == 0:  # Add labels only once
-                labels.append(_labels[name])
+                labels.append(labels_[name])
         boxplot_data.append(bin_data)
 
     ax.hlines(0, -1, len(bin_mids) * (len(residual_dict) + 1), color="black", linestyle="--", alpha=0.5, label="_nolegend_")
@@ -176,9 +176,9 @@ def plot_jet_res_boxplot(residual_dict, var="pt", bins=None, stylesheet=None):
                 positions=[positions[j]],
                 widths=0.6,
                 patch_artist=True,
-                boxprops={"facecolor": _colors[name], "color": _colors[name], "alpha": 0.5},
-                whiskerprops={"color": _colors[name]},
-                capprops={"color": _colors[name]},
+                boxprops={"facecolor": colors[name], "color": colors[name], "alpha": 0.5},
+                whiskerprops={"color": colors[name]},
+                capprops={"color": colors[name]},
                 medianprops={"color": "red"},
                 showfliers=False,  # Do not show outliers
                 whis=[2.5, 97.5],
@@ -205,7 +205,7 @@ def plot_jet_res_boxplot(residual_dict, var="pt", bins=None, stylesheet=None):
 
 
 def plot_jet_response_old(residual_dict, pt_bins=None, stylesheet=None, separate_figures=False, use_energy=False):
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, _histtypes, _alphas, line_styles, _label_len = update_stylesheet(stylesheet)
     pt_or_e = "pt"
     if use_energy:
         pt_or_e = "e"
@@ -243,8 +243,8 @@ def plot_jet_response_old(residual_dict, pt_bins=None, stylesheet=None, separate
             q_75 = np.percentile(res[f"{pt_or_e}_rel"][mask], 75)
             y_vals2[pt_i] = (q_75 - q_25) / (q_50 + 1 + 1e-6)
 
-        ax1.plot(pt_mids, y_vals1, label=_labels[name], color=_colors[name], linestyle=_line_styles[name], marker="o")
-        ax2.plot(pt_mids, y_vals2, label=_labels[name], color=_colors[name], linestyle=_line_styles[name], marker="o")
+        ax1.plot(pt_mids, y_vals1, label=labels[name], color=colors[name], linestyle=line_styles[name], marker="o")
+        ax2.plot(pt_mids, y_vals2, label=labels[name], color=colors[name], linestyle=line_styles[name], marker="o")
 
     ax1.set_ylabel("Jet $\\sigma \\left( p_T^{reco} / p_T^{truth} \\right) / \\mu \\left( p_T^{reco} / p_T^{truth} \\right)$")
     ax2.set_ylabel("Jet $IQR \\left( p_T^{reco} / p_T^{truth} \\right) / median \\left( p_T^{reco} / p_T^{truth} \\right)$")
@@ -287,7 +287,7 @@ def plot_jet_response(residual_dict, pt_bins=None, stylesheet=None, separate_fig
         # SE(IQR) ≈ 1.16 * IQR / sqrt(N)
         return 1.16 * iqr / np.sqrt(n)
 
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, _histtypes, _alphas, line_styles, _label_len = update_stylesheet(stylesheet)
     pt_or_e = "pt"
     if use_energy:
         pt_or_e = "e"
@@ -341,19 +341,19 @@ def plot_jet_response(residual_dict, pt_bins=None, stylesheet=None, separate_fig
             pt_mids,
             y_medians - error_on_median(ns, iqr=y_iqrs),
             y_medians + error_on_median(ns, iqr=y_iqrs),
-            color=_colors[name],
+            color=colors[name],
             alpha=0.3,
             zorder=10,
         )
-        ax1.plot(pt_mids, y_medians, label=_labels[name], color=_colors[name], linestyle=_line_styles[name], zorder=10, marker="o", markersize=2)
+        ax1.plot(pt_mids, y_medians, label=labels[name], color=colors[name], linestyle=line_styles[name], zorder=10, marker="o", markersize=2)
         ax1_x_min = ax1.get_xlim()[0]
         ax1_x_max = ax1.get_xlim()[1]
         ax1.plot(np.linspace(ax1_x_min, ax1_x_max, 2), [0, 0], ls="--", color="k", alpha=0.5)
         ax1.set_xlim((ax1_x_min, ax1_x_max))
 
-        ax2.fill_between(pt_mids, y_iqrs - error_on_iqr(ns, y_iqrs), y_iqrs + error_on_iqr(ns, y_iqrs), color=_colors[name], alpha=0.3)
-        ax2.plot(pt_mids, y_iqrs, label=_labels[name], color=_colors[name], linestyle=_line_styles[name], marker="o", markersize=2)
-        ax3.plot(pt_mids, y_iqrs / (y_medians + 1), label=_labels[name], color=_colors[name], linestyle=_line_styles[name], marker="o")
+        ax2.fill_between(pt_mids, y_iqrs - error_on_iqr(ns, y_iqrs), y_iqrs + error_on_iqr(ns, y_iqrs), color=colors[name], alpha=0.3)
+        ax2.plot(pt_mids, y_iqrs, label=labels[name], color=colors[name], linestyle=line_styles[name], marker="o", markersize=2)
+        ax3.plot(pt_mids, y_iqrs / (y_medians + 1), label=labels[name], color=colors[name], linestyle=line_styles[name], marker="o")
 
     v_name = "p_T"
     if use_energy:
@@ -390,7 +390,7 @@ def double_gaussian(x, a1, mu1, sigma1, a2, mu2, sigma2):
 
 
 def plot_jet_response_gaussian_fit(residual_dict, pt_bins=None, stylesheet=None, return_fit_plots=False, use_energy=False):
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, histtypes, alphas, line_styles, _label_len = update_stylesheet(stylesheet)
 
     pt_or_e = "pt"
     if use_energy:
@@ -429,7 +429,7 @@ def plot_jet_response_gaussian_fit(residual_dict, pt_bins=None, stylesheet=None,
             try:
                 popt, _pcov = curve_fit(double_gaussian, bin_mids, hist)  # , p0=initial_guesses)
                 a1, mu1, sigma1, a2, mu2, sigma2 = popt
-                axs_fit[pt_i].plot(bin_mids, double_gaussian(bin_mids, *popt), color=_colors[name])
+                axs_fit[pt_i].plot(bin_mids, double_gaussian(bin_mids, *popt), color=colors[name])
                 print(name, a1, mu1, sigma1, a2, mu2, sigma2)
             except:  # noqa: E722
                 a1 = np.nan
@@ -439,9 +439,9 @@ def plot_jet_response_gaussian_fit(residual_dict, pt_bins=None, stylesheet=None,
                 mu2 = np.nan
                 sigma2 = np.nan
 
-            label = f"{_labels[name]} {a1:.3f} * N({mu1:.3f}, {sigma1:.3f}) + {a2:.3f} * N({mu2:.3f}, {sigma2:.3f})"
+            label = f"{labels[name]} {a1:.3f} * N({mu1:.3f}, {sigma1:.3f}) + {a2:.3f} * N({mu2:.3f}, {sigma2:.3f})"
             hist, _, _ = axs_fit[pt_i].hist(
-                res_vals, bins=bins, density=False, label=label, color=_colors[name], alpha=_alphas[name], histtype=_histtypes[name]
+                res_vals, bins=bins, density=False, label=label, color=colors[name], alpha=alphas[name], histtype=histtypes[name]
             )
 
             if np.abs(sigma1) < np.abs(sigma2):
@@ -457,7 +457,7 @@ def plot_jet_response_gaussian_fit(residual_dict, pt_bins=None, stylesheet=None,
 
     fig, ax = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI)
     for name, response in response_dict.items():
-        ax.plot(pt_mids, response, label=_labels[name], color=_colors[name], linestyle=_line_styles[name], marker="o")
+        ax.plot(pt_mids, response, label=labels[name], color=colors[name], linestyle=line_styles[name], marker="o")
     ax.set_ylabel("Jet $\\sigma \\left( p_T^{reco} / p_T^{truth} \\right) / \\mu \\left( p_T^{reco} / p_T^{truth} \\right)$")
     ax.set_xlabel("Jet $p_T^{truth}$ [GeV]")
     if use_energy:
@@ -477,7 +477,7 @@ def plot_jet_response_gaussian_fit(residual_dict, pt_bins=None, stylesheet=None,
 
 
 def plot_jet_marginals(jet_dict, nleading=1, stylesheet=None):
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, histtypes, alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
 
     fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW * 2), dpi=FIG_DPI)
     gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
@@ -497,18 +497,18 @@ def plot_jet_marginals(jet_dict, nleading=1, stylesheet=None):
 
         jet_dict_mod[name] = var_dict
 
-    _bins = {"pt": None, "eta": None, "phi": None}
+    bins = {"pt": None, "eta": None, "phi": None}
     for _var_i, var in enumerate(["pt", "eta", "phi"]):
         tmp_var = [var_dict[var] for var_dict in jet_dict_mod.values()]
         comb = np.hstack(tmp_var)
-        _bins[var] = np.linspace(comb.min(), comb.max(), 50)
+        bins[var] = np.linspace(comb.min(), comb.max(), 50)
         if var == "pt":
-            _bins[var] = np.linspace(comb.min(), np.percentile(comb, 99), 50)
+            bins[var] = np.linspace(comb.min(), np.percentile(comb, 99), 50)
 
     for var_i, var in enumerate(["pt", "pt", "eta", "phi"]):
         ax = fig.add_subplot(gs[var_i])
         for _name_i, (name, var_dict) in enumerate(jet_dict_mod.items()):
-            ax.hist(var_dict[var], bins=_bins[var], histtype=_histtypes[name], label=_labels[name], color=_colors[name], alpha=_alphas[name])
+            ax.hist(var_dict[var], bins=bins[var], histtype=histtypes[name], label=labels[name], color=colors[name], alpha=alphas[name])
             ax.set_xlabel(varname_dict[var])
             ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
             ax.minorticks_on()
@@ -537,10 +537,10 @@ def compute_event_energy_residuals(ref, comp_dict):
         ref_dict["neutral"].append(ref_neut_energy_ev)
 
         for name in comp_dict:
-            _ch_mask_ev = comp_dict[name]["charge"][ev_i] != 0
+            ch_mask_ev = comp_dict[name]["charge"][ev_i] != 0
 
-            ev_eres_dict[name]["charged"].append(comp_dict[name]["e"][ev_i][_ch_mask_ev].sum() - ref_ch_energy_ev)
-            ev_eres_dict[name]["neutral"].append(comp_dict[name]["e"][ev_i][~_ch_mask_ev].sum() - ref_neut_energy_ev)
+            ev_eres_dict[name]["charged"].append(comp_dict[name]["e"][ev_i][ch_mask_ev].sum() - ref_ch_energy_ev)
+            ev_eres_dict[name]["neutral"].append(comp_dict[name]["e"][ev_i][~ch_mask_ev].sum() - ref_neut_energy_ev)
 
     for name in ev_eres_dict:
         ev_eres_dict[name]["charged"] = np.array(ev_eres_dict[name]["charged"])
@@ -554,7 +554,7 @@ def compute_event_energy_residuals(ref, comp_dict):
 
 
 def plot_event_neut_energy_res(ev_eres_dict, stylesheet=None):
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, histtypes, alphas, line_styles, _label_len = update_stylesheet(stylesheet)
 
     n_row = int(np.ceil(len(ev_eres_dict) / 3))
     fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW / 1.5 * n_row), dpi=FIG_DPI)
@@ -568,11 +568,11 @@ def plot_event_neut_energy_res(ev_eres_dict, stylesheet=None):
             ax.hist(
                 e_neut_frac,
                 bins=np.linspace(0, 0.5, 26),
-                histtype=_histtypes[name],
-                label=_labels[name],
-                color=_colors[name],
-                alpha=_alphas[name],
-                ls=_line_styles[name],
+                histtype=histtypes[name],
+                label=labels[name],
+                color=colors[name],
+                alpha=alphas[name],
+                ls=line_styles[name],
                 density=True,
             )
 
@@ -594,7 +594,7 @@ def plot_event_neut_energy_res(ev_eres_dict, stylesheet=None):
 
 
 def plot_met_res_and_ht_res(truth_pt, truth_phi, comp_dict, stylesheet=None, separate_figures=False):
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, histtypes, alphas, _line_styles, label_len = update_stylesheet(stylesheet)
 
     met_res_dict = {}
     ht_res_dict = {}
@@ -645,12 +645,12 @@ def plot_met_res_and_ht_res(truth_pt, truth_phi, comp_dict, stylesheet=None, sep
         custom_hist_v1(
             ax1,
             met_res_dict[name],
-            label_length=_label_len[name],
+            label_length=label_len[name],
             bins=bins_met,
-            histtype=_histtypes[name],
-            label=_labels[name],
-            alpha=_alphas[name],
-            color=_colors[name],
+            histtype=histtypes[name],
+            label=labels[name],
+            alpha=alphas[name],
+            color=colors[name],
         )
     ax1.set_xlabel(r"$(p_T^{miss} reco - p_T^{miss} truth) / p_T^{miss} truth$")
 
@@ -658,12 +658,12 @@ def plot_met_res_and_ht_res(truth_pt, truth_phi, comp_dict, stylesheet=None, sep
         custom_hist_v1(
             ax2,
             ht_res_dict[name],
-            label_length=_label_len[name],
+            label_length=label_len[name],
             bins=bins_ht,
-            histtype=_histtypes[name],
-            label=_labels[name],
-            alpha=_alphas[name],
-            color=_colors[name],
+            histtype=histtypes[name],
+            label=labels[name],
+            alpha=alphas[name],
+            color=colors[name],
         )
     ax2.set_xlabel(r"$(H_T^{reco} - H_T^{truth}) / H_T^{truth}$")
 
@@ -691,7 +691,7 @@ def get_invariant_mass(jets, option="two-jet"):
 
 
 def plot_jet_inv_mass(jet_dict, leading_jet_option="two-jet", xlabel_flag="jj", stylesheet=None):
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, histtypes, alphas, _line_styles, label_len = update_stylesheet(stylesheet)
 
     mass_dict = {}
     for name in jet_dict:
@@ -712,12 +712,12 @@ def plot_jet_inv_mass(jet_dict, leading_jet_option="two-jet", xlabel_flag="jj", 
         custom_hist_v1(
             ax,
             mass_dict[name],
-            label_length=_label_len[name],
+            label_length=label_len[name],
             bins=bins,
-            histtype=_histtypes[name],
-            label=_labels[name],
-            alpha=_alphas[name],
-            color=_colors[name],
+            histtype=histtypes[name],
+            label=labels[name],
+            alpha=alphas[name],
+            color=colors[name],
         )
     xlabel = rf"$m_{{{xlabel_flag}}}$ [GeV]"
     ax.set_xlabel(xlabel)
@@ -732,7 +732,7 @@ def plot_jet_inv_mass(jet_dict, leading_jet_option="two-jet", xlabel_flag="jj", 
 
 
 def plot_jet_inv_mass_residual(ref_jets, comp_jet_dict, leading_jet_option="two-jet", xlabel_flag="jj", stylesheet=None):
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, histtypes, alphas, _line_styles, label_len = update_stylesheet(stylesheet)
 
     res_dict = {}
     for name in comp_jet_dict:
@@ -756,12 +756,12 @@ def plot_jet_inv_mass_residual(ref_jets, comp_jet_dict, leading_jet_option="two-
         custom_hist_v1(
             ax,
             res_dict[name],
-            label_length=_label_len[name],
+            label_length=label_len[name],
             bins=bins,
-            histtype=_histtypes[name],
-            label=_labels[name],
-            alpha=_alphas[name],
-            color=_colors[name],
+            histtype=histtypes[name],
+            label=labels[name],
+            alpha=alphas[name],
+            color=colors[name],
         )
     xlabel = rf"$m_{{{xlabel_flag}}}^{{reco}} - m_{{{xlabel_flag}}}^{{truth}} [GeV]$"
     ax.set_xlabel(xlabel)
@@ -776,7 +776,7 @@ def plot_jet_inv_mass_residual(ref_jets, comp_jet_dict, leading_jet_option="two-
 
 
 def plot_leading_jet_substructure(substructure_dict, stylesheet=None, separate_figures=False):
-    _colors, _labels, _histtypes, _alphas, _line_styles, _label_len = update_stylesheet(stylesheet)
+    colors, labels, histtypes, alphas, line_styles, _label_len = update_stylesheet(stylesheet)
 
     figs = []
     for i, var_name in enumerate(["$ln (D_2)$", "$C_2$", "$C_3$"]):
@@ -803,11 +803,11 @@ def plot_leading_jet_substructure(substructure_dict, stylesheet=None, separate_f
             h, _, _ = ax1.hist(
                 substructure[i],
                 bins=bins,
-                histtype=_histtypes[name],
-                label=_labels[name],
-                color=_colors[name],
-                alpha=_alphas[name],
-                ls=_line_styles[name],
+                histtype=histtypes[name],
+                label=labels[name],
+                color=colors[name],
+                alpha=alphas[name],
+                ls=line_styles[name],
             )
             stored_hists[name] = h
 
@@ -816,7 +816,7 @@ def plot_leading_jet_substructure(substructure_dict, stylesheet=None, separate_f
         for name, h in stored_hists.items():
             ratio = h / stored_hists["truth"]
             for ri, r in enumerate(ratio):
-                ax2.hlines(r, bins[ri], bins[ri + 1], color=_colors[name], linestyle=_line_styles[name])
+                ax2.hlines(r, bins[ri], bins[ri + 1], color=colors[name], linestyle=line_styles[name])
 
         for ax in [ax1, ax2]:
             ax.minorticks_on()

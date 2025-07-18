@@ -47,7 +47,7 @@ def build_seq_idx(tensor: torch.Tensor):
 
 
 def create_njt_wrapper(orig_mask_mod, offsets, seq_idx):
-    """Generic Wrapper that converts Dense mask_mod functions to NJT mask_mod functions"""
+    """Generic Wrapper that converts Dense mask_mod functions to NJT mask_mod functions."""
 
     def njt_score_mod(b, h, q_idx, kv_idx):
         q_nested = q_idx - offsets[seq_idx[q_idx]]

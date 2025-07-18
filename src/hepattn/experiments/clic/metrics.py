@@ -33,17 +33,17 @@ class MaskInference:
 
     @staticmethod
     def exact_match(pred, tgt):
-        """Perfect hit to track assignment"""
+        """Perfect hit to track assignment."""
         if len(tgt) == 0:
             return torch.tensor(torch.nan)
         return (pred == tgt).all(-1).float().mean()
 
     @staticmethod
     def eff(pred, tgt):
-        """Efficiency to assign correct hit to track"""
+        """Efficiency to assign correct hit to track."""
         return ((pred & tgt).sum(-1) / tgt.sum(-1)).mean()
 
     @staticmethod
     def pur(pred, tgt):
-        """Purity of assigned hits on tracks"""
+        """Purity of assigned hits on tracks."""
         return ((pred & tgt).sum(-1) / pred.sum(-1)).mean()
