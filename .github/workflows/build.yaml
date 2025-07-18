@@ -15,12 +15,12 @@ jobs:
           cache: true
           locked: true
       # Step 3: Run tests
-      - name: Test Pixi
+      - name: Test pixi
         run: |
           pixi run python --version
       - name: Install Git LFS
         run: |
           git lfs install
           git lfs pull
-      - name: Run pytest defined in pyproject.toml
+      - name: Run tests
         run: pixi run test-ci
