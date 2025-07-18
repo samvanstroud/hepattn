@@ -19,27 +19,36 @@ class MaskFormerDecoderLayer(nn.Module):
         self,
         dim: int,
         norm: str = "LayerNorm",
+        depth: int = 0,
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
         mask_attention: bool = True,
         bidirectional_ca: bool = True,
+        hybrid_norm: bool = False,
     ) -> None:
         super().__init__()
 
         self.mask_attention = mask_attention
         self.bidirectional_ca = bidirectional_ca
 
+        # handle hybridnorm
+        qkv_norm = hybrid_norm
+        if depth == 0:
+            hybrid_norm = False
+        attn_norm = norm if not hybrid_norm else None
+        dense_post_norm = not hybrid_norm
+
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim, norm=norm)
-        self.q_ca = residual(Attention(dim, **attn_kwargs))
-        self.q_sa = residual(Attention(dim, **attn_kwargs))
-        self.q_dense = residual(Dense(dim, **dense_kwargs))
+        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+        self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         if self.bidirectional_ca:
-            self.kv_ca = residual(Attention(dim, **attn_kwargs))
-            self.kv_dense = residual(Dense(dim, **dense_kwargs))
+            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+            self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(self, q: Tensor, kv: Tensor, attn_mask: Tensor | None = None, q_mask: Tensor | None = None, kv_mask: Tensor | None = None) -> Tensor:
         if self.mask_attention:
