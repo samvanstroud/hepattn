@@ -176,7 +176,6 @@ model:
           norm: RMSNorm
 
       num_decoder_layers: 4
-      intermediate_losses: true
       decoder_layer_config:
         dim: *dim
         norm: RMSNorm
