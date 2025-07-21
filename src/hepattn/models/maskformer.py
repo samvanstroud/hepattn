@@ -220,7 +220,7 @@ class MaskFormer(nn.Module):
             if (
                 self.log_attn_mask
                 and (attn_mask is not None)
-                and (self.log_step % 1000 == 0)
+                and (self.log_step % 10 == 0)
             ):
                 if not hasattr(self, "attn_masks_to_log"):
                     self.attn_masks_to_log = {}
@@ -273,27 +273,39 @@ class MaskFormer(nn.Module):
 
         return outputs
     
+    # def store_key_phi_info(self, x: dict):
+    #     phi_fields = []
+    #     for input_net in self.input_nets:
+    #         input_name = input_net.input_name
+    #         for phi_field in [f"{input_name}_phi", f"{input_name}_pos.phi"]:
+    #             if phi_field in x:
+    #                 phi_fields.append(x[phi_field])
+    #                 break
+    #     if phi_fields:
+    #         try:
+    #             self.last_key_phi = torch.cat(phi_fields, dim=-1)[0].cpu().numpy()
+    #         except Exception as e:
+    #             print(f"[MaskFormer] Error concatenating phi fields: {e}")
+    #             self.last_key_phi = None
+    #     else:
+    #         print("[MaskFormer] No phi fields found for logging.")
+    #         self.last_key_phi = None
+
+    #     if "key_posenc" in x:
+    #         self.last_key_posenc = x["key_posenc"][0].cpu().numpy()
+    #     else:
+    #         self.last_key_posenc = None
+
     def store_key_phi_info(self, x: dict):
-        phi_fields = []
-        for input_net in self.input_nets:
-            input_name = input_net.input_name
-            for phi_field in [f"{input_name}_phi", f"{input_name}_pos.phi"]:
-                if phi_field in x:
-                    phi_fields.append(x[phi_field])
-                    break
-        if phi_fields:
-            try:
-                self.last_key_phi = torch.cat(phi_fields, dim=-1)[0].cpu().numpy()
-            except Exception as e:
-                print(f"[MaskFormer] Error concatenating phi fields: {e}")
-                self.last_key_phi = None
-        else:
-            print("[MaskFormer] No phi fields found for logging.")
-            self.last_key_phi = None
+
+        self.last_key_phi =x['key_phi'][0].cpu().numpy()
+                
         if "key_posenc" in x:
             self.last_key_posenc = x["key_posenc"][0].cpu().numpy()
         else:
             self.last_key_posenc = None
+
+
 
     def re_add_original_embeddings(self, x: dict):
         # Re-add original query embeddings (similar to SAM's prompt token re-addition)
@@ -408,7 +420,8 @@ class MaskFormer(nn.Module):
                 if layer_name != "final" and not task.has_intermediate_loss:
                     continue
                 # In case if some tasks needed to get access to other task's output
-                extra_kwargs = task.loss_kwargs(outputs[layer_name], targets)
-                losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets, **extra_kwargs)
+                # extra_kwargs = task.loss_kwargs(outputs[layer_name], targets)
+                # losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets, **extra_kwargs)
+                losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses

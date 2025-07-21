@@ -11,7 +11,7 @@ data:
   hit_eval_test: /share/rcifdata/pduckett/hepattn-main/data/trackml/epoch=016-val_loss=0.15730_test_eval.h5
 
   num_workers: 10
-  num_train: -1
+  num_train: 10
   num_test: 10
   num_val: -1
 
@@ -71,13 +71,7 @@ trainer:
   default_root_dir: logs
   gradient_clip_val: 0.1
   enable_progress_bar: true
-
-  #profiler:
-  #  class_path: lightning.pytorch.profilers.PyTorchProfiler
-  #  init_args:
-  #    dirpath: ./profile_logs/
-  #    filename: profile.json
-
+  
   # Specify loggers here
   logger:
     class_path: lightning.pytorch.loggers.CometLogger
@@ -90,7 +84,13 @@ trainer:
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.AttnMaskLogger
     - class_path: hepattn.callbacks.AttentionStatsLogger
+      init_args:
+        log_train: true
+        log_val: true
     - class_path: hepattn.callbacks.PhiAnalysisLogger
+      init_args:
+        regressed_phi: true
+        queryPE: true
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
@@ -134,6 +134,8 @@ model:
             input_name: query
             fields:
               - phi
+            sym_fields:
+              - phi
             dim: *dim
             alpha: 5
             base: 10000
@@ -141,6 +143,7 @@ model:
       preserve_key_embed: false
       preserve_key_posenc: true
       log_attn_mask: true
+      phi_analysis: true
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -176,6 +179,8 @@ model:
                   init_args:
                     input_name: hit
                     fields:
+                      - phi
+                    sym_fields:
                       - phi
                     dim: *dim
 
@@ -230,6 +235,17 @@ model:
                   mask_focal: 50.0
                 dim: *dim
                 null_weight: 1.0
+            - class_path: hepattn.models.task.ObjectRegressionTask
+              init_args:
+                name: query_regression
+                input_object: query
+                output_object: track
+                target_object: particle
+                fields:
+                  - phi
+                loss_weight: 1.0
+                cost_weight: 1.0
+                dim: *dim
 
       matcher:
         class_path: hepattn.models.matcher.Matcher

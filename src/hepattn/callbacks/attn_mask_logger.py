@@ -53,7 +53,7 @@ class AttnMaskLogger(Callback):
 class AttentionStatsLogger(Callback):
     """Callback for logging basic attention statistics."""
     
-    def __init__(self, log_train: bool = False, log_val: bool = True, log_every_n_steps: int = 100):
+    def __init__(self, log_train: bool = False, log_val: bool = True):
         """
         Initialize the attention stats logger.
         
@@ -64,7 +64,6 @@ class AttentionStatsLogger(Callback):
         super().__init__()
         self.log_train = log_train
         self.log_val = log_val
-        self.log_every_n_steps = log_every_n_steps
 
     def _log_attention_stats(self, pl_module, mask, step, layer, prefix="val"):
         """Log basic attention mask statistics."""
@@ -86,7 +85,7 @@ class AttentionStatsLogger(Callback):
         except Exception as e:
             print(f"[AttentionStatsLogger] Error logging stats: {e}")
 
-    def on_train_epoch_end(self, trainer, pl_module):
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if not self.log_train:
             return
             
@@ -94,13 +93,11 @@ class AttentionStatsLogger(Callback):
         if hasattr(model, 'attn_masks_to_log'):
             for mask_info in model.attn_masks_to_log.values():
                 step = mask_info["step"]
-                if step % self.log_every_n_steps != 0:
-                    continue
                 mask = mask_info["mask"]
                 layer = mask_info["layer"]
                 self._log_attention_stats(pl_module, mask, step, layer, "train")
 
-    def on_validation_epoch_end(self, trainer, pl_module):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if not self.log_val:
             return
             
@@ -108,8 +105,6 @@ class AttentionStatsLogger(Callback):
         if hasattr(model, 'attn_masks_to_log'):
             for mask_info in model.attn_masks_to_log.values():
                 step = mask_info["step"]
-                if step % self.log_every_n_steps != 0:
-                    continue
                 mask = mask_info["mask"]
                 layer = mask_info["layer"]
                 self._log_attention_stats(pl_module, mask, step, layer, "val")

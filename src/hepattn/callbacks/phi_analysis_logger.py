@@ -88,7 +88,7 @@ class PhiAnalysisLogger(Callback):
             plt.close(fig)
             del fig
 
-    def on_validation_epoch_end(self, trainer, pl_module):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
         if not hasattr(model, 'attn_masks_to_log'):
             return
@@ -96,8 +96,8 @@ class PhiAnalysisLogger(Callback):
         for mask_info in model.attn_masks_to_log.values():
             try:
                 step = mask_info["step"]
-                if step % self.log_every_n_steps != 0:
-                    continue
+                # if step % self.log_every_n_steps != 0:
+                #     continue
                 mask = mask_info["mask"]
                 layer = mask_info["layer"]
 
