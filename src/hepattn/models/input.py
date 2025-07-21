@@ -2,7 +2,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.utils.tensor_utils import concat_tensors, get_module_dtype, get_torch_dtype
-
+import sys
 
 class InputNet(nn.Module):
     def __init__(self, input_name: str, net: nn.Module, fields: list[str], posenc: nn.Module | None = None, input_dtype: str | None = None):
@@ -119,8 +119,11 @@ class QueryPosEnc(nn.Module):
         pos_inputs = {}
         for field in self.posenc.fields:
             if field == "phi":
-                # for each query set value of phi to 2pi/n_queries * query_idx - should be shape [batch_size, num_queries]
-                pos_inputs[f"{self.input_name}_{field}"] = 2 * torch.pi * (torch.arange(num_queries, device=device) / num_queries - 0.5)
+                # Save the phi values assigned to each query
+                phi_values = 2 * torch.pi * (torch.arange(num_queries, device=device) / num_queries - 0.5)
+                pos_inputs[f"{self.input_name}_{field}"] = phi_values
+                # Save for later access
+                self.last_query_phi = phi_values.detach().cpu().numpy()  # shape: [num_queries]
             else:
                 raise ValueError(f"Field {field} not supported for query input net")
 
