@@ -2,7 +2,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoderLayer
-from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
+from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectRegressionTask
 
 
 class MaskFormer(nn.Module):
@@ -27,6 +27,7 @@ class MaskFormer(nn.Module):
         preserve_query_posenc: bool = False,
         preserve_key_embed: bool = False,
         preserve_key_posenc: bool = False,
+        phi_analysis: bool = False,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object inference with attention-based decoding and optional encoder blocks.
@@ -81,6 +82,7 @@ class MaskFormer(nn.Module):
         self.preserve_query_posenc = preserve_query_posenc
         self.preserve_key_embed = preserve_key_embed
         self.preserve_key_posenc = preserve_key_posenc
+        self.phi_analysis = phi_analysis
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
@@ -232,6 +234,9 @@ class MaskFormer(nn.Module):
             # Add query positional encodings
             x = self.add_query_posenc(x)
 
+            if self.phi_analysis:
+                self.store_key_phi_info(x)
+
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=x.get("key_valid")
@@ -261,9 +266,35 @@ class MaskFormer(nn.Module):
             if isinstance(task, ObjectClassificationTask):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
+            if isinstance(task, ObjectRegressionTask) and self.phi_analysis:
+                # Assume that the regression task has only one output
+               regressed_phi = outputs["final"][task.name][task.outputs[0]].detach()
+               self.last_regressed_phi = regressed_phi[0].squeeze(-1).float().cpu().numpy()
 
         return outputs
     
+    def store_key_phi_info(self, x: dict):
+        phi_fields = []
+        for input_net in self.input_nets:
+            input_name = input_net.input_name
+            for phi_field in [f"{input_name}_phi", f"{input_name}_pos.phi"]:
+                if phi_field in x:
+                    phi_fields.append(x[phi_field])
+                    break
+        if phi_fields:
+            try:
+                self.last_key_phi = torch.cat(phi_fields, dim=-1)[0].cpu().numpy()
+            except Exception as e:
+                print(f"[MaskFormer] Error concatenating phi fields: {e}")
+                self.last_key_phi = None
+        else:
+            print("[MaskFormer] No phi fields found for logging.")
+            self.last_key_phi = None
+        if "key_posenc" in x:
+            self.last_key_posenc = x["key_posenc"][0].cpu().numpy()
+        else:
+            self.last_key_posenc = None
+
     def re_add_original_embeddings(self, x: dict):
         # Re-add original query embeddings (similar to SAM's prompt token re-addition)
         if (self.query_posenc is not None) and (self.preserve_query_posenc):
@@ -282,7 +313,9 @@ class MaskFormer(nn.Module):
         if self.query_posenc is not None:
             x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
             x["query_posenc"] = self.query_posenc(x)
-            self.last_query_phi = x["query_phi"].detach().cpu().numpy()
+            if self.phi_analysis:
+                self.last_query_phi = x["query_phi"].detach().cpu().numpy()
+                self.last_query_posenc = x["query_posenc"][0].cpu().numpy()
             x["query_embed"] = x["query_embed"] + x["query_posenc"]
         return x
 
