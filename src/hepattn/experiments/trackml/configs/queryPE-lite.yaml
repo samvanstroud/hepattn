@@ -89,6 +89,8 @@ trainer:
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.AttnMaskLogger
+    - class_path: hepattn.callbacks.AttentionStatsLogger
+    - class_path: hepattn.callbacks.PhiAnalysisLogger
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
