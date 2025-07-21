@@ -4,15 +4,15 @@ import torch
 from torch import Tensor, nn
 
 
-def get_omegas(alpha, dim, **kwargs):
-    omega_1 = alpha * torch.logspace(0, 2 / (dim) - 1, (dim // 2), 100, **kwargs)
+def get_omegas(alpha, dim, base, **kwargs):
+    omega_1 = alpha * torch.logspace(0, 2 / (dim) - 1, (dim // 2), base, **kwargs)
     omega_2 = omega_1
     if dim % 2 != 0:
-        omega_2 = alpha * torch.logspace(0, 2 / (dim) - 1, (dim // 2) + 1, 100, **kwargs)
+        omega_2 = alpha * torch.logspace(0, 2 / (dim) - 1, (dim // 2) + 1, base, **kwargs)
     return omega_1, omega_2
 
 
-def pos_enc_symmetric(xs, dim, alpha=1000):
+def pos_enc_symmetric(xs, dim, alpha=1000, base=100):
     """Symmetric positional encoding.
 
     Parameters
@@ -31,13 +31,13 @@ def pos_enc_symmetric(xs, dim, alpha=1000):
     """
     xs = xs.unsqueeze(-1)
     kwargs = {"device": xs.device, "dtype": xs.dtype}
-    omega_1, omega_2 = get_omegas(alpha, dim, **kwargs)
+    omega_1, omega_2 = get_omegas(alpha, dim, base, **kwargs)
     p1 = (xs.sin() * omega_1).sin()
     p2 = (xs.cos() * omega_2).sin()
     return torch.cat((p1, p2), dim=-1)
 
 
-def pos_enc(xs, dim, alpha=1000):
+def pos_enc(xs, dim, alpha=1000, base=100):
     """Positional encoding.
 
     Parameters
@@ -56,7 +56,7 @@ def pos_enc(xs, dim, alpha=1000):
     """
     xs = xs.unsqueeze(-1)
     kwargs = {"device": xs.device, "dtype": xs.dtype}
-    omega_1, omega_2 = get_omegas(alpha, dim, **kwargs)
+    omega_1, omega_2 = get_omegas(alpha, dim, base, **kwargs)
     p1 = (xs * omega_1).sin()
     p2 = (xs * omega_2).cos()
     return torch.cat((p1, p2), dim=-1)
@@ -145,6 +145,7 @@ class QueryPositionEncoder(nn.Module):
         dim: int,
         sym_fields: list[str] | None = None,
         alpha=1000,
+        base=100,
         per_input_dim: int | None = None,
         remainder_dim: int | None = None,
     ):
@@ -170,6 +171,7 @@ class QueryPositionEncoder(nn.Module):
         self.sym_fields = sym_fields or []
         self.dim = dim
         self.alpha = alpha
+        self.base = base
         self.per_input_dim = per_input_dim if per_input_dim is not None else self.dim // len(self.fields)
         self.remainder_dim = remainder_dim if remainder_dim is not None else self.dim % len(self.fields)
 
@@ -190,7 +192,7 @@ class QueryPositionEncoder(nn.Module):
 
         for field in self.fields:
             pos_enc_fn = pos_enc_symmetric if field in self.sym_fields else pos_enc
-            encodings.append(pos_enc_fn(inputs[f"{self.input_name}_{field}"], self.per_input_dim, self.alpha))
+            encodings.append(pos_enc_fn(inputs[f"{self.input_name}_{field}"], self.per_input_dim, self.alpha, self.base))
         if self.remainder_dim:
             # Handle remainder by appending zero tensors
             remaining = self.remainder_dim
