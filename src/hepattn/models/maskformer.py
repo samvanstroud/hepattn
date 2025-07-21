@@ -119,12 +119,10 @@ class MaskFormer(nn.Module):
 
     def _compute_query_readd_scale(self, layer_index: int) -> float:
         """Compute the scale factor for query re-addition based on the chosen strategy.
-        
         Parameters
         ----------
         layer_index : int
-            Current decoder layer index
-            
+            Current decoder layer index   
         Returns
         -------
         float
@@ -218,11 +216,20 @@ class MaskFormer(nn.Module):
         # Add positional encoding to the queries
         if self.query_posenc is not None:
             device = x["key_embed"].device
-            if self.preserve_original_queries:
-                x["query_posenc"] = self.query_posenc(inputs, batch_size, self.num_queries, device)
-                x["query_embed"] = x["query_embed"] + x["query_posenc"]
-            else:
-                x["query_embed"] = x["query_embed"] + self.query_posenc(inputs, batch_size, self.num_queries, device)
+            
+            x["query_posenc"] = self.query_posenc(inputs, self.num_queries, batch_size, device)
+            x["query_embed"] = x["query_embed"] + x["query_posenc"]
+
+            # Save the phi values for callback access
+            if hasattr(self.query_posenc, "last_query_phi"):
+                self.last_query_phi = self.query_posenc.last_query_phi  # shape: [num_queries]
+            self.last_query_posenc = x["query_posenc"][0].detach().cpu().numpy()  # [num_queries, d]
+            # Save key positional encoding and phi if available
+            if "key_posenc" in x:
+                key_posenc = x["key_posenc"]
+                self.last_key_posenc = x["key_posenc"][0].detach().cpu().numpy()  # [num_keys, d]
+
+            self.last_key_phi = x.get(f"key_phi").detach().cpu().numpy()  # [num_keys]
 
         # Do any pooling if desired
         if self.pooling is not None:
@@ -277,7 +284,7 @@ class MaskFormer(nn.Module):
             if (
                 self.log_attn_mask
                 and (attn_mask is not None)
-                and (self.log_step % 1000 == 0)
+                and (self.log_step % 10 == 0)
             ):
                 # Store for callback to log later
                 attn_mask_im = attn_mask[0].detach().cpu().clone()
@@ -337,6 +344,17 @@ class MaskFormer(nn.Module):
         for task in self.tasks:
             outputs["final"][task.name] = task(x)
 
+        # --- Save regressed phi for callback access ---
+        # Set these to match your regression task and output object
+        regression_task_name = "query_regression"  # e.g. "regression"
+        output_object = "track"  # e.g. "particle"
+        try:
+            regressed_phi = outputs["final"][regression_task_name][f"{output_object}_regr"]
+            # Save the first batch element's regressed phi as numpy array
+            self.last_regressed_phi = regressed_phi[0].squeeze(-1).detach().float().cpu().numpy()
+        except Exception:
+             self.last_regressed_phi = None
+        # --- End regressed phi saving ---
         return outputs
 
     def predict(self, outputs: dict) -> dict:
@@ -427,7 +445,6 @@ class MaskFormer(nn.Module):
 
     def get_readd_layers_info(self) -> dict:
         """Get information about which layers are being used for query re-addition.
-        
         Returns
         -------
         dict
