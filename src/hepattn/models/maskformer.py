@@ -280,9 +280,9 @@ class MaskFormer(nn.Module):
     
     def add_query_posenc(self, x: dict):
         if self.query_posenc is not None:
-            phi_values = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
-            x["query_posenc"] = self.query_posenc(phi_values)
-            self.last_query_phi = phi_values.detach().cpu().numpy()
+            x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+            x["query_posenc"] = self.query_posenc(x)
+            self.last_query_phi = x["query_phi"].detach().cpu().numpy()
             x["query_embed"] = x["query_embed"] + x["query_posenc"]
             return x
 
