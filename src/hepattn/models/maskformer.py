@@ -265,18 +265,18 @@ class MaskFormer(nn.Module):
         return outputs
     
     def re_add_original_embeddings(self, x: dict):
-            # Re-add original query embeddings (similar to SAM's prompt token re-addition)
-            if (self.query_posenc is not None) and (self.preserve_query_posenc):
-                x["query_embed"] = x["query_embed"] + x["query_posenc"]
+        # Re-add original query embeddings (similar to SAM's prompt token re-addition)
+        if (self.query_posenc is not None) and (self.preserve_query_posenc):
+            x["query_embed"] = x["query_embed"] + x["query_posenc"]
 
-            # Re-add original key embeddings if requested
-            if self.preserve_key_embed:
-                x["key_embed"] = x["key_embed"] + x["key_embed_original"]
+        # Re-add original key embeddings if requested
+        if self.preserve_key_embed:
+            x["key_embed"] = x["key_embed"] + x["key_embed_original"]
 
-            # Re-add input positional encodings if requested
-            if self.preserve_key_posenc:
-                x["key_embed"] = x["key_embed"] + x["key_posenc"]
-            return x
+        # Re-add input positional encodings if requested
+        if self.preserve_key_posenc:
+            x["key_embed"] = x["key_embed"] + x["key_posenc"]
+        return x
     
     def add_query_posenc(self, x: dict):
         if self.query_posenc is not None:
@@ -284,7 +284,7 @@ class MaskFormer(nn.Module):
             x["query_posenc"] = self.query_posenc(x)
             self.last_query_phi = x["query_phi"].detach().cpu().numpy()
             x["query_embed"] = x["query_embed"] + x["query_posenc"]
-            return x
+        return x
 
     def predict(self, outputs: dict) -> dict:
         """Takes the raw model outputs and produces a set of actual inferences / predictions.
