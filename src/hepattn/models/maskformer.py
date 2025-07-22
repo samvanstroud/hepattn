@@ -142,11 +142,6 @@ class MaskFormer(nn.Module):
         # Do any pooling if desired
         if self.pooling is not None:
             x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
-            x[f"{self.pooling.output_name}_embed"] = x | x_pooled
-
-        # Do any pooling if desired
-        if self.pooling is not None:
-            x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
             x[f"{self.pooling.output_name}_embed"] = x_pooled
 
         # Get the final outputs - we don't need to compute attention masks or update things here
