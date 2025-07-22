@@ -90,9 +90,6 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 256
-      num_queries: *num_particles
-      use_attn_masks: true
-      use_query_masks: false
       raw_variables:
         - "node_e"
         - "node_pt"
@@ -126,13 +123,16 @@ model:
           attn_kwargs:
             num_heads: 16
 
-      num_decoder_layers: 4
-      decoder_layer_config:
-        dim: *dim
+      decoder:
+        num_decoder_layers: 4
+        num_queries: *num_particles
         mask_attention: true
-        hybrid_norm: true
-        attn_kwargs:
-          num_heads: 8
+        use_query_masks: false
+        decoder_layer_config:
+          dim: *dim
+          hybrid_norm: true
+          attn_kwargs:
+            num_heads: 8
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
