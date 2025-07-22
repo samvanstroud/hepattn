@@ -75,6 +75,17 @@ class MaskFormer(nn.Module):
             if raw_var in inputs:
                 x[raw_var] = inputs[raw_var]
 
+        # Store input positional encodings if we need to preserve them for the decoder
+        if self.decoder.preserve_posenc:
+            input_posencs = []
+            for input_net in self.input_nets:
+                if input_net.posenc is not None:
+                    posenc = input_net.posenc(inputs)
+                    input_posencs.append(posenc)
+                else:
+                    raise ValueError(f"Input net {input_net.input_name} has no positional encoding.")
+            x["key_posenc"] = torch.concatenate(input_posencs, dim=-2)
+
         # Embed the input objects
         for input_net in self.input_nets:
             input_name = input_net.input_name
@@ -115,22 +126,6 @@ class MaskFormer(nn.Module):
         # These are just views into the tensor that old all the merged hits
         for input_name in input_names:
             x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
-
-        # Store input positional encodings if we need to preserve them
-        if self.preserve_key_posenc:
-            input_posencs = []
-            for input_net in self.input_nets:
-                if input_net.posenc is not None:
-                    # Get just the positional encoding part
-                    posenc = input_net.posenc(inputs)
-                    input_posencs.append(posenc)
-                else:
-                    raise ValueError(f"Input net {input_net.input_name} has no positional encoding.")
-
-            x["key_posenc"] = torch.concatenate(input_posencs, dim=-2)
-
-        if self.preserve_key_embed:
-            x["key_embed_original"] = x["key_embed"].clone()
 
         # Generate the queries that represent objects
         x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
