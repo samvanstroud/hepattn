@@ -1,4 +1,4 @@
-name: CLIC_Pflow_FullDiceFocFix_dice_focal
+name: CLIC_Pflow_FullDiceFocFix_only_dice_cost
 seed_everything: 42
 
 data:
@@ -40,7 +40,7 @@ data:
 # Training stuff here
 trainer:
   gradient_clip_val: 0.1
-  max_epochs: 200
+  max_epochs: 10
   strategy: ddp
   accelerator: gpu
   devices: 1
@@ -124,6 +124,7 @@ model:
           num_layers: 6
           dim: *dim
           attn_type: flash-varlen
+          hybrid_norm: true
           attn_kwargs:
             num_heads: 16
 
@@ -178,7 +179,7 @@ model:
                 pred_threshold: 0.1
                 logit_scale: 4
                 losses:
-                  # mask_bce: 5.0
+                  mask_bce: 5.0
                   mask_dice: 1.0
                   mask_focal: 2.0
                 costs:
@@ -213,6 +214,7 @@ model:
                     input_size: *dim
                     output_size: *dim
                     hidden_layers: [*dim]
+                has_intermediate_loss: false
 
             - class_path: hepattn.models.task.IncidenceBasedRegressionTask
               init_args:
@@ -235,3 +237,4 @@ model:
                     activation: torch.nn.SiLU
                     output_size: 5
                     hidden_layers: [128, 128, 64, 32]
+                has_intermediate_loss: false
