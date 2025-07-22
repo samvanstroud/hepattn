@@ -158,10 +158,7 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 128
-      num_queries: *cluster_max_multiplicity
       input_sort_field: x
-      use_attn_masks: false
-      use_query_masks: false
 
       input_nets:
         class_path: torch.nn.ModuleList
@@ -201,10 +198,13 @@ model:
           dim: *dim
           attn_type: torch
 
-      num_decoder_layers: 2
-      decoder_layer_config:
-        dim: *dim
+      decoder:
+        num_decoder_layers: 2
+        num_queries: *cluster_max_multiplicity
         mask_attention: false
+        use_query_masks: false
+        decoder_layer_config:
+          dim: *dim
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
