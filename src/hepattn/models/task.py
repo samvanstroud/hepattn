@@ -1211,11 +1211,10 @@ class IncidenceBasedRegressionTask(RegressionTask):
             target = targets[self.target_object + "_" + field][targets[self.target_object + "_valid"]]
             # Get the error between the prediction and target for this field
             err = pred - target
-            # Compute the RMSE and log it
             metrics[field + "_rmse"] = torch.sqrt(torch.mean(torch.square(err)))
-            # Compute the relative error / resolution and log it
-            metrics[field + "_mean_res"] = torch.mean(err / target)
-            metrics[field + "_std_res"] = torch.std(err / target)
+            metrics[field + "_abs_res"] = err.abs().mean()
+            metrics[field + "_mean_norm_res"] = torch.mean(err / target)
+            metrics[field + "_std_norm_res"] = torch.std(err / target)
 
         return metrics
 
