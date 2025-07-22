@@ -270,9 +270,10 @@ class MaskFormer(nn.Module):
     
     def add_query_posenc(self, x: dict):
         if self.query_posenc is not None:
-            x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
-            x["query_posenc"] = self.query_posenc(x)
-            self.last_query_phi = x["query_phi"].detach().cpu().numpy()
+            # The query positional encoding is static, so we compute it once and cache it in `x`.
+            if "query_posenc" not in x:
+                x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+                x["query_posenc"] = self.query_posenc(x)
             x["query_embed"] = x["query_embed"] + x["query_posenc"]
         return x
 
