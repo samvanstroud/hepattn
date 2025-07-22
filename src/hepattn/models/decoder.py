@@ -60,7 +60,7 @@ class MaskFormerDecoder(nn.Module):
         self.preserve_posenc = preserve_posenc
         self.log_step = 0
 
-    def forward(self, x: dict[str, Tensor], input_names: list[str]) -> dict[str, dict]:
+def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
 
         Parameters
