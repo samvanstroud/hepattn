@@ -145,9 +145,9 @@ class MaskFormerDecoder(nn.Module):
             # Re-add original embeddings (similar to SAM's prompt token re-addition)
             x = self.re_add_original_embeddings(x)
 
-            # Unmerge the updated features back into separate input types
-            for input_name in input_names:
-                x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
+        # Unmerge the updated features back into separate input types
+        for input_name in input_names:
+            x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
         return x, outputs
 
