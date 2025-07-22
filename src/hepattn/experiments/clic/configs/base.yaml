@@ -1,4 +1,4 @@
-name: CLIC_Pflow_FullDiceFocFix_dice_focal
+name: CLIC_Pflow_FullDiceFocFix_only_dice_cost
 seed_everything: 42
 
 data:
@@ -27,7 +27,7 @@ data:
   test_path: /share/gpu1/syw24/dmitrii_clic/test_clic_fix.root
 
   # Number of events to include in each set
-  num_workers: 8
+  num_workers: 10
   num_train: -1
   num_test: -1
   num_val: 5000
@@ -37,18 +37,16 @@ data:
 
   scale_dict_path: &scale_dict_path /share/gpu1/syw24/hepattn/src/hepattn/experiments/clic/configs/clic_var_transform.yaml
 
-# Training stuff here
 trainer:
-  gradient_clip_val: 0.1
-  max_epochs: 200
-  strategy: ddp
+  max_epochs: 10
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
+  gradient_clip_val: 0.1
+  log_every_n_steps: 50
   default_root_dir: logs
   enable_progress_bar: True
 
-  # Specify loggers here
   logger:
     class_path: lightning.pytorch.loggers.CometLogger
     init_args:
@@ -124,6 +122,7 @@ model:
           num_layers: 6
           dim: *dim
           attn_type: flash-varlen
+          hybrid_norm: true
           attn_kwargs:
             num_heads: 16
 
@@ -131,8 +130,9 @@ model:
       decoder_layer_config:
         dim: *dim
         mask_attention: true
-        # attn_kwargs:
-        #   num_heads: 8
+        hybrid_norm: true
+        attn_kwargs:
+          num_heads: 8
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
@@ -178,7 +178,7 @@ model:
                 pred_threshold: 0.1
                 logit_scale: 4
                 losses:
-                  # mask_bce: 5.0
+                  mask_bce: 5.0
                   mask_dice: 1.0
                   mask_focal: 2.0
                 costs:
@@ -213,6 +213,7 @@ model:
                     input_size: *dim
                     output_size: *dim
                     hidden_layers: [*dim]
+                has_intermediate_loss: false
 
             - class_path: hepattn.models.task.IncidenceBasedRegressionTask
               init_args:
@@ -235,3 +236,4 @@ model:
                     activation: torch.nn.SiLU
                     output_size: 5
                     hidden_layers: [128, 128, 64, 32]
+                has_intermediate_loss: false
