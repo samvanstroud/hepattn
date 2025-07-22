@@ -1,4 +1,4 @@
-name: CLIC_Pflow_FullDiceFocFix_dice_focal
+name: clic_v0
 seed_everything: 42
 
 data:
@@ -27,7 +27,7 @@ data:
   test_path: /share/gpu1/syw24/dmitrii_clic/test_clic_fix.root
 
   # Number of events to include in each set
-  num_workers: 8
+  num_workers: 10
   num_train: -1
   num_test: -1
   num_val: 5000
@@ -37,18 +37,16 @@ data:
 
   scale_dict_path: &scale_dict_path /share/gpu1/syw24/hepattn/src/hepattn/experiments/clic/configs/clic_var_transform.yaml
 
-# Training stuff here
 trainer:
-  gradient_clip_val: 0.1
-  max_epochs: 200
-  strategy: ddp
+  max_epochs: 10
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
+  gradient_clip_val: 0.1
+  log_every_n_steps: 50
   default_root_dir: logs
   enable_progress_bar: True
 
-  # Specify loggers here
   logger:
     class_path: lightning.pytorch.loggers.CometLogger
     init_args:
@@ -131,8 +129,9 @@ model:
       decoder_layer_config:
         dim: *dim
         mask_attention: true
-        # attn_kwargs:
-        #   num_heads: 8
+        hybrid_norm: true
+        attn_kwargs:
+          num_heads: 8
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
