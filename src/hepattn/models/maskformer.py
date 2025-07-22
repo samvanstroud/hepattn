@@ -77,14 +77,8 @@ class MaskFormer(nn.Module):
 
         # Store input positional encodings if we need to preserve them for the decoder
         if self.decoder.preserve_posenc:
-            input_posencs = []
-            for input_net in self.input_nets:
-                if input_net.posenc is not None:
-                    posenc = input_net.posenc(inputs)
-                    input_posencs.append(posenc)
-                else:
-                    raise ValueError(f"Input net {input_net.input_name} has no positional encoding.")
-            x["key_posenc"] = torch.concatenate(input_posencs, dim=-2)
+            assert all(input_net.posenc is not None for input_net in self.input_nets)
+            x["key_posenc"] = torch.concatenate([input_net.posenc(inputs) for input_net in self.input_nets], dim=-2)
 
         # Embed the input objects
         for input_net in self.input_nets:
