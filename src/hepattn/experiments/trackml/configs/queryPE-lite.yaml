@@ -134,11 +134,8 @@ model:
               - phi
             dim: *dim
             alpha: 5
-            base: 10000
-      preserve_query_posenc: true
-      preserve_key_embed: false
-      preserve_key_posenc: true
-      log_attn_mask: true
+            base: 100
+      preserve_posenc: true
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
