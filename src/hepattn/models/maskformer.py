@@ -154,23 +154,6 @@ class MaskFormer(nn.Module):
 
         return outputs
 
-    def re_add_original_embeddings(self, x: dict):
-        # Re-add original query embeddings (similar to SAM's prompt token re-addition)
-        if self.preserve_posenc:
-            x["key_embed"] = x["key_embed"] + x["key_posenc"]
-            if self.query_posenc is not None:
-                x["query_embed"] = x["query_embed"] + x["query_posenc"]
-        return x
-
-    def add_query_posenc(self, x: dict):
-        if self.query_posenc is not None:
-            # The query positional encoding is static, so we compute it once and cache it in `x`.
-            if "query_posenc" not in x:
-                x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
-                x["query_posenc"] = self.query_posenc(x)
-            x["query_embed"] = x["query_embed"] + x["query_posenc"]
-        return x
-
     def predict(self, outputs: dict) -> dict:
         """Takes the raw model outputs and produces a set of actual inferences / predictions.
         For example will take output probabilies and apply threshold cuts to prduce boolean predictions.
