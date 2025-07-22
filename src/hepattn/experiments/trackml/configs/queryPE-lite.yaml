@@ -133,7 +133,7 @@ model:
             fields:
               - phi
             dim: *dim
-            alpha: 5
+            alpha: 1000
             base: 100
       preserve_posenc: true
       input_nets:
