@@ -23,8 +23,7 @@ class JetHelper:
 
     def getvectors(self, pt_array, eta_array, phi_array, fourth_array, fourth_name):
         # fourth_name can be either 'mass' or 'E'
-        particles = vec.array({"pt": pt_array, "eta": eta_array, "phi": phi_array, fourth_name: fourth_array})
-        return particles
+        return vec.array({"pt": pt_array, "eta": eta_array, "phi": phi_array, fourth_name: fourth_array})
 
     def getclustersequence(self, particles, user_indices=None):
         pj_array = []
@@ -35,8 +34,7 @@ class JetHelper:
             else:
                 pj.set_user_index(i)
             pj_array.append(pj)
-        cs = fj.ClusterSequence(pj_array, self.jetdef)
-        return cs
+        return fj.ClusterSequence(pj_array, self.jetdef)
 
     def getconstituentmap(self, cs, ptmin=2):
         jet_map = {}

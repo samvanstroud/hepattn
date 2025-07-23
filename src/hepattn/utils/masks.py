@@ -20,8 +20,7 @@ def build_target_masks(object_ids: Tensor, input_ids: Tensor, shuffle: bool = Fa
     if shuffle:
         object_ids = object_ids[:, torch.randperm(object_ids.shape[1])]
     object_ids[object_ids == -1] = -999
-    masks = input_ids.unsqueeze(-2) == object_ids.unsqueeze(-1)
-    return masks
+    return input_ids.unsqueeze(-2) == object_ids.unsqueeze(-1)
 
 
 def mask_from_indices(indices: Tensor, num_masks: int | None = None) -> BoolTensor:
@@ -40,7 +39,7 @@ def mask_from_indices(indices: Tensor, num_masks: int | None = None) -> BoolTens
     Returns:
         BoolTensor: The sparse mask.
     """
-    assert indices.ndim == 1 or indices.ndim == 2, "indices must be 1D for single sample or 2D for batch"
+    assert indices.ndim in {1, 2}, "indices must be 1D for single sample or 2D for batch"
     if num_masks is None:
         num_masks = indices.max() + 1
     else:
@@ -140,8 +139,7 @@ def sigmoid_mask(
         BoolTensor: The thresholded mask.
     """
     mask = mask_logits.sigmoid() > threshold
-    mask = sanitise_mask(mask, **kwargs)
-    return mask
+    return sanitise_mask(mask, **kwargs)
 
 
 def argmax_mask(
@@ -173,8 +171,7 @@ def argmax_mask(
         assert confidence.min() >= 0.0 and confidence.max() <= 1.0, "confidence must be between 0 and 1"
         idx = (mask_logits.softmax(-2) * confidence).argmax(-2)
     mask = mask_from_indices(idx, num_masks=mask_logits.shape[-2])
-    mask = sanitise_mask(mask, **kwargs)
-    return mask
+    return sanitise_mask(mask, **kwargs)
 
 
 def mask_from_logits(
@@ -307,5 +304,4 @@ def topk_attn(attn_scores: Tensor, k: int, dim: int = -1) -> BoolTensor:
     _, topk_indices = attn_scores.topk(k, dim=dim)
     zeros = torch.zeros_like(attn_scores, dtype=bool)
     src = torch.ones_like(topk_indices, dtype=bool).expand_as(topk_indices)
-    mask = torch.scatter(zeros, dim=dim, index=topk_indices, src=src)
-    return mask
+    return torch.scatter(zeros, dim=dim, index=topk_indices, src=src)

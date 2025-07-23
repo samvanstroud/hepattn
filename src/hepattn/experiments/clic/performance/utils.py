@@ -22,8 +22,7 @@ def deltar(eta1, phi1, eta2, phi2):
     d_eta = eta1 - eta2
     phi1, phi2 = (phi1 + np.pi) % (2 * np.pi) - np.pi, (phi2 + np.pi) % (2 * np.pi) - np.pi
     d_phi = np.minimum(np.abs(phi1 - phi2), 2 * np.pi - np.abs(phi1 - phi2))
-    d_r = np.sqrt(d_eta**2 + d_phi**2)
-    return d_r
+    return np.sqrt(d_eta**2 + d_phi**2)
 
 
 def get_invariant_mass(jets, option="two-jet"):

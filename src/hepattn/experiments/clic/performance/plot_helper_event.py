@@ -684,9 +684,8 @@ def get_invariant_mass(jets, option="two-jet"):
     if option == "two-jet":
         if len(jets) >= 2:
             m = (jets[0] + jets[1]).mass
-    elif option == "one-jet":
-        if len(jets) >= 1:
-            m = jets[0].mass
+    elif option == "one-jet" and len(jets) >= 1:
+        m = jets[0].mass
     return m
 
 

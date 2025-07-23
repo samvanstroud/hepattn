@@ -111,8 +111,7 @@ class Matcher(nn.Module):
 
         if self.parallel_solver:
             # If we are using a parallel solver, we can use it to speed up the matching
-            pred_idxs = match_parallel(SOLVERS[self.solver], costs, batch_obj_lengths, n_jobs=self.n_jobs)
-            return pred_idxs
+            return match_parallel(SOLVERS[self.solver], costs, batch_obj_lengths, n_jobs=self.n_jobs)
 
         # Do the matching sequentially for each example in the batch
         for k in range(len(costs)):
@@ -123,8 +122,7 @@ class Matcher(nn.Module):
             # These indicies can be used to permute the predictions so they now match the truth objects
             idxs.append(pred_idx)
 
-        pred_idxs = torch.stack(idxs)
-        return pred_idxs
+        return torch.stack(idxs)
 
     @torch.no_grad()
     def forward(self, costs, object_valid_mask=None):

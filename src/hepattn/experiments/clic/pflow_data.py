@@ -456,7 +456,7 @@ class CLICDataset(Dataset):
 
         node_inp_features = torch.stack(list(node_features.values()), dim=-1)
 
-        data_dict = {
+        return {
             "node_inp_features": node_inp_features,
             "node_raw_features": node_raw_features,
             "particle_data": particle_data,
@@ -464,8 +464,6 @@ class CLICDataset(Dataset):
             "indicator_truth": indicator,
             "node_q_mask": node_q_mask,
         }
-
-        return data_dict
 
     def __getitem__(self, idx):
         """Use .unsqueeze(0) to add in the dummy batch dimension (length 1 always)."""

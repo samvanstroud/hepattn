@@ -267,9 +267,7 @@ class Attention(nn.Module):
         # Redo padding
         out = pad_input(out, indices_q, bs, max_seqlen_q)
 
-        out = out.view(bs, -1, self.dim)
-
-        return out
+        return out.view(bs, -1, self.dim)
 
     def forward(
         self,

@@ -110,8 +110,7 @@ def mask_dice_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None
 
     numerator = 2 * torch.einsum("bnc,bmc->bnm", inputs, targets)
     denominator = inputs.sum(-1).unsqueeze(2) + targets.sum(-1).unsqueeze(1)
-    cost = 1 - (numerator + 1) / (denominator + 1)
-    return cost
+    return 1 - (numerator + 1) / (denominator + 1)
 
 
 def mask_iou_cost(pred_logits, targets, input_pad_mask=None, eps=1e-6):
@@ -126,9 +125,7 @@ def mask_iou_cost(pred_logits, targets, input_pad_mask=None, eps=1e-6):
     # Context manager necessary to overwrite global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
         intersection = torch.einsum("bnc,bmc->bnm", probs, targets)
-        cost = 1 - (intersection + eps) / (eps + num_pred + num_targets - intersection)
-
-    return cost
+        return 1 - (intersection + eps) / (eps + num_pred + num_targets - intersection)
 
 
 def mask_focal_loss(pred_logits, targets, gamma=2.0, object_valid_mask=None, input_pad_mask=None, sample_weight=None):
@@ -194,9 +191,7 @@ def mask_focal_cost(pred_logits, targets, gamma=2.0, input_pad_mask=None, sample
 
     # Context manager necessary to overwride global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
-        cost = torch.einsum("bnc,bmc->bnm", focal_pos, targets) + torch.einsum("bnc,bmc->bnm", focal_neg, (1 - targets))
-
-    return cost
+        return torch.einsum("bnc,bmc->bnm", focal_pos, targets) + torch.einsum("bnc,bmc->bnm", focal_neg, (1 - targets))
 
 
 def mask_bce_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=None, sample_weight=None):
@@ -255,9 +250,7 @@ def mask_bce_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None)
 
     # Context manager necessary to overwrite global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
-        cost = torch.einsum("bnc,bmc->bnm", pos, targets) + torch.einsum("bnc,bmc->bnm", neg, (1 - targets))
-
-    return cost
+        return torch.einsum("bnc,bmc->bnm", pos, targets) + torch.einsum("bnc,bmc->bnm", neg, (1 - targets))
 
 
 def kl_div_loss(pred_logits, true, mask=None, weight=None, eps=1e-8):  # noqa: ARG001
@@ -334,9 +327,7 @@ def mask_kl_div_cost(pred_logits, targets, input_pad_mask=None, sample_weight=No
     # Context manager necessary to overwrite global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
         log_pred = torch.log(pred_probs + eps)
-        cost = torch.einsum("bnm,btm->bnt", -log_pred, targets)
-
-    return cost
+        return torch.einsum("bnm,btm->bnt", -log_pred, targets)
 
 
 def regr_mse_loss(pred, targets):

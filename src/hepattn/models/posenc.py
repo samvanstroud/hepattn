@@ -112,8 +112,7 @@ class PositionEncoder(nn.Module):
             encodings.append(pos_enc_fn(inputs[f"{self.input_name}_{field}"], self.per_input_dim, self.alpha, self.base))
         if self.remainder_dim:
             encodings.append(torch.zeros_like(encodings[0])[..., : self.remainder_dim])
-        encodings = torch.cat(encodings, dim=-1)
-        return encodings
+        return torch.cat(encodings, dim=-1)
 
 
 class FourierPositionEncoder(nn.Module):

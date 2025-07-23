@@ -291,7 +291,7 @@ class ITkDataModule(LightningDataModule):
         self.kwargs = kwargs
 
     def setup(self, stage: str):
-        if stage == "fit" or stage == "test":
+        if stage in {"fit", "test"}:
             self.train_dset = ITkDataset(dirpath=self.train_dir, num_events=self.num_train, hit_eval_path=self.hit_eval_train, **self.kwargs)
 
         if stage == "fit":

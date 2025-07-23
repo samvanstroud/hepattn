@@ -13,8 +13,7 @@ from torch.nn.attention.flex_attention import (
 
 @lru_cache
 def create_block_mask_cached(score_mod, B, H, M, N, device="cuda"):  # noqa: N803
-    block_mask = create_block_mask(score_mod, B, H, M, N, device=device)
-    return block_mask
+    return create_block_mask(score_mod, B, H, M, N, device=device)
 
 
 # Compile the flex_attention function
@@ -41,9 +40,7 @@ def build_seq_idx(tensor: torch.Tensor):
     range_tensor = torch.arange(total_length, device="cuda", dtype=torch.int32)
 
     # Use searchsorted to find the index for each position
-    seq_idx = torch.searchsorted(offsets, range_tensor, right=True) - 1
-
-    return seq_idx
+    return torch.searchsorted(offsets, range_tensor, right=True) - 1
 
 
 def create_njt_wrapper(orig_mask_mod, offsets, seq_idx):

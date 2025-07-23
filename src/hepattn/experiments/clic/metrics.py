@@ -7,8 +7,7 @@ class MaskInference:
         """Assign hits to tracks if they have a high matching probability.
         Able to assign a hit to more than one track.
         """
-        pred = pred.sigmoid() > 0.5
-        return pred
+        return pred.sigmoid() > 0.5
 
     @staticmethod
     def basic_argmax(pred):

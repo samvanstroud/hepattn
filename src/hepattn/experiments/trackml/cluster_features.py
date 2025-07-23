@@ -248,6 +248,4 @@ def append_cell_features(hits: DF, cells: DF, detector_config: str) -> DF:
     cells_agg["charge_frac"] = cells_agg.charge_sum / cells_agg.channel_counts
     hits = pd.merge(hits, cells_agg, on="hit_id", how="left")  # noqa: PD015
 
-    hits = augment_hit_features(hits, cells, detector_proc=load_detector(Path(detector_config))[1])
-
-    return hits
+    return augment_hit_features(hits, cells, detector_proc=load_detector(Path(detector_config))[1])
