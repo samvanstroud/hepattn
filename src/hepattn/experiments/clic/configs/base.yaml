@@ -82,7 +82,7 @@ model:
     max: 5e-5
     end: 1e-5
     pct_start: 0.05
-    weight_decay: 0.03
+    weight_decay: 0.01
     skip_scheduler: false
 
   mtl: false
@@ -113,6 +113,13 @@ model:
                   init_args:
                     input_size: 27
                     output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.FourierPositionEncoder
+                  init_args:
+                    input_name: node
+                    dim: *dim
+                    fields: [eta, phi]
+                    scale: 0.1
 
       encoder:
         class_path: hepattn.models.Encoder
