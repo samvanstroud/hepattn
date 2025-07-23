@@ -1,4 +1,4 @@
-name: CLIC_Pflow_FullDiceFocFix_only_dice_cost
+name: clic_v0
 seed_everything: 42
 
 data:
@@ -53,6 +53,7 @@ trainer:
       project_name: hepattn-clic
 
   callbacks:
+    #- class_path: hepattn.callbacks.Compile
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint
@@ -74,11 +75,11 @@ trainer:
         refresh_rate: 50
 
 model:
-  optimizer: AdamW
+  optimizer: Lion
 
   lrs_config:
-    initial: 1e-6
-    max: 1e-4
+    initial: 1e-5
+    max: 5e-5
     end: 1e-5
     pct_start: 0.05
     weight_decay: 0.03
@@ -120,6 +121,7 @@ model:
           dim: *dim
           attn_type: flash-varlen
           hybrid_norm: true
+          value_residual: true
           attn_kwargs:
             num_heads: 16
 
@@ -139,7 +141,6 @@ model:
         init_args:
           default_solver: scipy
           adaptive_solver: false
-          adaptive_check_interval: 1000
 
       tasks:
         class_path: torch.nn.ModuleList
