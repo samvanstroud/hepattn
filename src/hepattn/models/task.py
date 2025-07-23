@@ -1248,7 +1248,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         proxy_feats_charged = self.scale_proxy_feats(proxy_feats_charged) * is_charged.unsqueeze(-1)
 
         inc_e_weighted = incidence * proxy_feats[..., 0].unsqueeze(1)
-        inc_e_weighted *= (1 - inputs[self.input_hit + "_is_track"].unsqueeze(1))
+        inc_e_weighted *= 1 - inputs[self.input_hit + "_is_track"].unsqueeze(1)
         inc = inc_e_weighted / (inc_e_weighted.sum(dim=-1, keepdim=True) + 1e-6)
 
         proxy_feats_neutral = torch.einsum("bnf,bpn->bpf", proxy_feats, inc)

@@ -290,7 +290,7 @@ def mask_kl_div_loss(pred_logits, targets, object_valid_mask=None, input_pad_mas
         pred_logits = pred_logits.masked_fill(~input_pad_mask.unsqueeze(1), float("-inf"))
         targets *= input_pad_mask.unsqueeze(1)
         # Renormalise to keep targets sums to 1 for each object
-        targets /= (targets.sum(-1, keepdim=True) + eps)
+        targets /= targets.sum(-1, keepdim=True) + eps
 
     pred_probs = torch.softmax(pred_logits, dim=-1)
     loss = -targets * torch.log(pred_probs + eps)
@@ -320,7 +320,7 @@ def mask_kl_div_cost(pred_logits, targets, input_pad_mask=None, sample_weight=No
         pred_logits = pred_logits.masked_fill(~input_pad_mask.unsqueeze(1), float("-inf"))
         targets *= input_pad_mask.unsqueeze(1)
         # Renormalise to keep targets sums to 1 for each object
-        targets /= (targets.sum(-1, keepdim=True) + eps)
+        targets /= targets.sum(-1, keepdim=True) + eps
 
     pred_probs = torch.softmax(pred_logits, dim=-1)
 

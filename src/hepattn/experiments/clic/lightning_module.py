@@ -81,7 +81,7 @@ class MPflow(ModelWrapper):
     def mask_metrics(self, pred_masks, truth_masks, pred_valid, truth_valid, prefix, **kwargs):
         # Valid objects should be connected at least to one node
         if pred_valid is not None:
-            pred_valid &= (pred_masks.sum(-1) >= 1)
+            pred_valid &= pred_masks.sum(-1) >= 1
         else:
             pred_valid = pred_masks.sum(-1) >= 1
 

@@ -433,7 +433,7 @@ class CLDDataset(Dataset):
                 dr = dr[:, np.argsort(idx)]
 
                 # event[f"particle_valid"] = event[f"particle_valid"] & (dr <= max_dist).all(-1)
-                event[f"particle_{item_name}_valid"] &= (dr <= cut["max_dist"])
+                event[f"particle_{item_name}_valid"] &= dr <= cut["max_dist"]
 
         # Merge the hits if they do not appear in the angular deflection and hit separation cuts
         # all_cut_names = set(self.charged_particle_min_num_hits) | set(self.charged_particle_max_num_hits)
@@ -485,7 +485,7 @@ class CLDDataset(Dataset):
 
         # Apply cut vetos
         for hit_name, min_num_hits in self.particle_cut_veto_min_num_hits.items():
-            event["particle_valid"] |= (event[f"particle_{hit_name}_valid"].sum(-1) > min_num_hits)
+            event["particle_valid"] |= event[f"particle_{hit_name}_valid"].sum(-1) > min_num_hits
 
         # Remove any mask slots for invalid particles
         for input_name in self.inputs:
