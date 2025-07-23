@@ -2,7 +2,7 @@
 
 ```
 cd hepattn
-apptainer shell --nv --bind /share/ pixi.sif 
+apptainer shell --nv --bind /share/ pixi.sif
 pixi shell
 cd hepattn/src/hepattn/experiments/clic/
 python main.py fit --config configs/base.yaml
