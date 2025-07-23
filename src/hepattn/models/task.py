@@ -431,15 +431,12 @@ class RegressionTask(Task):
     def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         metrics = {}
         for field in self.fields:
-            # Get the target and prediction only for valid targets
             pred = preds[self.output_object + "_" + field][targets[self.target_object + "_valid"]]
             target = targets[self.target_object + "_" + field][targets[self.target_object + "_valid"]]
-            # Get the error between the prediction and target for this field
-            err = pred - target
-            metrics[field + "_rmse"] = torch.sqrt(torch.mean(torch.square(err)))
-            metrics[field + "_mean_rel_err"] = torch.mean(err / target)
-            metrics[field + "_std_rel_err"] = torch.std(err / target)
-
+            # note these might be scaled features
+            abs_err = (pred - target).abs()
+            metrics[field + "_abs_res"] = torch.mean(abs_err)
+            metrics[field + "_abs_norm_res"] = torch.mean(abs_err / target)
         return metrics
 
 
@@ -1200,21 +1197,6 @@ class IncidenceBasedRegressionTask(RegressionTask):
 
         # Compute the regression loss only for valid objects
         return {"smooth_l1": self.loss_weight * loss}
-
-    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        metrics = {}
-        for field in self.fields:
-            # Get the target and prediction only for valid targets
-            pred = preds[self.output_object + "_" + field][targets[self.target_object + "_valid"]]
-            target = targets[self.target_object + "_" + field][targets[self.target_object + "_valid"]]
-            # Get the error between the prediction and target for this field
-            err = pred - target
-            metrics[field + "_rmse"] = torch.sqrt(torch.mean(torch.square(err)))
-            metrics[field + "_abs_res"] = err.abs().mean()
-            metrics[field + "_mean_norm_res"] = torch.mean(err / target)
-            metrics[field + "_std_norm_res"] = torch.std(err / target)
-
-        return metrics
 
     def scale_proxy_feats(self, proxy_feats: Tensor):
         return torch.cat([self.scaler[field].transform(proxy_feats[..., i]).unsqueeze(-1) for i, field in enumerate(self.fields)], -1)
