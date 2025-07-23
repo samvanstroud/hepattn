@@ -216,7 +216,7 @@ def mask_bce_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=N
 
     # Apply input padding mask
     if input_pad_mask is not None:
-        loss = loss * input_pad_mask.unsqueeze(1)  # noqa: PLR6104
+        loss = loss * input_pad_mask.unsqueeze(1)
 
     # normalise by valid elements such that each mask contributes equally
     if input_pad_mask is not None:
