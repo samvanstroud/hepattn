@@ -217,19 +217,7 @@ class MaskFormer(nn.Module):
             else:
                 attn_mask = None
 
-            if (
-                self.log_attn_mask
-                and (attn_mask is not None)
-                and (self.log_step % 10 == 0)
-            ):
-                if not hasattr(self, "attn_masks_to_log"):
-                    self.attn_masks_to_log = {}
-                if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
-                    self.attn_masks_to_log[layer_index] = {
-                        "mask": attn_mask[0].detach().cpu().clone(),
-                        "step": self.log_step,
-                        "layer": layer_index,
-                    }
+            self.log_attn_mask(attn_mask, x, layer_index)     
 
             # Add query positional encodings
             x = self.add_query_posenc(x)
@@ -273,28 +261,29 @@ class MaskFormer(nn.Module):
 
         return outputs
     
-    # def store_key_phi_info(self, x: dict):
-    #     phi_fields = []
-    #     for input_net in self.input_nets:
-    #         input_name = input_net.input_name
-    #         for phi_field in [f"{input_name}_phi", f"{input_name}_pos.phi"]:
-    #             if phi_field in x:
-    #                 phi_fields.append(x[phi_field])
-    #                 break
-    #     if phi_fields:
-    #         try:
-    #             self.last_key_phi = torch.cat(phi_fields, dim=-1)[0].cpu().numpy()
-    #         except Exception as e:
-    #             print(f"[MaskFormer] Error concatenating phi fields: {e}")
-    #             self.last_key_phi = None
-    #     else:
-    #         print("[MaskFormer] No phi fields found for logging.")
-    #         self.last_key_phi = None
+    def log_attn_mask(self, attn_mask, x, layer_index):
+        if (
+            self.log_attn_mask
+            and (attn_mask is not None)
+            and (self.log_step % 10 == 0)
+        ):
+            if not hasattr(self, "attn_masks_to_log"):
+                self.attn_masks_to_log = {}
+            if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
 
-    #     if "key_posenc" in x:
-    #         self.last_key_posenc = x["key_posenc"][0].cpu().numpy()
-    #     else:
-    #         self.last_key_posenc = None
+                key_sort_value_ = x.get(f"key_phi")
+                key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
+                attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
+                # sort key phi for storing too
+                key_phi = x.get(f"key_phi").detach().cpu().numpy()  # [num_keys]
+                key_phi_sorted = key_phi.index_select(0, key_sort_idx[0].to(key_phi.device))
+                self.last_key_phi = key_phi_sorted.detach().cpu().numpy()
+
+                self.attn_masks_to_log[layer_index] = {
+                    "mask": attn_mask[0].detach().cpu().clone(),
+                    "step": self.log_step,
+                    "layer": layer_index,
+                }
 
     def store_key_phi_info(self, x: dict):
 
@@ -401,6 +390,9 @@ class MaskFormer(nn.Module):
 
             # Get the indicies that can permute the predictions to yield their optimal matching
             pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
+
+            # store pred_idxs for each layer
+            self.pred_idxs[layer_name] = pred_idxs.detach().cpu().numpy()
 
             # Apply the permutation in place
             for task in self.tasks:
