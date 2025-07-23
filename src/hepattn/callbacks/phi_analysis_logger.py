@@ -121,9 +121,19 @@ class PhiAnalysisLogger(Callback):
         diff_regressed_query = None
 
         if self.regressed_phi:
-            regressed_phi = getattr(model, "last_regressed_phi", None)
-            reg_phi_sel = regressed_phi[queries_to_process]
-            diff_regressed_meanhit = cyclic_diff_vec(reg_phi_sel, mean_phi)
+            # Get the unpermuted regressed phi and the permutation indices
+            regressed_phi = getattr(model, "last_regressed_phi", None)  # [num_queries]
+            pred_idxs = getattr(model, "last_pred_idxs", None)                # [batch, num_queries]
+            if regressed_phi is not None and pred_idxs is not None:
+                # If you want the first batch element:
+                permuted_regressed_phi = regressed_phi[pred_idxs[0]]
+                # To get the value for original query i after permutation:
+                # permuted_regressed_phi[inverse_pred_idxs[i]] == regressed_phi[i]
+                # To get the permuted regressed phi values for the original queries_to_process:
+                inverse_pred_idxs = np.argsort(pred_idxs[0])
+                reg_phi_sel = permuted_regressed_phi[inverse_pred_idxs[queries_to_process]]
+                # Now reg_phi_sel matches the original queries_to_process
+                diff_regressed_meanhit = cyclic_diff_vec(reg_phi_sel, mean_phi)
         if self.queryPE:
             query_phi = getattr(model, "last_query_phi", None)
             query_phi_np = query_phi.cpu().numpy() if hasattr(query_phi, 'cpu') else query_phi
