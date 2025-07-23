@@ -80,7 +80,7 @@ def mask_dice_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=
 
     probs = pred_logits.sigmoid()
     if input_pad_mask is not None:
-        probs *= input_pad_mask.unsqueeze(1)
+        probs = probs * input_pad_mask.unsqueeze(1)
 
     numerator = 2 * (probs * targets).sum(-1)
     denominator = probs.sum(-1) + targets.sum(-1)
@@ -106,7 +106,7 @@ def mask_dice_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None
 
     # apply input padding mask
     if input_pad_mask is not None:
-        inputs *= input_pad_mask.unsqueeze(1)
+        inputs = inputs * input_pad_mask.unsqueeze(1)
 
     numerator = 2 * torch.einsum("bnc,bmc->bnm", inputs, targets)
     denominator = inputs.sum(-1).unsqueeze(2) + targets.sum(-1).unsqueeze(1)
@@ -117,7 +117,7 @@ def mask_iou_cost(pred_logits, targets, input_pad_mask=None, eps=1e-6):
     # Apply input padding mask
     probs = pred_logits.sigmoid()
     if input_pad_mask is not None:
-        probs *= input_pad_mask.unsqueeze(1)
+        probs = probs * input_pad_mask.unsqueeze(1)
 
     num_pred = probs.sum(-1).unsqueeze(2)
     num_targets = targets.sum(-1).unsqueeze(1)
@@ -152,8 +152,8 @@ def mask_focal_loss(pred_logits, targets, gamma=2.0, object_valid_mask=None, inp
 
     # Apply input padding mask
     if input_pad_mask is not None:
-        ce_loss *= input_pad_mask.unsqueeze(1)
-        pred *= input_pad_mask.unsqueeze(1)
+        ce_loss = ce_loss * input_pad_mask.unsqueeze(1)
+        pred = pred * input_pad_mask.unsqueeze(1)
 
     p_t = pred * targets + (1 - pred) * (1 - targets)
     loss = ce_loss * ((1 - p_t) ** gamma)
@@ -186,8 +186,8 @@ def mask_focal_cost(pred_logits, targets, gamma=2.0, input_pad_mask=None, sample
 
     # Apply input padding mask
     if input_pad_mask is not None:
-        focal_pos *= input_pad_mask.unsqueeze(1)
-        focal_neg *= input_pad_mask.unsqueeze(1)
+        focal_pos = focal_pos * input_pad_mask.unsqueeze(1)
+        focal_neg = focal_neg * input_pad_mask.unsqueeze(1)
 
     # Context manager necessary to overwride global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
@@ -216,7 +216,7 @@ def mask_bce_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=N
 
     # Apply input padding mask
     if input_pad_mask is not None:
-        loss *= input_pad_mask.unsqueeze(1)
+        loss = loss * input_pad_mask.unsqueeze(1)  # noqa: PLR6104
 
     # normalise by valid elements such that each mask contributes equally
     if input_pad_mask is not None:
@@ -245,8 +245,8 @@ def mask_bce_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None)
 
     # Apply input padding mask
     if input_pad_mask is not None:
-        pos *= input_pad_mask.unsqueeze(1)
-        neg *= input_pad_mask.unsqueeze(1)
+        pos = pos * input_pad_mask.unsqueeze(1)
+        neg = neg * input_pad_mask.unsqueeze(1)
 
     # Context manager necessary to overwrite global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
@@ -288,9 +288,9 @@ def mask_kl_div_loss(pred_logits, targets, object_valid_mask=None, input_pad_mas
 
     if input_pad_mask is not None:
         pred_logits = pred_logits.masked_fill(~input_pad_mask.unsqueeze(1), float("-inf"))
-        targets *= input_pad_mask.unsqueeze(1)
+        targets = targets * input_pad_mask.unsqueeze(1)
         # Renormalise to keep targets sums to 1 for each object
-        targets /= targets.sum(-1, keepdim=True) + eps
+        targets = targets / targets.sum(-1, keepdim=True) + eps
 
     pred_probs = torch.softmax(pred_logits, dim=-1)
     loss = -targets * torch.log(pred_probs + eps)
@@ -318,9 +318,9 @@ def mask_kl_div_cost(pred_logits, targets, input_pad_mask=None, sample_weight=No
     """
     if input_pad_mask is not None:
         pred_logits = pred_logits.masked_fill(~input_pad_mask.unsqueeze(1), float("-inf"))
-        targets *= input_pad_mask.unsqueeze(1)
+        targets = targets * input_pad_mask.unsqueeze(1)
         # Renormalise to keep targets sums to 1 for each object
-        targets /= targets.sum(-1, keepdim=True) + eps
+        targets = targets / targets.sum(-1, keepdim=True) + eps
 
     pred_probs = torch.softmax(pred_logits, dim=-1)
 
