@@ -220,7 +220,7 @@ class MaskFormer(nn.Module):
             if (
                 self.log_attn_mask
                 and (attn_mask is not None)
-                and (self.log_step % 10 == 0)
+                and ((self.log_step % 1000 == 0) or (not self.training))
             ):
                 if not hasattr(self, "attn_masks_to_log"):
                     self.attn_masks_to_log = {}

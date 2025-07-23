@@ -88,135 +88,151 @@ class PhiAnalysisLogger(Callback):
             plt.close(fig)
             del fig
 
+    def _log_phi_analysis(self, pl_module, mask_info, prefix="val"):
+        model = pl_module.model if hasattr(pl_module, "model") else pl_module
+        # try:
+        step = mask_info["step"]
+        mask = mask_info["mask"]
+        layer = mask_info["layer"]
+
+        phi_constituents = getattr(model, "last_key_phi", None)
+        mask_np = mask.cpu().numpy() if not isinstance(mask, np.ndarray) else mask
+        phi_constituents_np = phi_constituents.cpu().numpy() if hasattr(phi_constituents, 'cpu') else phi_constituents
+
+        useful_q_indices = np.where(mask_np.sum(axis=1) > 0)[0]
+        queries_to_process = useful_q_indices[:min(self.max_queries_to_process, len(useful_q_indices))]
+        if len(queries_to_process) == 0:
+            return
+
+        selected_phi = np.where(mask_np[queries_to_process], phi_constituents_np, np.nan)
+        mean_phi = np.nanmean(selected_phi, axis=1)
+        std_phi = np.nanstd(selected_phi, axis=1)
+
+        def cyclic_diff_vec(phi1, phi2):
+            diff = phi1 - phi2
+            wrapped_diff = np.arctan2(np.sin(diff), np.cos(diff))
+            return np.abs(wrapped_diff)
+
+        # Prepare optional arrays
+        reg_phi_sel = None
+        query_phi_sel = None
+        diff_regressed_meanhit = None
+        diff_meanhit_query = None
+        diff_regressed_query = None
+
+        if self.regressed_phi:
+            regressed_phi = getattr(model, "last_regressed_phi", None)
+            reg_phi_sel = regressed_phi[queries_to_process]
+            diff_regressed_meanhit = cyclic_diff_vec(reg_phi_sel, mean_phi)
+        if self.queryPE:
+            query_phi = getattr(model, "last_query_phi", None)
+            query_phi_np = query_phi.cpu().numpy() if hasattr(query_phi, 'cpu') else query_phi
+            query_phi_sel = query_phi_np[queries_to_process]
+            diff_meanhit_query = cyclic_diff_vec(mean_phi, query_phi_sel)
+        if self.regressed_phi and self.queryPE:
+            diff_regressed_query = cyclic_diff_vec(reg_phi_sel, query_phi_sel)
+
+        # Per-query logging/plotting for first N queries
+        logger = getattr(pl_module, 'logger', None)
+        for i, q in enumerate(queries_to_process[:self.max_queries_to_log]):
+            log_data = {
+                f"{prefix}/query{q}_mean_hit_phi_layer{layer}": float(mean_phi[i]),
+                f"{prefix}/query{q}_std_hit_phi_layer{layer}": float(std_phi[i]),
+            }
+            if self.regressed_phi:
+                log_data[f"{prefix}/query{q}_regressed_phi_layer{layer}"] = float(reg_phi_sel[i])
+                log_data[f"{prefix}/query{q}_mean_minus_regressed_phi_layer{layer}"] = float(diff_regressed_meanhit[i])
+            if self.queryPE:
+                log_data[f"{prefix}/query{q}_query_phi_layer{layer}"] = float(query_phi_sel[i])
+                log_data[f"{prefix}/query{q}_query_minus_meanhit_phi_layer{layer}"] = float(diff_meanhit_query[i])
+                if self.regressed_phi:
+                    log_data[f"{prefix}/query{q}_query_minus_regressed_phi_layer{layer}"] = float(diff_regressed_query[i])
+            if logger is not None and hasattr(logger, 'experiment'):
+                logger.experiment.log_metrics(log_data, step=step)
+            else:
+                print(f"[PhiAnalysisLogger] Step {step} Layer {layer} Query {q} - {log_data}")
+
+            # Plot phi histogram for this query
+            phi_hits = selected_phi[i][~np.isnan(selected_phi[i])]
+
+            if logger is not None and hasattr(logger, 'experiment'):
+                logger.experiment.log_histogram_3d(
+                    values=phi_hits,
+                    name=f"phi_hits_query{q}_layer{layer}_step{step}",
+                    step=step
+                )
+
+            # Distribution histograms and averages
+            if len(std_phi) > 0:
+                avg_std = np.mean(std_phi)
+                if logger is not None and hasattr(logger, 'experiment'):
+                    logger.experiment.log_metric(
+                        f"{prefix}/avg_std_hit_phi_layer{layer}", float(avg_std), step=step
+                        )
+                    logger.experiment.log_histogram_3d(
+                        values=std_phi,
+                        name=f"std_hit_phi_hist_layer{layer}_step{step}",
+                        step=step
+                    )
+
+            if self.regressed_phi and diff_regressed_meanhit is not None and len(diff_regressed_meanhit) > 0:
+                avg_diff = np.mean(diff_regressed_meanhit)
+                if logger is not None and hasattr(logger, 'experiment'):
+                    logger.experiment.log_metric(
+                        f"{prefix}/avg_regressed_minus_meanhit_phi_layer{layer}", float(avg_diff), step=step
+                        )
+                    logger.experiment.log_histogram_3d(
+                        values=diff_regressed_meanhit,
+                        name=f"regressed_minus_meanhit_phi_hist_layer{layer}_step{step}",
+                        step=step
+                    )
+
+            if self.regressed_phi and self.queryPE and diff_regressed_query is not None and len(diff_regressed_query) > 0:
+                avg_diff = np.mean(diff_regressed_query)
+                if logger is not None and hasattr(logger, 'experiment'):
+                    logger.experiment.log_metric(
+                        f"{prefix}/avg_regressed_minus_query_phi_layer{layer}", float(avg_diff), step=step
+                        )
+                    logger.experiment.log_histogram_3d(
+                        values=diff_regressed_query,
+                        name=f"regressed_minus_query_phi_hist_layer{layer}_step{step}",
+                        step=step
+                    )
+                else:
+                    print(f"[PhiAnalysisLogger] Step {step} Layer {layer} - Average regressed-query phi diff: {avg_diff}")
+            else:
+                print("no diff_regressed_query")
+
+            if self.queryPE and diff_meanhit_query is not None and len(diff_meanhit_query) > 0:
+                avg_diff = np.mean(diff_meanhit_query)
+                if logger is not None and hasattr(logger, 'experiment'):
+                    logger.experiment.log_metric(
+                        f"{prefix}/avg_meanhit_minus_query_phi_layer{layer}", float(avg_diff), step=step
+                        )
+                    logger.experiment.log_histogram_3d(
+                        values=diff_meanhit_query,
+                        name=f"meanhit_minus_query_phi_hist_layer{layer}_step{step}",
+                        step=step
+                    )
+                else:
+                    print(f"[PhiAnalysisLogger] Step {step} Layer {layer} - Average meanhit-query phi diff: {avg_diff}")
+            else:
+                print("no diff_meanhit_query")
+
+        # except Exception as e:
+        #     print(f"[PhiAnalysisLogger] Error processing mask info: {e}")
+        #     return
+
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
         if not hasattr(model, 'attn_masks_to_log'):
             return
-
         for mask_info in model.attn_masks_to_log.values():
-            try:
-                step = mask_info["step"]
-                # if step % self.log_every_n_steps != 0:
-                #     continue
-                mask = mask_info["mask"]
-                layer = mask_info["layer"]
+            self._log_phi_analysis(pl_module, mask_info, prefix="val")
 
-                phi_constituents = getattr(model, "last_key_phi", None)
-                mask_np = mask.cpu().numpy() if not isinstance(mask, np.ndarray) else mask
-                phi_constituents_np = phi_constituents.cpu().numpy() if hasattr(phi_constituents, 'cpu') else phi_constituents
-
-                useful_q_indices = np.where(mask_np.sum(axis=1) > 0)[0]
-                queries_to_process = useful_q_indices[:min(self.max_queries_to_process, len(useful_q_indices))]
-                if len(queries_to_process) == 0:
-                    continue
-
-                selected_phi = np.where(mask_np[queries_to_process], phi_constituents_np, np.nan)
-                mean_phi = np.nanmean(selected_phi, axis=1)
-                std_phi = np.nanstd(selected_phi, axis=1)
-
-                def cyclic_diff_vec(phi1, phi2):
-                    diff = phi1 - phi2
-                    wrapped_diff = np.arctan2(np.sin(diff), np.cos(diff))
-                    return np.abs(wrapped_diff)
-
-                # Prepare optional arrays
-                reg_phi_sel = None
-                query_phi_sel = None
-                diff_regressed_meanhit = None
-                diff_meanhit_query = None
-                diff_regressed_query = None
-
-                if self.regressed_phi:
-                    regressed_phi = getattr(model, "last_regressed_phi", None)
-                    reg_phi_sel = regressed_phi[queries_to_process]
-                    diff_regressed_meanhit = cyclic_diff_vec(reg_phi_sel, mean_phi)
-                if self.queryPE:
-                    query_phi = getattr(model, "last_query_phi", None)
-                    query_phi_np = query_phi.cpu().numpy() if hasattr(query_phi, 'cpu') else query_phi
-                    query_phi_sel = query_phi_np[queries_to_process]
-                    diff_meanhit_query = cyclic_diff_vec(mean_phi, query_phi_sel)
-                if self.regressed_phi and self.queryPE:
-                    diff_regressed_query = cyclic_diff_vec(reg_phi_sel, query_phi_sel)
-
-                # Per-query logging/plotting for first N queries
-                logger = getattr(pl_module, 'logger', None)
-                for i, q in enumerate(queries_to_process[:self.max_queries_to_log]):
-                    log_data = {
-                        f"val/query{q}_mean_hit_phi_layer{layer}": float(mean_phi[i]),
-                        f"val/query{q}_std_hit_phi_layer{layer}": float(std_phi[i]),
-                    }
-                    if self.regressed_phi:
-                        log_data[f"val/query{q}_regressed_phi_layer{layer}"] = float(reg_phi_sel[i])
-                        log_data[f"val/query{q}_mean_minus_regressed_phi_layer{layer}"] = float(diff_regressed_meanhit[i])
-                    if self.queryPE:
-                        log_data[f"val/query{q}_query_phi_layer{layer}"] = float(query_phi_sel[i])
-                        log_data[f"val/query{q}_query_minus_meanhit_phi_layer{layer}"] = float(diff_meanhit_query[i])
-                        if self.regressed_phi:
-                            log_data[f"val/query{q}_query_minus_regressed_phi_layer{layer}"] = float(diff_regressed_query[i])
-                    if logger is not None and hasattr(logger, 'experiment'):
-                        logger.experiment.log_metrics(log_data, step=step)
-                    else:
-                        print(f"[PhiAnalysisLogger] Step {step} Layer {layer} Query {q} - {log_data}")
-
-                    # Plot phi histogram for this query
-                    phi_hits = selected_phi[i][~np.isnan(selected_phi[i])]
-                    self._create_phi_histogram(phi_hits, q, layer, step, logger)
-
-                # Distribution histograms and averages
-                if len(std_phi) > 0:
-                    avg_std = np.mean(std_phi)
-                    if logger is not None and hasattr(logger, 'experiment'):
-                        logger.experiment.log_metric(f"val/avg_std_hit_phi_layer{layer}", float(avg_std), step=step)
-                    else:
-                        print(f"[PhiAnalysisLogger] Step {step} Layer {layer} - Average std of hit phi: {avg_std}")
-                    self._create_distribution_histogram(
-                        std_phi, 'Standard Deviation of Hit Phi Values per Query',
-                        'Standard Deviation of Phi Values', 'Number of Queries',
-                        '#2E86AB', '#1B4965', 'std_hit_phi_hist', layer, step, logger
-                    )
-
-                if self.regressed_phi and diff_regressed_meanhit is not None and len(diff_regressed_meanhit) > 0:
-                    avg_diff = np.mean(diff_regressed_meanhit)
-                    if logger is not None and hasattr(logger, 'experiment'):
-                        logger.experiment.log_metric(f"val/avg_regressed_minus_meanhit_phi_layer{layer}", float(avg_diff), step=step)
-                    else:
-                        print(f"[PhiAnalysisLogger] Step {step} Layer {layer} - Average regressed-meanhit phi diff: {avg_diff}")
-                    self._create_distribution_histogram(
-                        diff_regressed_meanhit, 'Regressed Phi - Mean Hit Phi Distribution',
-                        'Regressed Phi - Mean Hit Phi (Angular Distance)', 'Number of Queries',
-                        '#A23B72', '#6B2D5C', 'regressed_minus_meanhit_phi_hist', layer, step, logger, (0, np.pi)
-                    )
-                else:
-                    print("no diff_regressed_meanhit")
-
-                if self.regressed_phi and self.queryPE and diff_regressed_query is not None and len(diff_regressed_query) > 0:
-                    avg_diff = np.mean(diff_regressed_query)
-                    if logger is not None and hasattr(logger, 'experiment'):
-                        logger.experiment.log_metric(f"val/avg_regressed_minus_query_phi_layer{layer}", float(avg_diff), step=step)
-                    else:
-                        print(f"[PhiAnalysisLogger] Step {step} Layer {layer} - Average regressed-query phi diff: {avg_diff}")
-                    self._create_distribution_histogram(
-                        diff_regressed_query, 'Regressed Phi - Query Phi Distribution',
-                        'Regressed Phi - Query Phi (Angular Distance)', 'Number of Queries',
-                        '#C73E1D', '#8B2635', 'regressed_minus_query_phi_hist', layer, step, logger, (0, np.pi)
-                    )
-                else:
-                    print("no diff_regressed_query")
-
-                if self.queryPE and diff_meanhit_query is not None and len(diff_meanhit_query) > 0:
-                    avg_diff = np.mean(diff_meanhit_query)
-                    if logger is not None and hasattr(logger, 'experiment'):
-                        logger.experiment.log_metric(f"val/avg_meanhit_minus_query_phi_layer{layer}", float(avg_diff), step=step)
-                    else:
-                        print(f"[PhiAnalysisLogger] Step {step} Layer {layer} - Average meanhit-query phi diff: {avg_diff}")
-                    self._create_distribution_histogram(
-                        diff_meanhit_query, 'Mean Hit Phi - Query Phi Distribution',
-                        'Mean Hit Phi - Query Phi (Angular Distance)', 'Number of Queries',
-                        '#7209B7', '#560BAD', 'meanhit_minus_query_phi_hist', layer, step, logger, (0, np.pi)
-                    )
-                else:
-                    print("no diff_meanhit_query")
-
-            except Exception as e:
-                print(f"[PhiAnalysisLogger] Error processing mask info: {e}")
-                continue
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        model = pl_module.model if hasattr(pl_module, "model") else pl_module
+        if not hasattr(model, 'attn_masks_to_log'):
+            return
+        for mask_info in model.attn_masks_to_log.values():
+            self._log_phi_analysis(pl_module, mask_info, prefix="train")
