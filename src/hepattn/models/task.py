@@ -171,7 +171,7 @@ class HitFilterTask(Task):
         has_intermediate_loss : bool, optional
             Whether task has intermediate loss, by default True.
         """
-        super().__init__(has_intermediate_loss=has_intermediate_loss)
+        super().__init__(has_intermediate_loss=has_intermediate_loss, permute_loss=False)
 
         self.name = name
         self.hit_name = hit_name
