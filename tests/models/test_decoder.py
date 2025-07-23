@@ -73,7 +73,7 @@ class TestMaskFormerDecoder:
         assert decoder.preserve_posenc is False
 
         # Check that decoder layers are initialized correctly
-        for i, layer in enumerate(decoder.decoder_layers):
+        for layer in decoder.decoder_layers:
             assert isinstance(layer, MaskFormerDecoderLayer)
             assert layer.mask_attention is True
 
