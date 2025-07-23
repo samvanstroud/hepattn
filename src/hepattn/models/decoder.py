@@ -88,6 +88,9 @@ class MaskFormerDecoder(nn.Module):
             query_mask = None
 
             for task in self.tasks:
+                if not task.has_intermediate_loss:
+                    continue
+
                 # Get the outputs of the task given the current embeddings
                 task_outputs = task(x)
 

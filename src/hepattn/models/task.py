@@ -18,9 +18,10 @@ class Task(nn.Module, ABC):
     that can be trained as part of a multi-task learning setup.
     """
 
-    def __init__(self, has_intermediate_loss: bool):
+    def __init__(self, has_intermediate_loss: bool, permute_loss: bool = True):
         super().__init__()
         self.has_intermediate_loss = has_intermediate_loss
+        self.permute_loss = permute_loss
 
     @abstractmethod
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -435,9 +436,7 @@ class RegressionTask(Task):
             target = targets[self.target_object + "_" + field][targets[self.target_object + "_valid"]]
             # Get the error between the prediction and target for this field
             err = pred - target
-            # Compute the RMSE and log it
             metrics[field + "_rmse"] = torch.sqrt(torch.mean(torch.square(err)))
-            # Compute the relative error / resolution and log it
             metrics[field + "_mean_rel_err"] = torch.mean(err / target)
             metrics[field + "_std_rel_err"] = torch.std(err / target)
 
@@ -811,7 +810,7 @@ class ClassificationTask(Task):
         has_intermediate_loss : bool, optional
             Whether task has intermediate loss, by default True.
         """
-        super().__init__(has_intermediate_loss=has_intermediate_loss)
+        super().__init__(has_intermediate_loss=has_intermediate_loss, permute_loss=permute_loss)
 
         self.name = name
         self.input_object = input_object
@@ -823,7 +822,6 @@ class ClassificationTask(Task):
         self.loss_weight = loss_weight
         self.multilabel = multilabel
         self.class_net = Dense(dim, len(classes))
-        self.permute_loss = permute_loss
 
         if self.class_weights is not None:
             self.class_weights_values = torch.tensor([class_weights[class_name] for class_name in self.classes])

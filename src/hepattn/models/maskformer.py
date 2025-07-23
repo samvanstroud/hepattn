@@ -164,6 +164,8 @@ class MaskFormer(nn.Module):
             preds[layer_name] = {}
 
             for task in self.tasks:
+                if layer_name != "final" and not task.has_intermediate_loss:
+                    continue
                 preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
 
         return preds
@@ -199,10 +201,10 @@ class MaskFormer(nn.Module):
 
                 # Add the cost on to our running cost total, otherwise initialise a running cost matrix
                 for cost in task_costs.values():
-                    if layer_costs is not None:
-                        layer_costs += cost
-                    else:
+                    if layer_costs is None:
                         layer_costs = cost
+                    else:
+                        layer_costs += cost
 
             # Added to allow completely turning off inter layer loss
             # Possibly redundant as completely switching them off performs worse
@@ -219,12 +221,14 @@ class MaskFormer(nn.Module):
             # Get the indicies that can permute the predictions to yield their optimal matching
             pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
 
-            # Apply the permutation in place
             for task in self.tasks:
-                # Some tasks, such as hit-level or sample-level tasks, do not need permutation
-                if hasattr(task, "permute_loss"):
-                    if not task.permute_loss:
-                        continue
+                # Tasks without a object dimension do not need permutation (constituent-level or sample-level)
+                if not task.permute_loss:
+                    continue
+
+                # The task didn't produce an output for this layer, so skip it
+                if layer_name != "final" and not task.has_intermediate_loss:
+                    continue
 
                 for output_name in task.outputs:
                     outputs[layer_name][task.name][output_name] = outputs[layer_name][task.name][output_name][batch_idxs, pred_idxs]
