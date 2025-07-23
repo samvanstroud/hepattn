@@ -67,7 +67,7 @@ def plot_residuals(data_dicts, ref_name="truth", pt_relative=False, log_y=False,
         for var in ["pt", "eta", "phi"]:
             residual_dict[name][var] = comp_dict[var] - ref_dict[var]
             if var == "pt" and pt_relative:
-                residual_dict[name][var] = residual_dict[name][var] / ref_dict["pt"]
+                residual_dict[name][var] /= ref_dict["pt"]
 
             mask = ref_dict["class"] <= 2
             abs_max_dict["Charged"][var] = max(
@@ -150,7 +150,7 @@ def plot_residuals_neutrals(data_dicts, ref_name="truth", pt_relative=False, log
         for var in ["pt", "eta", "phi"]:
             residual_dict[name][var] = comp_dict[var] - ref_dict[var]
             if var == "pt" and pt_relative:
-                residual_dict[name][var] = residual_dict[name][var] / ref_dict["pt"]
+                residual_dict[name][var] /= ref_dict["pt"]
 
             mask = ref_dict["class"] == 3
             abs_max_dict["Neutral hadron"][var] = max(

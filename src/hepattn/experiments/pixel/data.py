@@ -293,7 +293,7 @@ class PixelClusterDataset(Dataset):
             x["particle_y"] = x["particle_index_y"]
 
             # Convert MeV to GeV and TeV
-            x["particle_p"] = x["particle_p"] / 1000.0
+            x["particle_p"] /= 1000.0
 
             # Get particle PDGID
             x["particle_pdgid"] = file["particle_pdgid"][idx]
@@ -310,15 +310,15 @@ class PixelClusterDataset(Dataset):
 
             # Ignore particles with no barcode if specified
             if not self.particle_allow_notruth:
-                x["particle_valid"] = x["particle_valid"] & (~x["particle_notruth"])
+                x["particle_valid"] &= (~x["particle_notruth"])
 
             # Ignore secondary particles if specified
             if not self.particle_allow_secondary:
-                x["particle_valid"] = x["particle_valid"] & (~x["particle_secondary"])
+                x["particle_valid"] &= (~x["particle_secondary"])
 
             # Apply particle position cuts
-            x["particle_valid"] = x["particle_valid"] & (np.abs(x["particle_x"]) <= self.particle_max_x)
-            x["particle_valid"] = x["particle_valid"] & (np.abs(x["particle_y"]) <= self.particle_max_y)
+            x["particle_valid"] &= (np.abs(x["particle_x"]) <= self.particle_max_x)
+            x["particle_valid"] &= (np.abs(x["particle_y"]) <= self.particle_max_y)
 
             # If specified, drop the cluster if any particles failed the particle cuts
             if not self.cluster_allow_dropped_particle:

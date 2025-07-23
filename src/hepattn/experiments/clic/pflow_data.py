@@ -118,7 +118,7 @@ class CLICDataset(Dataset):
             track_particle_idxs = tree["track_particle_idx"].array(library="np", entry_stop=self.num_events)
             track_particle_idxs_lens = np.array([len(el) for el in track_particle_idxs])
             print(f"Removing {np.sum(track_particle_idxs_lens != self.n_tracks)} events with mismatching track_particle_idx")
-            mask = mask & (track_particle_idxs_lens == self.n_tracks)
+            mask &= (track_particle_idxs_lens == self.n_tracks)
 
         self.n_tracks = self.n_tracks[mask]
         self.n_topos = self.n_topos[mask]
@@ -445,7 +445,7 @@ class CLICDataset(Dataset):
             incidence_matrix[fake_rows, noisy_cols] = 1.0
 
         # normalize
-        incidence_matrix = incidence_matrix / np.clip(incidence_matrix.sum(axis=0, keepdims=True), a_min=1e-6, a_max=None)
+        incidence_matrix /= np.clip(incidence_matrix.sum(axis=0, keepdims=True), a_min=1e-6, a_max=None)
 
         incidence = torch.tensor(incidence_matrix, dtype=torch.float32)
 
