@@ -217,7 +217,7 @@ class MaskFormer(nn.Module):
             else:
                 attn_mask = None
 
-            self.log_attn_mask(attn_mask, x, layer_index)     
+            self.attn_mask_logging(attn_mask, x, layer_index)     
 
             # Add query positional encodings
             x = self.add_query_posenc(x)
@@ -261,23 +261,21 @@ class MaskFormer(nn.Module):
 
         return outputs
     
-    def log_attn_mask(self, attn_mask, x, layer_index):
-        if (
-            self.log_attn_mask
+    def attn_mask_logging(self, attn_mask, x, layer_index):
+        if (self.log_attn_mask
             and (attn_mask is not None)
-            and (self.log_step % 10 == 0) or (not self.training))
-        ):
+            and (self.log_step % 10 == 0) or (not self.training)):
             if not hasattr(self, "attn_masks_to_log"):
                 self.attn_masks_to_log = {}
             if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
-
+                attn_mask_im = attn_mask[0].detach().cpu().clone()
                 key_sort_value_ = x.get(f"key_phi")
                 key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
                 attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
                 # sort key phi for storing too
                 key_phi = x.get(f"key_phi").detach().cpu().numpy()  # [num_keys]
-                key_phi_sorted = key_phi.index_select(0, key_sort_idx[0].to(key_phi.device))
-                self.last_key_phi = key_phi_sorted.detach().cpu().numpy()
+                key_phi_sorted = key_phi[0][key_sort_idx[0].cpu().numpy()]
+                self.last_key_phi = key_phi_sorted
 
                 self.attn_masks_to_log[layer_index] = {
                     "mask": attn_mask[0].detach().cpu().clone(),
@@ -384,15 +382,20 @@ class MaskFormer(nn.Module):
             costs[layer_name] = layer_costs
 
         # Permute the outputs for each output in each layer
+        self.log_pred_idxs = {}
         for layer_name, cost in costs.items():
             if cost is None:
                 continue
 
             # Get the indicies that can permute the predictions to yield their optimal matching
             pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
-
-            # store pred_idxs for each layer
-            self.pred_idxs[layer_name] = pred_idxs.detach().cpu().numpy()
+            
+            if (self.log_attn_mask
+            # and (attn_mask is not None)
+            and (self.log_step % 10 == 0) or (not self.training)
+            ):
+                # store pred_idxs for each layer
+                self.log_pred_idxs[layer_name] = pred_idxs.detach().cpu().numpy()
 
             # Apply the permutation in place
             for task in self.tasks:

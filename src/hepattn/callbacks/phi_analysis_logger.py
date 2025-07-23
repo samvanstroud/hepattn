@@ -123,8 +123,10 @@ class PhiAnalysisLogger(Callback):
         if self.regressed_phi:
             # Get the unpermuted regressed phi and the permutation indices
             regressed_phi = getattr(model, "last_regressed_phi", None)  # [num_queries]
-            pred_idxs = getattr(model, "last_pred_idxs", None)                # [batch, num_queries]
+            pred_idxs = getattr(model, "log_pred_idxs", None)               # [batch, num_queries]
             if regressed_phi is not None and pred_idxs is not None:
+                layer_name = f"layer_{layer}"
+                pred_idxs = pred_idxs[layer_name]
                 # If you want the first batch element:
                 permuted_regressed_phi = regressed_phi[pred_idxs[0]]
                 # To get the value for original query i after permutation:
