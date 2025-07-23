@@ -88,7 +88,7 @@ def main():
         dump_data_df = pd.DataFrame({
             "hit_id": inputs["pixel_hit_id"],
             "logit": hit_logits,
-            })
+        })
         dump_data_df.to_csv(dump_path / f"{event_name}.csv", index=False)
 
         # Particles which are deemed reconstructable pre-filter
