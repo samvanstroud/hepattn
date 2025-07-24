@@ -2,7 +2,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoderLayer
-from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectRegressionTask
+from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectRegressionTask, ObjectHitMaskTask
 
 
 class MaskFormer(nn.Module):
@@ -24,9 +24,8 @@ class MaskFormer(nn.Module):
         raw_variables: list[str] | None = None,
         log_attn_mask: bool = False,
         query_posenc: nn.Module | None = None,
-        preserve_query_posenc: bool = False,
-        preserve_key_embed: bool = False,
-        preserve_key_posenc: bool = False,
+        key_posenc: nn.Module | None = None,
+        preserve_posenc: bool = False,
         phi_analysis: bool = False,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -79,10 +78,10 @@ class MaskFormer(nn.Module):
         self.log_attn_mask = log_attn_mask
         self.log_step = 0
         self.query_posenc = query_posenc
-        self.preserve_query_posenc = preserve_query_posenc
-        self.preserve_key_embed = preserve_key_embed
-        self.preserve_key_posenc = preserve_key_posenc
+        self.key_posenc = key_posenc
+        self.preserve_posenc = preserve_posenc
         self.phi_analysis = phi_analysis
+
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
@@ -141,27 +140,14 @@ class MaskFormer(nn.Module):
         for input_name in input_names:
             x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
-        # Store input positional encodings if we need to preserve them
-        if self.preserve_key_posenc:
-            input_posencs = []
-            for input_net in self.input_nets:
-                if input_net.posenc is not None:
-                    # Get just the positional encoding part
-                    posenc = input_net.posenc(inputs)
-                    input_posencs.append(posenc)
-                else:
-                    raise ValueError(f"Input net {input_net.input_name} has no positional encoding.")
-
-            x["key_posenc"] = torch.concatenate(input_posencs, dim=-2)
-
-        if self.preserve_key_embed:
-            x["key_embed_original"] = x["key_embed"].clone()
-
         # Generate the queries that represent objects
         x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
         x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
-        # Add query positional encodings
-        x = self.add_query_posenc(x)
+
+        if (self.key_posenc is not None) or (self.query_posenc is not None):
+            x = self.generate_positional_encodings(x)
+        if not self.preserve_posenc:
+            x = self.add_positional_encodings(x)
 
         # Do any pooling if desired
         if self.pooling is not None:
@@ -176,8 +162,9 @@ class MaskFormer(nn.Module):
             attn_masks = {}
             query_mask = None
 
-            # Re-add original embeddings (similar to SAM's prompt token re-addition)
-            x = self.re_add_positional_encodings(x)
+            # Re-add positional encodings (similar to SAM's prompt token re-addition)
+            if self.preserve_posenc:
+                x = self.add_positional_encodings(x)
 
             for task in self.tasks:
                 # Get the outputs of the task given the current embeddings and record them
@@ -227,7 +214,6 @@ class MaskFormer(nn.Module):
             if self.phi_analysis:
                 self.store_key_phi_info(x)
             
-
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=x.get("key_valid")
@@ -258,8 +244,23 @@ class MaskFormer(nn.Module):
                 # Assume that the regression task has only one output
                regressed_phi = outputs["final"][task.name][task.outputs[0]].detach()
                self.last_regressed_phi = regressed_phi[0].squeeze(-1).float().cpu().numpy()
+            if isinstance(task, ObjectHitMaskTask):
+               if self.log_attn_mask:
+                   attn_mask = outputs["final"][task.name][task.outputs[0]].detach()
+                   self.final_attn_mask_logging(attn_mask, x, layer_index)
 
         return outputs
+    
+    def sort_attn_mask(self, attn_mask, x):
+        attn_mask_im = attn_mask[0].detach().cpu().clone().int()
+        key_sort_value_ = x.get(f"key_phi")
+        key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
+        attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
+        # sort key phi for storing too
+        key_phi = x.get(f"key_phi").detach().cpu().numpy()  # [num_keys]
+        key_phi_sorted = key_phi[0][key_sort_idx[0].cpu().numpy()]
+        self.last_key_phi = key_phi_sorted
+        return attn_mask_im
     
     def attn_mask_logging(self, attn_mask, x, layer_index):
         if (self.log_attn_mask
@@ -268,53 +269,55 @@ class MaskFormer(nn.Module):
             if not hasattr(self, "attn_masks_to_log"):
                 self.attn_masks_to_log = {}
             if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
-                attn_mask_im = attn_mask[0].detach().cpu().clone()
-                key_sort_value_ = x.get(f"key_phi")
-                key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
-                attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
-                # sort key phi for storing too
-                key_phi = x.get(f"key_phi").detach().cpu().numpy()  # [num_keys]
-                key_phi_sorted = key_phi[0][key_sort_idx[0].cpu().numpy()]
-                self.last_key_phi = key_phi_sorted
-
+                attn_mask_im = self.sort_attn_mask(attn_mask, x)
                 self.attn_masks_to_log[layer_index] = {
-                    "mask": attn_mask[0].detach().cpu().clone(),
+                    "mask": attn_mask_im,
+                    "step": self.log_step,
+                    "layer": layer_index,
+                }
+
+    def final_attn_mask_logging(self, attn_mask, x, layer_index):
+        if (self.log_attn_mask
+            and (attn_mask is not None)
+            and (self.log_step % 10 == 0) or (not self.training)):
+            if not hasattr(self, "final_attn_masks_to_log"):
+                self.final_attn_masks_to_log = {}
+            if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
+                attn_mask_im = self.sort_attn_mask(attn_mask, x)
+                self.final_attn_masks_to_log[layer_index] = {
+                    "mask": attn_mask_im,
                     "step": self.log_step,
                     "layer": layer_index,
                 }
 
     def store_key_phi_info(self, x: dict):
-
-        self.last_key_phi =x['key_phi'][0].cpu().numpy()
-                
+        self.last_key_phi =x['key_phi'][0].cpu().numpy()  
         if "key_posenc" in x:
             self.last_key_posenc = x["key_posenc"][0].cpu().numpy()
         else:
             self.last_key_posenc = None
 
-    def re_add_positional_encodings(self, x: dict):
-        # Re-add original query embeddings (similar to SAM's prompt token re-addition)
-        if (self.query_posenc is not None) and (self.preserve_query_posenc):
+    def add_positional_encodings(self, x: dict):
+        if (self.query_posenc is not None):
             x["query_embed"] = x["query_embed"] + x["query_posenc"]
-
-        # Re-add original key embeddings if requested
-        if self.preserve_key_embed:
-            x["key_embed"] = x["key_embed"] + x["key_embed_original"]
-
-        # Re-add input positional encodings if requested
-        if self.preserve_key_posenc:
+        if self.key_posenc is not None:
             x["key_embed"] = x["key_embed"] + x["key_posenc"]
         return x
-    
-    def add_query_posenc(self, x: dict):
+
+    def generate_positional_encodings(self, x: dict):
         if self.query_posenc is not None:
             x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
             x["query_posenc"] = self.query_posenc(x)
             if self.phi_analysis:
                 self.last_query_phi = x["query_phi"].detach().cpu().numpy()
                 self.last_query_posenc = x["query_posenc"][0].cpu().numpy()
-            x["query_embed"] = x["query_embed"] + x["query_posenc"]
+        if self.key_posenc is not None:
+            x["key_posenc"] = self.key_posenc(x)
+            if self.phi_analysis:
+                self.last_key_phi = x["key_phi"].detach().cpu().numpy()
+                self.last_key_posenc = x["key_posenc"][0].cpu().numpy()
         return x
+    
 
     def predict(self, outputs: dict) -> dict:
         """Takes the raw model outputs and produces a set of actual inferences / predictions.
