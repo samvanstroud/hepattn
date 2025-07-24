@@ -118,7 +118,7 @@ class EncoderLayer(nn.Module):
         layer_scale : float | None, optional
             Initial layer_scale value.
         value_residual : bool, optional
-            Whether to apply a residual connection to initial values.
+            Whether to apply a residual connection from initial values.
         hybrid_norm : bool, optional
             Whether to use HybridNorm from 2503.04598.
         dense_kwargs : dict | None, optional
@@ -131,15 +131,18 @@ class EncoderLayer(nn.Module):
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
-        # handle hybridnorm
+        # handle hybrid norm
         qkv_norm = hybrid_norm
         if depth == 0:
             hybrid_norm = False
         attn_norm = norm if not hybrid_norm else None
         dense_post_norm = not hybrid_norm
 
+        # handle value residual
+        attn_kwargs["value_residual"] = value_residual
+        attn_kwargs["is_first_layer"] = depth == 0
+
         self.dim = dim
-        self.value_residual = value_residual
         residual = partial(Residual, dim=dim, layer_scale=layer_scale, drop_path=drop_path)
         self.attn = residual(Attention(self.dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
         self.dense = residual(Dense(self.dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
@@ -171,7 +174,7 @@ class Encoder(nn.Module):
         window_size : int | None, optional
             The window size for the sliding window.
         value_residual : bool, optional
-            Whether to use value residual.
+            Add a residual connection from the initial layer values.
         kwargs : dict
             Keyword arguments for EncoderLayer.
         """
@@ -196,8 +199,7 @@ class Encoder(nn.Module):
         # handle attention
         attn_kwargs = layer_kwargs.get("attn_kwargs", None) or {}
         attn_kwargs["attn_type"] = attn_type
-        if value_residual:
-            attn_kwargs["value_residual"] = True
+        layer_kwargs["value_residual"] = self.value_residual
         attn_kwargs["window_size"] = window_size
         layer_kwargs["attn_kwargs"] = attn_kwargs
 

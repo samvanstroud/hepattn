@@ -132,8 +132,9 @@ class Attention(nn.Module):
         attn_type: str = "torch",
         torch_compile: bool = False,
         window_size: int | None = None,
-        value_residual: bool = False,
         qkv_norm: bool = False,
+        value_residual: bool = False,
+        is_first_layer: bool = False,
     ) -> None:
         super().__init__()
         assert dim % num_heads == 0, "num_heads must divide dim."
@@ -146,14 +147,15 @@ class Attention(nn.Module):
         self.head_dim = dim // num_heads
         self.attn_type = attn_type
         self.window_size = None
-        self.value_residual = value_residual
         self.qkv_norm = qkv_norm
+        self.value_residual = value_residual
+        self.is_first_layer = is_first_layer
 
         self.in_proj_weight = nn.Parameter(torch.empty(3 * dim, dim))
         self.in_proj_bias = nn.Parameter(torch.empty(3 * dim)) if bias else None
         self.out_proj = nn.Linear(dim, dim, bias=bias)
 
-        if self.value_residual:
+        if self.value_residual and not self.is_first_layer:
             self.value_residual_mix = nn.Sequential(nn.Linear(dim, num_heads), nn.Sigmoid())
 
         if self.qkv_norm:
@@ -200,7 +202,7 @@ class Attention(nn.Module):
     def _prepare_qkv(self, q: Tensor, kv: Tensor | None = None, initial_values: dict | None = None) -> tuple[Tensor, Tensor, Tensor]:
         # Mix for value residual
         mix = None
-        if self.value_residual:
+        if self.value_residual and not self.is_first_layer:
             mix = self.value_residual_mix(q)
             mix = mix.unsqueeze(-1)
             if self.attn_type not in FLASH_ATTN_TYPES:
@@ -228,10 +230,11 @@ class Attention(nn.Module):
 
         # Residual connection with initial values
         if self.value_residual:
-            if not initial_values:
+            if not initial_values and self.is_first_layer:
                 initial_values["v"] = v
             else:
                 v = v * mix + initial_values["v"] * (1.0 - mix)
+
         return q, k, v
 
     def _flash_varlen_attention(
