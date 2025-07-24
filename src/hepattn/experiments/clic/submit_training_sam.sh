@@ -4,8 +4,8 @@
 #SBATCH -p GPU
 #SBATCH --nodes=1
 #SBATCH --export=ALL
-#SBATCH --gres=gpu:l40s:1
-#SBATCH --ntasks-per-node=1        # must match number of devices
+#SBATCH --gres=gpu:l40s:2
+#SBATCH --ntasks-per-node=2        # must match number of devices
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=50G
 #SBATCH --output=/share/rcifdata/svanstroud/slurm_logs/slurm-%j.%x.out
