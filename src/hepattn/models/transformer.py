@@ -131,14 +131,16 @@ class EncoderLayer(nn.Module):
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
-        # handle first layer
+        # handle hybrid norm
         qkv_norm = hybrid_norm
         if depth == 0:
             hybrid_norm = False
-            value_residual = False
         attn_norm = norm if not hybrid_norm else None
         dense_post_norm = not hybrid_norm
+
+        # handle value residual
         attn_kwargs["value_residual"] = value_residual
+        attn_kwargs["is_first_layer"] = depth == 0
 
         self.dim = dim
         residual = partial(Residual, dim=dim, layer_scale=layer_scale, drop_path=drop_path)
