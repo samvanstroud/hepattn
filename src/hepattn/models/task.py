@@ -436,7 +436,7 @@ class RegressionTask(Task):
             # note these might be scaled features
             abs_err = (pred - target).abs()
             metrics[field + "_abs_res"] = torch.mean(abs_err)
-            metrics[field + "_abs_norm_res"] = torch.mean(abs_err / target)
+            metrics[field + "_abs_norm_res"] = torch.mean(abs_err / target.abs() + 1e-8)
         return metrics
 
 
