@@ -160,6 +160,8 @@ class MaskFormer(nn.Module):
         # Generate the queries that represent objects
         x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
         x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
+        # Add query positional encodings
+        x = self.add_query_posenc(x)
 
         # Do any pooling if desired
         if self.pooling is not None:
@@ -173,6 +175,9 @@ class MaskFormer(nn.Module):
 
             attn_masks = {}
             query_mask = None
+
+            # Re-add original embeddings (similar to SAM's prompt token re-addition)
+            x = self.re_add_positional_encodings(x)
 
             for task in self.tasks:
                 # Get the outputs of the task given the current embeddings and record them
@@ -219,19 +224,14 @@ class MaskFormer(nn.Module):
 
             self.attn_mask_logging(attn_mask, x, layer_index)     
 
-            # Add query positional encodings
-            x = self.add_query_posenc(x)
-
             if self.phi_analysis:
                 self.store_key_phi_info(x)
+            
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=x.get("key_valid")
             )
-
-            # Re-add original embeddings (similar to SAM's prompt token re-addition)
-            x = self.re_add_original_embeddings(x)
 
             # Unmerge the updated features back into the separate input types
             for input_name in input_names:
@@ -292,9 +292,7 @@ class MaskFormer(nn.Module):
         else:
             self.last_key_posenc = None
 
-
-
-    def re_add_original_embeddings(self, x: dict):
+    def re_add_positional_encodings(self, x: dict):
         # Re-add original query embeddings (similar to SAM's prompt token re-addition)
         if (self.query_posenc is not None) and (self.preserve_query_posenc):
             x["query_embed"] = x["query_embed"] + x["query_posenc"]
