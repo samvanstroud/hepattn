@@ -38,9 +38,9 @@ data:
   scale_dict_path: &scale_dict_path /share/gpu1/syw24/hepattn/src/hepattn/experiments/clic/configs/clic_var_transform.yaml
 
 trainer:
-  max_epochs: 10
+  max_epochs: 20
   accelerator: gpu
-  devices: 1
+  devices: 2
   precision: bf16-mixed
   gradient_clip_val: 0.1
   log_every_n_steps: 50
@@ -80,7 +80,7 @@ model:
   lrs_config:
     initial: 1e-5
     max: 5e-5
-    end: 1e-5
+    end: 2e-5
     pct_start: 0.05
     weight_decay: 0.01
     skip_scheduler: false
@@ -148,6 +148,7 @@ model:
         init_args:
           default_solver: scipy
           adaptive_solver: false
+          parallel_solver: true
 
       tasks:
         class_path: torch.nn.ModuleList
