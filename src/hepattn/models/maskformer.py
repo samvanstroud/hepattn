@@ -251,8 +251,7 @@ class MaskFormer(nn.Module):
 
         return outputs
     
-    def sort_attn_mask(self, attn_mask, x):
-        attn_mask_im = attn_mask[0].detach().cpu().clone().int()
+    def sort_attn_mask(self, attn_mask_im, x):
         key_sort_value_ = x.get(f"key_phi")
         key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
         attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
@@ -260,32 +259,46 @@ class MaskFormer(nn.Module):
         key_phi = x.get(f"key_phi").detach().cpu().numpy()  # [num_keys]
         key_phi_sorted = key_phi[0][key_sort_idx[0].cpu().numpy()]
         self.last_key_phi = key_phi_sorted
+        # sort queries
+        query_sort_value = x.get(f"query_phi")
+        query_sort_idx = torch.argsort(query_sort_value, axis=-1)
+        attn_mask_im = attn_mask_im.index_select(1, query_sort_idx[0].to(attn_mask_im.device))
+        # sort query phi for storing too
+        query_phi = x.get(f"query_phi").detach().cpu().numpy()  # [num_queries]
+        query_phi_sorted = query_phi[query_sort_idx.cpu().numpy()]
+        self.last_query_phi = query_phi_sorted
         return attn_mask_im
     
     def attn_mask_logging(self, attn_mask, x, layer_index):
         if (self.log_attn_mask
-            and (attn_mask is not None)
-            and (self.log_step % 10 == 0) or (not self.training)):
+            # and (attn_mask is not None)
+            and (self.log_step % 1000 == 0) or (not self.training)
+            ):
             if not hasattr(self, "attn_masks_to_log"):
                 self.attn_masks_to_log = {}
             if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
-                attn_mask_im = self.sort_attn_mask(attn_mask, x)
+                attn_mask_im = attn_mask[0].detach().cpu().clone().int()
+                attn_mask_im = self.sort_attn_mask(attn_mask_im, x)
                 self.attn_masks_to_log[layer_index] = {
                     "mask": attn_mask_im,
                     "step": self.log_step,
                     "layer": layer_index,
                 }
 
-    def final_attn_mask_logging(self, attn_mask, x, layer_index):
+    def final_attn_mask_logging(self, attn_logits, x, layer_index, threshold=0.1):
         if (self.log_attn_mask
-            and (attn_mask is not None)
-            and (self.log_step % 10 == 0) or (not self.training)):
+            and (attn_logits is not None)
+            and (self.log_step % 1000 == 0) or (not self.training)
+            ):
             if not hasattr(self, "final_attn_masks_to_log"):
                 self.final_attn_masks_to_log = {}
             if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
-                attn_mask_im = self.sort_attn_mask(attn_mask, x)
+                # sigmoid the attn mask to get the probability of the hit being attended to
+                attn_mask_im = attn_logits[0].detach().cpu().clone().sigmoid()
+                attn_mask_im = self.sort_attn_mask(attn_mask_im, x)
                 self.final_attn_masks_to_log[layer_index] = {
-                    "mask": attn_mask_im,
+                    "mask": attn_mask_im >= threshold,
+                    "probs": attn_mask_im,
                     "step": self.log_step,
                     "layer": layer_index,
                 }
@@ -393,7 +406,7 @@ class MaskFormer(nn.Module):
             
             if (self.log_attn_mask
             # and (attn_mask is not None)
-            and (self.log_step % 10 == 0) or (not self.training)
+            and (self.log_step % 1000 == 0) or (not self.training)
             ):
                 # store pred_idxs for each layer
                 self.log_pred_idxs[layer_name] = pred_idxs.detach().cpu().numpy()
