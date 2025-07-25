@@ -152,6 +152,24 @@ class PhiAnalysisLogger(Callback):
             query_phi_np = query_phi.cpu().numpy() if hasattr(query_phi, 'cpu') else query_phi
             query_phi_sel = query_phi_np[queries_to_process]
             diff_meanhit_query = cyclic_diff_vec(mean_phi, query_phi_sel)
+            # Log histogram of query_phi_sel
+            if logger is not None and hasattr(logger, 'experiment'):
+                fig, ax = plt.subplots(figsize=(8, 5))
+                try:
+                    ax.hist(query_phi_sel, bins=20, color='#FF6B6B', alpha=0.7, edgecolor='#C44D58', linewidth=1.2)
+                    ax.set_title(f'Distribution of Query Phi (selected queries) Layer {layer} Step {step}', fontsize=12, fontweight='bold', pad=15)
+                    ax.set_xlabel('Query Phi', fontsize=10)
+                    ax.set_ylabel('Count', fontsize=10)
+                    ax.set_xlim(-np.pi, np.pi)
+                    ax.grid(True, alpha=0.3, linestyle='--')
+                    ax.spines['top'].set_visible(False)
+                    ax.spines['right'].set_visible(False)
+                    logger.experiment.log_figure(figure_name=f"query_phi_hist_layer{layer}_step{step}", figure=fig, step=step)
+                except Exception as e:
+                    print(f"[PhiAnalysisLogger] Error creating query phi histogram: {e}")
+                finally:
+                    plt.close(fig)
+                    del fig
         if self.regressed_phi and self.queryPE:
             diff_regressed_query = cyclic_diff_vec(reg_phi_sel, query_phi_sel)
 
@@ -178,8 +196,6 @@ class PhiAnalysisLogger(Callback):
                     )
             else:
                 print(f"[PhiAnalysisLogger] Step {step} Layer {layer} - Average regressed-query phi diff: {avg_diff}")
-        else:
-            print("no diff_regressed_query")
 
         if self.queryPE and diff_meanhit_query is not None and len(diff_meanhit_query) > 0:
             avg_diff = np.mean(diff_meanhit_query)
@@ -189,8 +205,6 @@ class PhiAnalysisLogger(Callback):
                     )
             else:
                 print(f"[PhiAnalysisLogger] Step {step} Layer {layer} - Average meanhit-query phi diff: {avg_diff}")
-        else:
-            print("no diff_meanhit_query")
 
         if self.max_queries_to_log:
             for i, q in enumerate(queries_to_process[:self.max_queries_to_log]):

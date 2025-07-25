@@ -27,6 +27,7 @@ class MaskFormer(nn.Module):
         key_posenc: nn.Module | None = None,
         preserve_posenc: bool = False,
         phi_analysis: bool = False,
+        learnable_query_phi: bool = False,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object inference with attention-based decoding and optional encoder blocks.
@@ -81,7 +82,11 @@ class MaskFormer(nn.Module):
         self.key_posenc = key_posenc
         self.preserve_posenc = preserve_posenc
         self.phi_analysis = phi_analysis
-
+        self.learnable_query_phi = learnable_query_phi
+        if self.learnable_query_phi:
+            self.query_phi_param = nn.Parameter(
+                2 * torch.pi * (torch.arange(num_queries) / num_queries - 0.5)
+            )
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
@@ -319,11 +324,16 @@ class MaskFormer(nn.Module):
 
     def generate_positional_encodings(self, x: dict):
         if self.query_posenc is not None:
-            x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+            if self.learnable_query_phi:
+                # Use learnable parameter, expand to batch size
+                query_phi = self.query_phi_param
+            else:
+                query_phi = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+            x["query_phi"] = query_phi
             x["query_posenc"] = self.query_posenc(x)
             if self.phi_analysis:
                 self.last_query_phi = x["query_phi"].detach().cpu().numpy()
-                self.last_query_posenc = x["query_posenc"][0].cpu().numpy()
+                self.last_query_posenc = x["query_posenc"].detach().cpu().numpy()
         if self.key_posenc is not None:
             x["key_posenc"] = self.key_posenc(x)
             if self.phi_analysis:
