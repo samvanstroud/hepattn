@@ -4,10 +4,10 @@
 #SBATCH -p GPU
 #SBATCH --nodes=1
 #SBATCH --export=ALL
-#SBATCH --gres=gpu:a100:2
+#SBATCH --gres=gpu:l40s:2
 #SBATCH --ntasks-per-node=2        # must match number of devices
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=50G
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=40G
 #SBATCH --output=/share/rcifdata/svanstroud/slurm_logs/slurm-%j.%x.out
 
 # Comet variables

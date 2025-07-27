@@ -1,4 +1,4 @@
-name: clic_v0
+name: clic_v0_50epoch
 seed_everything: 42
 
 data:
@@ -27,7 +27,7 @@ data:
   test_path: /share/gpu1/syw24/dmitrii_clic/test_clic_fix.root
 
   # Number of events to include in each set
-  num_workers: 10
+  num_workers: 8
   num_train: -1
   num_test: -1
   num_val: 5000
