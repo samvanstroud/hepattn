@@ -38,7 +38,7 @@ data:
   scale_dict_path: &scale_dict_path /share/gpu1/syw24/hepattn/src/hepattn/experiments/clic/configs/clic_var_transform.yaml
 
 trainer:
-  max_epochs: 20
+  max_epochs: 50
   accelerator: gpu
   devices: 2
   precision: bf16-mixed
@@ -80,7 +80,7 @@ model:
   lrs_config:
     initial: 1e-5
     max: 5e-5
-    end: 2e-5
+    end: 1e-5
     pct_start: 0.05
     weight_decay: 0.01
     skip_scheduler: false
