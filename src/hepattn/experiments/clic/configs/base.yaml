@@ -1,4 +1,4 @@
-name: clic_v0_50epoch_lessLR
+name: CLIC_Pflow_FullDiceFocFix_only_dice_cost
 seed_everything: 42
 
 data:
@@ -27,7 +27,7 @@ data:
   test_path: /share/gpu1/syw24/dmitrii_clic/test_clic_fix.root
 
   # Number of events to include in each set
-  num_workers: 8
+  num_workers: 10
   num_train: -1
   num_test: -1
   num_val: 5000
@@ -38,9 +38,9 @@ data:
   scale_dict_path: &scale_dict_path /share/gpu1/syw24/hepattn/src/hepattn/experiments/clic/configs/clic_var_transform.yaml
 
 trainer:
-  max_epochs: 50
+  max_epochs: 10
   accelerator: gpu
-  devices: 2
+  devices: 1
   precision: bf16-mixed
   gradient_clip_val: 0.1
   log_every_n_steps: 50
@@ -53,7 +53,6 @@ trainer:
       project_name: hepattn-clic
 
   callbacks:
-    #- class_path: hepattn.callbacks.Compile
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint
@@ -75,14 +74,14 @@ trainer:
         refresh_rate: 50
 
 model:
-  optimizer: Lion
+  optimizer: AdamW
 
   lrs_config:
-    initial: 1e-5
-    max: 4e-5
-    end: 1e-6
+    initial: 1e-6
+    max: 1e-4
+    end: 1e-5
     pct_start: 0.05
-    weight_decay: 0.01
+    weight_decay: 0.03
     skip_scheduler: false
 
   mtl: false
@@ -113,13 +112,6 @@ model:
                   init_args:
                     input_size: 27
                     output_size: *dim
-                posenc:
-                  class_path: hepattn.models.posenc.FourierPositionEncoder
-                  init_args:
-                    input_name: node
-                    dim: *dim
-                    fields: [eta, phi]
-                    scale: 0.1
 
       encoder:
         class_path: hepattn.models.Encoder
@@ -128,7 +120,6 @@ model:
           dim: *dim
           attn_type: flash-varlen
           hybrid_norm: true
-          value_residual: true
           attn_kwargs:
             num_heads: 16
 
@@ -148,7 +139,7 @@ model:
         init_args:
           default_solver: scipy
           adaptive_solver: false
-          parallel_solver: true
+          adaptive_check_interval: 1000
 
       tasks:
         class_path: torch.nn.ModuleList
