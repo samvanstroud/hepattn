@@ -431,9 +431,9 @@ class RegressionTask(Task):
     def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         metrics = {}
         for field in self.fields:
+            # note these might be scaled features
             pred = preds[self.output_object + "_" + field][targets[self.target_object + "_valid"]]
             target = targets[self.target_object + "_" + field][targets[self.target_object + "_valid"]]
-            # note these might be scaled features
             abs_err = (pred - target).abs()
             metrics[field + "_abs_res"] = torch.mean(abs_err)
             metrics[field + "_abs_norm_res"] = torch.mean(abs_err / target.abs() + 1e-8)
@@ -1151,6 +1151,18 @@ class IncidenceBasedRegressionTask(RegressionTask):
         return {self.output_object + "_" + field: pflow_regr[..., i] for i, field in enumerate(self.fields)} | {
             self.output_object + "_proxy_" + field: proxy_regr[..., i] for i, field in enumerate(self.fields)
         }
+
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        metrics = super().metrics(preds, targets)
+        # Add metrics for the proxy regression
+        for field in self.fields:
+            # note these might be scaled features
+            pred = preds[self.output_object + "_proxy_" + field][targets[self.target_object + "_valid"]]
+            target = targets[self.target_object + "_" + field][targets[self.target_object + "_valid"]]
+            abs_err = (pred - target).abs()
+            metrics[field + "_proxy_abs_res"] = abs_err.mean()
+            metrics[field + "_proxy_abs_norm_res"] = torch.mean(abs_err / target.abs() + 1e-8)
+        return metrics
 
     def cost(self, outputs, targets) -> dict[str, Tensor]:
         eta_pos = self.fields.index("eta")
