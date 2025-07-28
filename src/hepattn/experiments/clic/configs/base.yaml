@@ -1,4 +1,4 @@
-name: clic_v0_50epoch
+name: clic_v0_50epoch_lessLR
 seed_everything: 42
 
 data:
@@ -79,8 +79,8 @@ model:
 
   lrs_config:
     initial: 1e-5
-    max: 5e-5
-    end: 1e-5
+    max: 4e-5
+    end: 1e-6
     pct_start: 0.05
     weight_decay: 0.01
     skip_scheduler: false
