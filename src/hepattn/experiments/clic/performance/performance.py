@@ -19,6 +19,7 @@ from .reader import (
 
 
 class NetworkType(Enum):
+    PANDORA = "pandora"
     HGPFLOW = "hgpflow"
     HGPFLOW_TARGET = "hgpflow_target"
     MLPLF = "mlpf"
@@ -88,9 +89,9 @@ class Performance:
         config: PerformanceConfig,
     ):
         self.config = config
-        self.truth_dict = load_truth_clic(config.truth_path)
-
+        self.truth_dict, pandora_dict = load_truth_clic(config.truth_path)
         self.data = {}
+
         for net_config in config.networks:
             net_name = net_config.name
             pred_path = net_config.path
@@ -118,6 +119,29 @@ class Performance:
                         threshold=net_config.ind_threshold,
                         num_events=num_events,
                     )
+        # HACK: add pandora dict to data and network configs  # noqa: FIX004
+        self.data["pandora"] = pandora_dict
+        self.config.networks.append(
+            NetworkConfig(
+                name="pandora",
+                path=config.truth_path,
+                network_type=NetworkType.PANDORA,
+            )
+        )
+
+        # Initialize flags
+        self._events_reordered: bool
+        self._jets_computed: bool
+        self._jets_matched: bool
+        self._particles_matched: bool
+        self.n_events: int = 0
+        self.reset()
+
+    def reset(self):
+        self._events_reordered = False
+        self._jets_computed = False
+        self._jets_matched = False
+        self._particles_matched = False
 
     def reorder_and_find_intersection(self):
         self.common_event_numbers = self.truth_dict["event_number"]
@@ -149,8 +173,10 @@ class Performance:
                 total=len(net_dict.keys()),
             ):
                 net_dict[var] = net_dict[var][positions]
+        self.n_events = len(self.common_event_numbers)
 
     def compute_jets(self, radius=0.7, algo="genkt", n_procs=0):
+        assert self._events_reordered, "Events must be reordered before computing jets."
         jet_obj = JetHelper(radius=radius, algo=algo)
 
         print("truth")
@@ -164,31 +190,21 @@ class Performance:
             n_procs=n_procs,
         )
 
-        print("pandora")
-        self.truth_dict["pandora_jets"] = compute_jets(
-            jet_obj,
-            self.truth_dict["pandora_pt"],
-            self.truth_dict["pandora_eta"],
-            self.truth_dict["pandora_phi"],
-            self.truth_dict["pandora_e"],
-            fourth_name="E",
-            n_procs=n_procs,
-        )
-
         for net_config in self.config.networks:
             net_name = net_config.name
             net_dict = self.data[net_name]
+            net_type = net_config.network_type
             print(f"Computing jets for {net_name}...")
             net_dict["jets"] = compute_jets(
                 jet_obj,
                 net_dict["pt"],
                 net_dict["eta"],
                 net_dict["phi"],
-                net_dict["mass"],
-                fourth_name="mass",
+                net_dict["mass"] if net_type != NetworkType.PANDORA else net_dict["e"],
+                fourth_name="mass" if net_type != NetworkType.PANDORA else "E",
                 n_procs=n_procs,
             )
-            if net_config.network_type in {NetworkType.HGPFLOW, NetworkType.MPFLOW}:
+            if net_type in {NetworkType.HGPFLOW, NetworkType.MPFLOW}:
                 print(f"Computing proxy jets for {net_name}...")
                 net_dict["proxy_jets"] = compute_jets(
                     jet_obj,
@@ -204,14 +220,16 @@ class Performance:
         self,
     ):
         """Match truth jets with the PF jets."""
-        self.truth_dict["matched_pandora_jets"] = match_jets_all_ev(self.truth_dict["self.truth_jets"], self.truth_dict["pandora_jets"])
+        assert self._jets_computed, "Jets must be computed before matching."
+
         for net_dict in self.data.values():
-            net_dict["matched_jets"] = match_jets_all_ev(self.truth_dict["self.truth_jets"], net_dict["jets"])
+            net_dict["matched_jets"] = match_jets_all_ev(self.truth_dict["truth_jets"], net_dict["jets"])
             if "proxy_jets" in net_dict:
-                net_dict["matched_proxy_jets"] = match_jets_all_ev(self.truth_dict["self.truth_jets"], net_dict["proxy_jets"])
+                net_dict["matched_proxy_jets"] = match_jets_all_ev(self.truth_dict["truth_jets"], net_dict["proxy_jets"])
 
     def hung_match_particles(self, flatten=False, return_unmatched=False):
         """Match truth particles with the PF particles."""
+        assert self._events_reordered, "Events must be reordered before matching particles."
         for net_config in self.config.networks:
             net_name = net_config.name
             net_dict = self.data[net_name]
@@ -248,20 +266,45 @@ class Performance:
                 flatten,
                 return_unmatched,
             )
-        if "pandora_pt" in self.truth_dict:
-            self.truth_dict["matched_pandora_particles"] = match_particles_all_ev(
-                (
-                    self.truth_dict["particle_pt"],
-                    self.truth_dict["particle_eta"],
-                    self.truth_dict["particle_phi"],
-                    self.truth_dict["particle_class"],
-                ),
-                (
-                    self.truth_dict["pandora_pt"],
-                    self.truth_dict["pandora_eta"],
-                    self.truth_dict["pandora_phi"],
-                    self.truth_dict["pandora_class"],
-                ),
-                flatten,
-                return_unmatched,
+
+    def get_met_ht(self, pt, phi):
+        """Calculate missing transverse energy (MET) and total transverse energy (HT)."""
+        met_x = np.zeros(self.n_events)
+        met_y = np.zeros(self.n_events)
+        met = np.zeros(self.n_events)
+        ht = np.zeros(self.n_events)
+        for i in range(self.n_events):
+            met_x[i] = -np.sum(pt[i] * np.cos(phi[i]))
+            met_y[i] = -np.sum(pt[i] * np.sin(phi[i]))
+            met[i] = np.sqrt(met_x[i] ** 2 + met_y[i] ** 2)
+            ht[i] = np.sum(pt[i])
+        return met_x, met_y, met, ht
+
+    def calculate_event_features(self):
+        """Calculate event features like MET and HT."""
+        assert self._events_reordered, "Events must be reordered before calculating event features."
+        # Truth MET and HT
+        truth_met_x, truth_met_y, truth_met, truth_ht = self.get_met_ht(
+            self.truth_dict["particle_pt"],
+            self.truth_dict["particle_phi"],
+        )
+        self.truth_dict["met_x"] = truth_met_x
+        self.truth_dict["met_y"] = truth_met_y
+        self.truth_dict["met"] = truth_met
+        self.truth_dict["ht"] = truth_ht
+
+        # Networks MET and HT
+        for net_config in self.config.networks:
+            net_name = net_config.name
+            met_x, met_y, met, ht = self.get_met_ht(
+                self.data[net_name]["pt"],
+                self.data[net_name]["phi"],
             )
+            self.data[net_name]["met_x"] = met_x
+            self.data[net_name]["met_y"] = met_y
+            self.data[net_name]["met"] = met
+            self.data[net_name]["ht"] = ht
+            self.data[net_name]["met_x_res"] = (met_x - self.truth_dict["met_x"]) / (self.truth_dict["met_x"] + 1e-8)
+            self.data[net_name]["met_y_res"] = (met_y - self.truth_dict["met_y"]) / (self.truth_dict["met_y"] + 1e-8)
+            self.data[net_name]["met_res"] = (met - self.truth_dict["met"]) / (self.truth_dict["met"] + 1e-8)
+            self.data[net_name]["ht_res"] = (ht - self.truth_dict["ht"]) / (self.truth_dict["ht"] + 1e-8)

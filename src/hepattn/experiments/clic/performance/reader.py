@@ -187,7 +187,14 @@ def load_truth_clic(truth_path, event_number_offset=0):
     else:
         truth_dict["event_number"] = np.arange(len(truth_dict["particle_pt"])) + event_number_offset
 
-    return truth_dict
+    pandora_dict = {}
+    for key in list(truth_dict.keys()):
+        if key.startswith("pandora_"):
+            new_key = key.replace("pandora_", "")
+            pandora_dict[new_key] = truth_dict.pop(key)
+    pandora_dict["event_number"] = truth_dict["event_number"].copy()
+
+    return truth_dict, pandora_dict
 
 
 def load_hgpflow_target(target_path, drop_res=True, num_events=None, event_number_offset=0):
