@@ -174,6 +174,7 @@ class Performance:
             ):
                 net_dict[var] = net_dict[var][positions]
         self.n_events = len(self.common_event_numbers)
+        self._events_reordered = True
 
     def compute_jets(self, radius=0.7, algo="genkt", n_procs=0):
         assert self._events_reordered, "Events must be reordered before computing jets."
@@ -215,6 +216,7 @@ class Performance:
                     fourth_name="mass",
                     n_procs=n_procs,
                 )
+        self._jets_computed = True
 
     def hung_match_jets(
         self,
@@ -226,6 +228,7 @@ class Performance:
             net_dict["matched_jets"] = match_jets_all_ev(self.truth_dict["truth_jets"], net_dict["jets"])
             if "proxy_jets" in net_dict:
                 net_dict["matched_proxy_jets"] = match_jets_all_ev(self.truth_dict["truth_jets"], net_dict["proxy_jets"])
+        self._jets_matched = True
 
     def hung_match_particles(self, flatten=False, return_unmatched=False):
         """Match truth particles with the PF particles."""
@@ -266,8 +269,9 @@ class Performance:
                 flatten,
                 return_unmatched,
             )
+        self._particles_matched = True
 
-    def get_met_ht(self, pt, phi):
+    def compute_met_ht(self, pt, phi):
         """Calculate missing transverse energy (MET) and total transverse energy (HT)."""
         met_x = np.zeros(self.n_events)
         met_y = np.zeros(self.n_events)
@@ -280,31 +284,119 @@ class Performance:
             ht[i] = np.sum(pt[i])
         return met_x, met_y, met, ht
 
-    def calculate_event_features(self):
-        """Calculate event features like MET and HT."""
+    def compute_nconst(self, pt):
+        """Calculate the number of constituents."""
+        nconst = np.zeros(self.n_events)
+        for i in range(self.n_events):
+            nconst[i] = len(pt[i])
+        return nconst
+
+    def compute_event_features(self):
+        """Calculate event features."""
         assert self._events_reordered, "Events must be reordered before calculating event features."
-        # Truth MET and HT
-        truth_met_x, truth_met_y, truth_met, truth_ht = self.get_met_ht(
+        # Truth features
+        truth_met_x, truth_met_y, truth_met, truth_ht = self.compute_met_ht(
             self.truth_dict["particle_pt"],
             self.truth_dict["particle_phi"],
         )
+        truth_nconst = self.compute_nconst(self.truth_dict["particle_pt"])
         self.truth_dict["met_x"] = truth_met_x
         self.truth_dict["met_y"] = truth_met_y
         self.truth_dict["met"] = truth_met
         self.truth_dict["ht"] = truth_ht
+        self.truth_dict["nconst"] = truth_nconst
 
-        # Networks MET and HT
+        # Networks features
         for net_config in self.config.networks:
             net_name = net_config.name
-            met_x, met_y, met, ht = self.get_met_ht(
+            met_x, met_y, met, ht = self.compute_met_ht(
                 self.data[net_name]["pt"],
                 self.data[net_name]["phi"],
             )
+            nconst = self.compute_nconst(self.data[net_name]["pt"])
             self.data[net_name]["met_x"] = met_x
             self.data[net_name]["met_y"] = met_y
             self.data[net_name]["met"] = met
             self.data[net_name]["ht"] = ht
-            self.data[net_name]["met_x_res"] = (met_x - self.truth_dict["met_x"]) / (self.truth_dict["met_x"] + 1e-8)
-            self.data[net_name]["met_y_res"] = (met_y - self.truth_dict["met_y"]) / (self.truth_dict["met_y"] + 1e-8)
-            self.data[net_name]["met_res"] = (met - self.truth_dict["met"]) / (self.truth_dict["met"] + 1e-8)
-            self.data[net_name]["ht_res"] = (ht - self.truth_dict["ht"]) / (self.truth_dict["ht"] + 1e-8)
+            self.data[net_name]["nconst"] = nconst
+            for var in ["met_x", "met_y", "met", "ht", "nconst"]:
+                if var == "nconst":
+                    self.data[net_name][f"{var}_res"] = self.data[net_name][var] - self.truth_dict[var]
+                else:
+                    self.data[net_name][f"{var}_res"] = (self.data[net_name][var] - self.truth_dict[var]) / (
+                        self.truth_dict[var] + 1e-8
+                    )  # Avoid division by zero
+
+    def compute_jet_residual_dict(self, ref_jets, reco_jets, dr_cut=0.1, leading_n_jets=999, pt_min=10, eta_max=2.5):
+        """Args:
+        matched_jets: {name: (truth, reco), ...].
+        """
+        residual_dict = {
+            "pt": [],
+            "pt_rel": [],
+            "eta": [],
+            "phi": [],
+            "dR": [],
+            "ref_pt": [],
+            "ref_eta": [],
+            "nconst": [],
+            "e": [],
+            "e_rel": [],
+            "ref_e": [],
+        }
+        ref_count = 0
+        matched_count = 0
+        for ev_i in range(len(ref_jets)):
+            ref_jets_ev, reco_jets_ev = ref_jets[ev_i], reco_jets[ev_i]
+            for j_i, (ref_j, reco_j) in enumerate(zip(ref_jets_ev, reco_jets_ev, strict=False)):
+                dr = ref_j.delta_r(reco_j)
+                if dr < dr_cut and ref_j.pt > pt_min and abs(ref_j.eta) < eta_max:
+                    residual_dict["pt"].append(reco_j.pt - ref_j.pt)
+                    residual_dict["pt_rel"].append(residual_dict["pt"][-1] / ref_j.pt)
+                    residual_dict["e"].append(reco_j.e - ref_j.e)
+                    residual_dict["e_rel"].append(residual_dict["e"][-1] / ref_j.e)
+                    residual_dict["eta"].append(reco_j.eta - ref_j.eta)
+                    residual_dict["phi"].append(reco_j.phi - ref_j.phi)
+                    residual_dict["dR"].append(dr)
+                    residual_dict["ref_pt"].append(ref_j.pt)
+                    residual_dict["ref_eta"].append(ref_j.eta)
+                    residual_dict["ref_e"].append(ref_j.e)
+                    residual_dict["nconst"].append(reco_j.n_constituents - ref_j.n_constituents)
+                    matched_count += 1
+                ref_count += 1
+
+                if j_i == leading_n_jets - 1:
+                    break
+
+        f_matched = matched_count / ref_count
+        residual_dict["f_matched"] = f_matched
+
+        for key in residual_dict:
+            for var in residual_dict[key]:
+                residual_dict[key][var] = np.array(residual_dict[key][var])
+
+        return residual_dict
+
+    def compute_jet_res_features(self, dr_cut=0.1, leading_n_jets=999, pt_min=10, eta_max=2.5):
+        assert self._jets_matched, "Jets must be matched before computing residuals."
+        """Calculate jet residual features."""
+        for net in self.config.networks:
+            net_name = net.name
+            net_type = net.network_type
+            self.data[net_name]["jet_residuals"] = self.compute_jet_residual_dict(
+                self.data[net_name]["matched_jets"][0],
+                self.data[net_name]["matched_jets"][1],
+                dr_cut=dr_cut,
+                leading_n_jets=leading_n_jets,
+                pt_min=pt_min,
+                eta_max=eta_max,
+            )
+            if net_type in {NetworkType.HGPFLOW, NetworkType.MPFLOW}:
+                self.data[net_name]["proxy_jet_residuals"] = self.compute_jet_residual_dict(
+                    self.data[net_name]["matched_proxy_jets"][0],
+                    self.data[net_name]["matched_proxy_jets"][1],
+                    dr_cut=dr_cut,
+                    leading_n_jets=leading_n_jets,
+                    pt_min=pt_min,
+                    eta_max=eta_max,
+                )
