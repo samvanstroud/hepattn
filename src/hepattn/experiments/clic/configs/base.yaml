@@ -139,7 +139,7 @@ model:
         init_args:
           default_solver: scipy
           adaptive_solver: false
-          adaptive_check_interval: 1000
+          parallel_solver: true
 
       tasks:
         class_path: torch.nn.ModuleList
