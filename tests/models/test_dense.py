@@ -1,4 +1,5 @@
-import pytest import torch
+import pytest
+import torch
 from torch import nn
 
 from hepattn.models import Dense  # Update the import to match your module's filename
