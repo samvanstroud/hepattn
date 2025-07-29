@@ -184,6 +184,15 @@ class MaskFormer(nn.Module):
                     x["class_probs"] = task_outputs[task.outputs[0]].detach()
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
+                # Store attention masks from hit mask tasks for use by other tasks
+                #TODO add here if phialignment task in tasks
+                if isinstance(task, ObjectHitMaskTask):
+                    if task.outputs and task.outputs[0] in task_outputs:
+                        attn_logits = task_outputs[task.outputs[0]]
+                        attn_mask = attn_logits.sigmoid() >= 0.1
+                        x[f"{task.input_hit}_attn_logits"] = attn_logits
+                        x[f"{task.input_hit}_attn_mask"] = attn_mask
+
                 # Here we check if each task has an attention mask to contribute, then after
                 # we fill in any attention masks for any features that did not get an attention mask
                 task_attn_masks = task.attn_mask(task_outputs)
@@ -307,6 +316,25 @@ class MaskFormer(nn.Module):
                     "step": self.log_step,
                     "layer": layer_index,
                 }
+    # def final_attn_mask_logging(self, attn_logits, attn_mask, x, layer_index, threshold=0.1):
+    #     if (self.log_attn_mask
+    #         and (attn_logits is not None)
+    #         and (self.log_step % 1000 == 0) or (not self.training)
+    #         ):
+    #         if not hasattr(self, "final_attn_masks_to_log"):
+    #             self.final_attn_masks_to_log = {}
+    #         if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
+    #             # sigmoid the attn mask to get the probability of the hit being attended to
+    #             attn_logits_im = attn_logits[0].detach().cpu().clone()
+    #             attn_mask_im = attn_mask[0].detach().cpu().clone()
+    #             attn_mask_im = self.sort_attn_mask(attn_mask_im, x)
+    #             attn_logits_im = self.sort_attn_mask(attn_logits_im, x)
+    #             self.final_attn_masks_to_log[layer_index] = {
+    #                 "mask": attn_mask_im,
+    #                 "probs": attn_logits_im,
+    #                 "step": self.log_step,
+    #                 "layer": layer_index,
+    #             }
 
     def store_key_phi_info(self, x: dict):
         self.last_key_phi =x['key_phi'][0].cpu().numpy()  
