@@ -98,6 +98,32 @@ def test_value_residuals():
     assert not torch.isnan(out).any()
 
 
+# @pytest.mark.gpu
+def test_register_tokens():
+    """Test register tokens functionality."""
+    batch_size, seq_len, dim = 8, 100, 128
+    num_register_tokens = 5
+
+    # Test with register tokens - they should be removed by default
+    model = Encoder(num_layers=3, dim=dim, num_register_tokens=num_register_tokens).cuda()
+    x = torch.randn(batch_size, seq_len, dim, device="cuda")
+    out = model(x)
+
+    # Output should be same size as input (register tokens removed)
+    assert out.shape == x.shape
+    assert out.sum() != 0
+    assert not torch.isnan(out).any()
+
+    # Test without register tokens (should be unchanged)
+    model_no_reg = Encoder(num_layers=3, dim=dim, num_register_tokens=None).cuda()
+    out_no_reg = model_no_reg(x)
+    assert out_no_reg.shape == x.shape
+
+    # Test incompatibility with window attention
+    with pytest.raises(AssertionError, match="Register tokens are not compatible with window attention"):
+        Encoder(num_layers=3, dim=dim, num_register_tokens=num_register_tokens, window_size=10)
+
+
 @pytest.mark.parametrize(
     ("attn_type", "attn_type_new"),
     [
