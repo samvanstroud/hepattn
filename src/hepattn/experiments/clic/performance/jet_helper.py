@@ -1,6 +1,7 @@
 import os
 import sys
 from contextlib import contextmanager
+from pathlib import Path
 
 import fastjet as fj
 import numpy as np
@@ -104,7 +105,7 @@ def stdout_redirected(to=os.devnull):
         sys.stdout = os.fdopen(fd, "w")  # Python writes to fd
 
     with os.fdopen(os.dup(fd), "w") as old_stdout:
-        with open(to, "w") as file:
+        with Path(to).open(to, "w") as file:
             _redirect_stdout(to=file)
         try:
             yield  # allow code to be run with the redirected stdout
