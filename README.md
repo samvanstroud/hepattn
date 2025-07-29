@@ -1,4 +1,4 @@
-# hep-attn
+# hepattn
 
 We present a general end-to-end ML approach for particle physics reconstruction by adapting cutting-edge object detection techniques.
 We demonstrate that a single encoder-decoder transformer can solve many different reconstruction problems that traditionally required specialised, task-specific approaches for each domain.
