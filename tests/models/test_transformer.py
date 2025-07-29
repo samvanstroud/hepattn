@@ -105,8 +105,8 @@ def test_register_tokens():
     num_register_tokens = 5
 
     # Test with register tokens - they should be removed by default
-    model = Encoder(num_layers=3, dim=dim, num_register_tokens=num_register_tokens).cuda()
-    x = torch.randn(batch_size, seq_len, dim, device="cuda")
+    model = Encoder(num_layers=3, dim=dim, num_register_tokens=num_register_tokens)
+    x = torch.randn(batch_size, seq_len, dim)
     out = model(x)
 
     # Output should be same size as input (register tokens removed)
@@ -115,7 +115,7 @@ def test_register_tokens():
     assert not torch.isnan(out).any()
 
     # Test without register tokens (should be unchanged)
-    model_no_reg = Encoder(num_layers=3, dim=dim, num_register_tokens=None).cuda()
+    model_no_reg = Encoder(num_layers=3, dim=dim, num_register_tokens=None)
     out_no_reg = model_no_reg(x)
     assert out_no_reg.shape == x.shape
 
