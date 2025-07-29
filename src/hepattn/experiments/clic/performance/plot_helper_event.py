@@ -5,9 +5,11 @@ from .performance import Performance
 from .style_sheet import FIG_DPI, FIG_H_1ROW, FIG_W
 from .utils import custom_hist_v1, custom_hist_v2
 
+DEFAULT_PT_BINS = np.array([0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200])
+
 
 class PlotEventHelper:
-    def __init__(self, perf: Performance, plot_proxy=True, labels=None, style_dict=None):
+    def __init__(self, perf: Performance, labels=None, style_dict=None):
         self.perf = perf
         if labels is None:
             self.labels = {name: name for name in perf.network_names}
