@@ -9,7 +9,7 @@ from tqdm import tqdm
 from .helper_dicts import class_mass_dict, pdgid_class_dict
 
 
-def load_pred_hgpflow(pred_path, threshold=0.5, num_events=None):
+def load_pred_hgpflow(pred_path, threshold=0.5, num_events=None, return_proxy=False):
     tree = uproot.open(pred_path)["event_tree"]
 
     vars_to_load = ["pred_ind", "proxy_pt", "proxy_eta", "proxy_phi", "hgpflow_pt", "hgpflow_eta", "hgpflow_phi", "hgpflow_class"]
@@ -38,11 +38,19 @@ def load_pred_hgpflow(pred_path, threshold=0.5, num_events=None):
 
         hgpflow_dict["charge"][i] = np.full_like(hgpflow_dict["pt"][i], 0)
         hgpflow_dict["charge"][i][cls <= 2] = 1
-
+    if return_proxy:
+        return {
+            "pt": hgpflow_dict["proxy_pt"],
+            "eta": hgpflow_dict["proxy_eta"],
+            "phi": hgpflow_dict["proxy_phi"],
+            "class": hgpflow_dict["class"],
+            "mass": hgpflow_dict["mass"],
+            "event_number": hgpflow_dict["event_number"],
+        }
     return hgpflow_dict
 
 
-def load_pred_mpflow(pred_path, threshold=0.5, num_events=None):
+def load_pred_mpflow(pred_path, threshold=0.5, num_events=None, return_proxy=False):
     tree = uproot.open(pred_path)["event_tree"]
 
     vars_to_load = ["pred_ind", "proxy_pt", "proxy_eta", "proxy_phi", "mpflow_pt", "mpflow_eta", "mpflow_phi", "mpflow_class"]
@@ -68,7 +76,15 @@ def load_pred_mpflow(pred_path, threshold=0.5, num_events=None):
 
         mpflow_dict["charge"][i] = np.full_like(mpflow_dict["pt"][i], 0)
         mpflow_dict["charge"][i][cls <= 2] = 1
-
+    if return_proxy:
+        return {
+            "pt": mpflow_dict["proxy_pt"],
+            "eta": mpflow_dict["proxy_eta"],
+            "phi": mpflow_dict["proxy_phi"],
+            "class": mpflow_dict["class"],
+            "mass": mpflow_dict["mass"],
+            "event_number": mpflow_dict["event_number"],
+        }
     return mpflow_dict
 
 

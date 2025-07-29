@@ -46,6 +46,8 @@ def custom_hist_v1(ax, vals, label_length=-1, metrics="mean std iqr", f=None, **
     hist_kwargs["label"] += f" IQR={iqr:.3f}"
     if f is not None:
         hist_kwargs["label"] += f", $f$={f:.3f})"
+    else:
+        hist_kwargs["label"] += ")"
 
     ax.hist(vals, **hist_kwargs)
 
