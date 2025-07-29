@@ -48,7 +48,6 @@ def test_nested_jagged_tensor():
     assert torch.all(output != 0), "Output should not be all zeros"
 
 
-
 @pytest.mark.gpu
 def test_compile_gpu():
     model = Dense(input_size=10)
@@ -59,6 +58,7 @@ def test_compile_gpu():
     output = model(x)
     assert output.shape == (5, 10), "Output shape should match batch size and output size"
     assert torch.all(output != 0), "Output should not be all zeros"
+
 
 @pytest.mark.gpu
 def test_compile_gpu_nested_jagged_tensor():
