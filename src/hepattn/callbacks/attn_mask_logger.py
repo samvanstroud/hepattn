@@ -10,15 +10,47 @@ class AttnMaskLogger(Callback):
         fig, ax = plt.subplots(constrained_layout=True, dpi=300)
         cmap = ListedColormap(["#002b7f", "#ffff33"])  # blue for 0, yellow for 1
         im = ax.imshow(mask.numpy().astype(int), aspect="auto", cmap=cmap, vmin=0, vmax=1, interpolation="nearest")
+        # Flip y-axis so lowest phi is at the bottom
+        ax.invert_yaxis()
         # Add colorbar with clear labels
         cbar = plt.colorbar(im, ax=ax, ticks=[0, 1])
         cbar.set_label("Attention Mask", rotation=270, labelpad=15)
         cbar.ax.set_yticklabels(["Masked (0)", "Used in Attention (1)"])
         # Add title with step and layer info
         ax.set_title(f"Attention Mask - Step {step}, Layer {layer}")
-        ax.set_xlabel("Input Constituents")
-        ax.set_ylabel("Queries")
+        # Add arrows to axis labels to indicate phi direction
+        ax.set_xlabel("Hits (→ increasing φ)")
+        ax.set_ylabel("Queries (→ increasing φ)")
         # Log directly to Comet
+        logger = getattr(pl_module, "logger", None)
+        if logger is not None and hasattr(logger, "experiment"):
+            logger.experiment.log_figure(
+                figure_name=f"{prefix}_step{step}_layer{layer}",
+                figure=fig,
+                step=step
+            )
+        plt.close(fig)
+        
+    def _log_attention_weights(self, pl_module, weights, step, layer, prefix="local_ca_weights"):
+        """Helper method to create and log attention weights figures."""
+        import numpy as np
+        import torch
+        fig, ax = plt.subplots(constrained_layout=True, dpi=300)
+        # Ensure weights is a numpy float array
+        if isinstance(weights, torch.Tensor):
+            weights_np = weights.detach().cpu().float().numpy()
+        elif isinstance(weights, np.ndarray):
+            weights_np = weights.astype(float)
+        else:
+            weights_np = np.array(weights, dtype=float)
+        im = ax.imshow(weights_np, aspect="auto", cmap="viridis", interpolation="nearest")
+        # Flip y-axis so lowest phi is at the bottom
+        ax.invert_yaxis()
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label("Attention Weights", rotation=270, labelpad=15)
+        # Add arrows to axis labels to indicate phi direction
+        ax.set_xlabel("Hits (→ increasing φ)")
+        ax.set_ylabel("Queries (→ increasing φ)")
         logger = getattr(pl_module, "logger", None)
         if logger is not None and hasattr(logger, "experiment"):
             logger.experiment.log_figure(
