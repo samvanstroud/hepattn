@@ -276,7 +276,7 @@ class MaskFormer(nn.Module):
         # sort queries
         query_sort_value = x.get(f"query_phi")
         query_sort_idx = torch.argsort(query_sort_value, axis=-1)
-        attn_mask_im = attn_mask_im.index_select(1, query_sort_idx[0].to(attn_mask_im.device))
+        attn_mask_im = attn_mask_im.index_select(0, query_sort_idx.to(attn_mask_im.device))
         # sort query phi for storing too
         query_phi = x.get(f"query_phi").detach().cpu().numpy()  # [num_queries]
         query_phi_sorted = query_phi[query_sort_idx.cpu().numpy()]
