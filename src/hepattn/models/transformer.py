@@ -1,6 +1,7 @@
 from functools import partial
 
 import torch
+from flash_attn.bert_padding import pad_input, unpad_input
 from torch import Tensor, nn
 from torch.nn.attention.flex_attention import create_block_mask, create_mask
 
@@ -218,6 +219,20 @@ class Encoder(nn.Module):
 
         self.layers = torch.nn.ModuleList([EncoderLayer(dim=dim, depth=i, **layer_kwargs) for i in range(num_layers)])
 
+    def _unpad_for_flash_varlen(self, x: Tensor, kv_mask: Tensor) -> tuple[Tensor, dict]:
+        """Unpad input for flash-varlen attention and return unpadded tensor and state."""
+        x_flat, indices, cu_seqlens, max_seqlen, _ = unpad_input(x, kv_mask.int())
+        varlen_kwargs = {"indices": indices, "cu_seqlens": cu_seqlens, "max_seqlen": max_seqlen, "batch_size": x.shape[0]}
+        # x_flat is now a 2D tensor (total_valid_tokens, dim)
+        # We need to make it look like a batch of sequences for the rest of the processing
+        x_unpadded = x_flat.unsqueeze(0)  # (1, total_valid_tokens, dim)
+        return x_unpadded, varlen_kwargs
+
+    def _repad_from_flash_varlen(self, x: Tensor, varlen_kwargs: dict) -> Tensor:
+        """Repad output from flash-varlen attention."""
+        # x is currently (1, total_valid_tokens, dim), flatten to (total_valid_tokens, dim) before repadding
+        return pad_input(x.squeeze(0), varlen_kwargs["indices"], varlen_kwargs["batch_size"], varlen_kwargs["max_seqlen"])
+
     def set_backend(self, attn_type: str):
         self.attn_type = attn_type
         layer: EncoderLayer
@@ -227,6 +242,7 @@ class Encoder(nn.Module):
     def forward(self, x: Tensor, x_sort_value: Tensor | None = None, **kwargs) -> Tensor:
         # If value to sort on is provided, use it to sort the tokens
         # We don't need to use the stable sort assuming that the sort values are unique
+        x_sort_idx = None
         if x_sort_value is not None:
             x_sort_idx = torch.argsort(x_sort_value, axis=-1)
             x = torch.gather(x, -2, x_sort_idx.unsqueeze(-1).expand_as(x))
@@ -241,6 +257,13 @@ class Encoder(nn.Module):
             if (kv_mask := kwargs.get("kv_mask")) is not None:
                 register_mask = torch.full((1, self.num_register_tokens), True, device=kv_mask.device, dtype=kv_mask.dtype).expand(batch_size, -1)
                 kwargs["kv_mask"] = torch.cat([register_mask, kv_mask], dim=1)
+
+        # Handle flash-varlen attention unpadding at encoder level
+        varlen_kwargs = None
+        if self.attn_type == "flash-varlen" and kwargs.get("kv_mask") is not None:
+            kv_mask = kwargs["kv_mask"]
+            x, varlen_kwargs = self._unpad_for_flash_varlen(x, kv_mask)
+            kwargs["varlen_kwargs"] = varlen_kwargs
 
         # Initialise sliding window mask
         if self.mask_mod is None and self.attn_type != "flash" and self.window_size:
@@ -271,6 +294,10 @@ class Encoder(nn.Module):
         if self.attn_type == "flash" and self.window_wrap:
             x = x[:, self.window_size // 2 : -self.window_size // 2]
 
+        # Repad sequence if flash-varlen attention is used
+        if varlen_kwargs is not None:
+            x = self._repad_from_flash_varlen(x, varlen_kwargs)
+
         # Remove register tokens
         if self.register_tokens is not None:
             x = x[:, self.num_register_tokens :]
@@ -278,7 +305,7 @@ class Encoder(nn.Module):
                 kwargs["kv_mask"] = kv_mask[:, self.num_register_tokens :]
 
         # If we sorted the tokens, undo the sorting
-        if x_sort_value is not None:
+        if x_sort_value is not None and x_sort_idx is not None:
             x_unsort_idx = torch.argsort(x_sort_idx, axis=-1)
             x = torch.gather(x, -2, x_unsort_idx.unsqueeze(-1).expand_as(x))
 
