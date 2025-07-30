@@ -1,7 +1,9 @@
 # ruff: noqa: FIX004
 
 import gc
+from pathlib import Path
 
+import awkward as ak
 import numpy as np
 import uproot
 from tqdm import tqdm
@@ -9,7 +11,7 @@ from tqdm import tqdm
 from .helper_dicts import class_mass_dict, pdgid_class_dict
 
 
-def load_pred_hgpflow(pred_path, threshold=0.5, num_events=None):
+def load_pred_hgpflow(pred_path, threshold=0.5, num_events=None, return_proxy=False):
     tree = uproot.open(pred_path)["event_tree"]
 
     vars_to_load = ["pred_ind", "proxy_pt", "proxy_eta", "proxy_phi", "hgpflow_pt", "hgpflow_eta", "hgpflow_phi", "hgpflow_class"]
@@ -38,11 +40,19 @@ def load_pred_hgpflow(pred_path, threshold=0.5, num_events=None):
 
         hgpflow_dict["charge"][i] = np.full_like(hgpflow_dict["pt"][i], 0)
         hgpflow_dict["charge"][i][cls <= 2] = 1
-
+    if return_proxy:
+        return {
+            "pt": hgpflow_dict["proxy_pt"],
+            "eta": hgpflow_dict["proxy_eta"],
+            "phi": hgpflow_dict["proxy_phi"],
+            "class": hgpflow_dict["class"],
+            "mass": hgpflow_dict["mass"],
+            "event_number": hgpflow_dict["event_number"],
+        }
     return hgpflow_dict
 
 
-def load_pred_mpflow(pred_path, threshold=0.5, num_events=None):
+def load_pred_mpflow(pred_path, threshold=0.5, num_events=None, return_proxy=False):
     tree = uproot.open(pred_path)["event_tree"]
 
     vars_to_load = ["pred_ind", "proxy_pt", "proxy_eta", "proxy_phi", "mpflow_pt", "mpflow_eta", "mpflow_phi", "mpflow_class"]
@@ -68,11 +78,34 @@ def load_pred_mpflow(pred_path, threshold=0.5, num_events=None):
 
         mpflow_dict["charge"][i] = np.full_like(mpflow_dict["pt"][i], 0)
         mpflow_dict["charge"][i][cls <= 2] = 1
-
+    if return_proxy:
+        return {
+            "pt": mpflow_dict["proxy_pt"],
+            "eta": mpflow_dict["proxy_eta"],
+            "phi": mpflow_dict["proxy_phi"],
+            "class": mpflow_dict["class"],
+            "mass": mpflow_dict["mass"],
+            "event_number": mpflow_dict["event_number"],
+        }
     return mpflow_dict
 
 
-def load_pred_mlpf(pred_path, truth_event_number_offset):
+def load_pred_mlpf(pred_path):
+    yvals = []
+    filenames = []
+
+    filelist = Path(pred_path).glob("*.parquet")
+    # name example: pred_0_78.parquet
+    filelist = sorted(filelist, key=lambda x: int(x.stem.split("_")[2]))
+    pbar = tqdm(filelist, desc="Loading MLPF predictions...")
+    for fi in pbar:
+        pbar.set_postfix({"file": fi.name})
+        dd = ak.from_parquet(fi)
+        yvals.append(dd)
+        filenames.append(fi)
+
+    data = ak.concatenate(yvals, axis=0)
+
     class_remap = {
         1.0: 0,  # ch_had
         2.0: 3,  # neut had
@@ -81,16 +114,16 @@ def load_pred_mlpf(pred_path, truth_event_number_offset):
         5.0: 2,  # muon
     }
 
-    tree = uproot.open(pred_path)["parts"]
-    vars_to_load = ["pred_pt", "pred_phi", "pred_eta", "pred_cl", "pred_e"]
-
-    mlpf_class = tree["pred_cl"].array(library="np")
-    mlpf_mask_cl = np.array([x != 0 for x in mlpf_class], dtype=object)
-
-    mlpf_dict = {}
-    for var in tqdm(vars_to_load, desc="Loading MLPF predictions...", total=len(vars_to_load)):
-        new_var = var.replace("pred_", "")
-        mlpf_dict[new_var] = np.array([x[m] for x, m in zip(tree[var].array(library="np"), mlpf_mask_cl, strict=False)], dtype=object)
+    mlpf_dict = {
+        "pt": data["particles"]["pred"]["pt"],
+        "eta": data["particles"]["pred"]["eta"],
+        "phi": data["particles"]["pred"]["phi"],
+        "cl": data["particles"]["pred"]["cls_id"],
+        "e": data["particles"]["pred"]["energy"],
+    }
+    mlpf_mask_cl = np.array([x != 0 for x in mlpf_dict["cl"]], dtype=object)
+    for key in mlpf_dict:
+        mlpf_dict[key] = np.array([x[m].to_numpy() for x, m in zip(mlpf_dict[key], mlpf_mask_cl, strict=False)], dtype=object)
 
     # class remapping
     mlpf_dict["class"] = np.array([np.array([class_remap[x] for x in cls]) for cls in mlpf_dict["cl"]], dtype=object)
@@ -102,12 +135,19 @@ def load_pred_mlpf(pred_path, truth_event_number_offset):
         mlpf_dict["charge"][i][cls <= 2] = 1
 
     # compute event number
-    mlpf_dict["event_id"] = tree["event_id"].array(library="np")
+    # mlpf_dict["event_id"] = tree["event_id"].array(library="np")
     # mlpf_dict['file_id'] = tree['file_id'].array(library='np')
     # mlpf_dict['file_id'] = mlpf_dict['file_id'] - mlpf_dict['file_id'].min()
     # mlpf_dict['event_number'] = mlpf_dict['event_id'] + mlpf_dict['file_id'] * num_ev_in_one_file + truth_event_number_offset
 
-    mlpf_dict["event_number"] = mlpf_dict["event_id"] + truth_event_number_offset
+    # mlpf_dict["event_number"] = data["event_idx"].to_numpy()
+    event_number = data["event_idx"].to_numpy()
+    mask = (event_number != 1399) & (event_number != 11288)
+    for key, value in mlpf_dict.items():
+        mlpf_dict[key] = value[mask]
+    event_number = event_number[mask]
+    event_number = event_number - ((event_number > 1399) & (event_number < 11288)) - 2 * (event_number > 11288)
+    mlpf_dict["event_number"] = event_number
 
     # compute mass
     mlpf_dict["mass"] = np.empty_like(mlpf_dict["pt"])
@@ -187,7 +227,14 @@ def load_truth_clic(truth_path, event_number_offset=0):
     else:
         truth_dict["event_number"] = np.arange(len(truth_dict["particle_pt"])) + event_number_offset
 
-    return truth_dict
+    pandora_dict = {}
+    for key in list(truth_dict.keys()):
+        if key.startswith("pandora_"):
+            new_key = key.replace("pandora_", "")
+            pandora_dict[new_key] = truth_dict.pop(key)
+    pandora_dict["event_number"] = truth_dict["event_number"].copy()
+
+    return truth_dict, pandora_dict
 
 
 def load_hgpflow_target(target_path, drop_res=True, num_events=None, event_number_offset=0):
