@@ -253,8 +253,7 @@ class Attention(nn.Module):
 
         out = self.attn(q_flat, k_flat, v_flat, cu_seqlens, cu_seqlens, max_seqlen, max_seqlen, window_size=self.window_size)
 
-        # Return in format expected by encoder (1, total_valid_tokens, dim)
-        return out.unsqueeze(0)
+        return out.view(q.shape[0], -1, self.dim)
 
     def forward(
         self,

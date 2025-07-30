@@ -222,16 +222,16 @@ class Encoder(nn.Module):
     def _unpad_for_flash_varlen(self, x: Tensor, kv_mask: Tensor) -> tuple[Tensor, dict]:
         """Unpad input for flash-varlen attention and return unpadded tensor and state."""
         x_flat, indices, cu_seqlens, max_seqlen, _ = unpad_input(x, kv_mask.int())
-        varlen_kwargs = {"indices": indices, "cu_seqlens": cu_seqlens, "max_seqlen": max_seqlen, "batch_size": x.shape[0]}
+        varlen_kwargs = {"cu_seqlens": cu_seqlens, "max_seqlen": max_seqlen}
         # x_flat is now a 2D tensor (total_valid_tokens, dim)
         # We need to make it look like a batch of sequences for the rest of the processing
         x_unpadded = x_flat.unsqueeze(0)  # (1, total_valid_tokens, dim)
-        return x_unpadded, varlen_kwargs
+        return x_unpadded, indices, varlen_kwargs
 
-    def _repad_from_flash_varlen(self, x: Tensor, varlen_kwargs: dict) -> Tensor:
+    def _repad_from_flash_varlen(self, x: Tensor, batch_size: int, seq_len: int, indices: Tensor) -> Tensor:
         """Repad output from flash-varlen attention."""
         # x is currently (1, total_valid_tokens, dim), flatten to (total_valid_tokens, dim) before repadding
-        return pad_input(x.squeeze(0), varlen_kwargs["indices"], varlen_kwargs["batch_size"], varlen_kwargs["max_seqlen"])
+        return pad_input(x.squeeze(0), indices, batch_size, seq_len)
 
     def set_backend(self, attn_type: str):
         self.attn_type = attn_type
@@ -240,6 +240,9 @@ class Encoder(nn.Module):
             self.attn_type = layer.attn.fn.set_backend(self.attn_type)
 
     def forward(self, x: Tensor, x_sort_value: Tensor | None = None, **kwargs) -> Tensor:
+        batch_size = x.shape[0]
+        seq_len = x.shape[-2]
+
         # If value to sort on is provided, use it to sort the tokens
         # We don't need to use the stable sort assuming that the sort values are unique
         x_sort_idx = None
@@ -249,7 +252,6 @@ class Encoder(nn.Module):
 
         # Add register tokens at the beginning of the sequence
         if self.register_tokens is not None:
-            batch_size = x.shape[0]
             register_tokens = self.register_tokens.expand(batch_size, -1, -1)
             x = torch.cat([register_tokens, x], dim=1)
 
@@ -262,24 +264,25 @@ class Encoder(nn.Module):
         varlen_kwargs = None
         if self.attn_type == "flash-varlen" and kwargs.get("kv_mask") is not None:
             kv_mask = kwargs["kv_mask"]
-            x, varlen_kwargs = self._unpad_for_flash_varlen(x, kv_mask)
+            x, indices, varlen_kwargs = self._unpad_for_flash_varlen(x, kv_mask)
             kwargs["varlen_kwargs"] = varlen_kwargs
+        elif self.attn_type == "flash-varlen":
+            raise ValueError("kv_mask must be provided for flash-varlen attention.")
 
         # Initialise sliding window mask
         if self.mask_mod is None and self.attn_type != "flash" and self.window_size:
-            self.q_len = torch.tensor([1], device=x.device)
+            self.seq_len = torch.tensor([1], device=x.device)
             self.mask_mod = (
                 sliding_window_mask(self.window_size) if not self.window_wrap else sliding_window_mask_wrapped(self.window_size, self.q_len)
             )
 
         # Handle masking
         attn_mask = None
-        q_len = x.shape[-2]
         if self.attn_type == "torch" and self.mask_mod:
-            attn_mask = create_mask(self.mask_mod, 1, 1, q_len, q_len, device=x.device)
+            attn_mask = create_mask(self.mask_mod, 1, 1, seq_len, seq_len, device=x.device)
         elif self.attn_type == "flex" and self.mask_mod:
-            self.q_len[0] = q_len
-            attn_mask = create_block_mask(self.mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=q_len, device=x.device)
+            self.seq_len[0] = seq_len
+            attn_mask = create_block_mask(self.mask_mod, B=None, H=None, Q_LEN=seq_len, KV_LEN=seq_len, device=x.device)
 
         # Add wrapping for flash attention with sliding window
         if self.attn_type == "flash" and self.window_wrap:
@@ -296,7 +299,7 @@ class Encoder(nn.Module):
 
         # Repad sequence if flash-varlen attention is used
         if varlen_kwargs is not None:
-            x = self._repad_from_flash_varlen(x, varlen_kwargs)
+            x = self._repad_from_flash_varlen(x, batch_size, seq_len, indices)
 
         # Remove register tokens
         if self.register_tokens is not None:
