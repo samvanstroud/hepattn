@@ -74,6 +74,19 @@ def merge_masks(
     return merged_mask
 
 
+def unpad_for_flash_varlen(x: Tensor, kv_mask: Tensor) -> tuple[Tensor, Tensor, dict]:
+    """Unpad input for flash-varlen attention and return unpadded tensor and state."""
+    x_flat, indices, cu_seqlens, max_seqlen, _ = unpad_input(x, kv_mask.int())  # x_flat is (total_valid_tokens, dim)
+    varlen_kwargs = {"cu_seqlens": cu_seqlens, "max_seqlen": max_seqlen}
+    return x_flat.unsqueeze(0), indices, varlen_kwargs
+
+
+def repad_from_flash_varlen(x: Tensor, batch_size: int, seq_len: int, indices: Tensor) -> Tensor:
+    """Repad output from flash-varlen attention."""
+    # x is currently (1, total_valid_tokens, dim), flatten to (total_valid_tokens, dim) before repadding
+    return pad_input(x.squeeze(0), indices, batch_size, seq_len)
+
+
 def projection_packed(
     q: Tensor,
     kv: Tensor | None,
@@ -242,35 +255,14 @@ class Attention(nn.Module):
         q: Tensor,
         k: Tensor,
         v: Tensor,
-        q_mask: BoolTensor | None = None,
-        kv_mask: BoolTensor | None = None,
+        cu_seqlens: Tensor,
+        max_seqlen: int,
     ) -> Tensor:
-        # TODO: Implement a packed version for the self attention case
-        bs = q.shape[0]
-        # Undo padding
-        if q_mask is None:
-            q_mask = torch.ones((bs, q.shape[1]), dtype=torch.bool, device=q.device)
-        if kv_mask is None:
-            kv_mask = torch.ones((bs, k.shape[1]), dtype=torch.bool, device=k.device)
-        q_flat, indices_q, cu_seqlens_q, max_seqlen_q, _ = unpad_input(q, q_mask.int())
-        k_flat, _, cu_seqlens_k, max_seqlen_k, _ = unpad_input(k, kv_mask.int())
-        v_flat, _, _, _, _ = unpad_input(v, kv_mask.int())
-
-        out = self.attn(
-            q_flat,
-            k_flat,
-            v_flat,
-            cu_seqlens_q,
-            cu_seqlens_k,
-            max_seqlen_q,
-            max_seqlen_k,
-            window_size=self.window_size,
-        )
-
-        # Redo padding
-        out = pad_input(out, indices_q, bs, max_seqlen_q)
-
-        return out.view(bs, -1, self.dim)
+        # Assume unpadding has been handled by the caller, so inputs are (1, total_valid_tokens, dim)
+        # Flatten for flash attention which expects (total_valid_tokens, num_heads, head_dim)
+        q_flat, k_flat, v_flat = q.squeeze(0), k.squeeze(0), v.squeeze(0)
+        out = self.attn(q_flat, k_flat, v_flat, cu_seqlens, cu_seqlens, max_seqlen, max_seqlen, window_size=self.window_size)
+        return out.view(q.shape[0], -1, self.dim)
 
     def forward(
         self,
@@ -282,6 +274,7 @@ class Attention(nn.Module):
         attn_bias: Tensor | None = None,
         score_mod: _score_mod_signature | None = None,
         initial_values: dict | None = None,
+        **kwargs,
     ) -> Tensor:
         """Multi-head attention forward pass.
 
@@ -291,9 +284,14 @@ class Attention(nn.Module):
             Queries tensor of shape (B, N, D).
         kv : Tensor, optional
             Keys tensor of shape (B, M, D). If None, defaults to q.
+        q_mask : BoolTensor, optional
+            Query mask to apply. If None, no mask is applied.
+            True values indicate that a value is not padded and should partake in computation.
+            Note: For flash-varlen, this is ignored as unpadding is handled by the encoder.
         kv_mask : BoolTensor, optional
             Key/value mask to apply. If None, no mask is applied.
             True values indicate that a value is not padded and should partake in computation.
+            Note: For flash-varlen, this is ignored as unpadding is handled by the encoder.
         attn_mask : BlockMask | BoolTensor, optional
             Attention mask to apply. If None, no mask is applied.
             True values indicate that an attention slot should partake in computation.
@@ -305,9 +303,12 @@ class Attention(nn.Module):
             Score modifier function for flex attention. If None, no score modifier is applied.
         initial_values : dict, optional
             Initial values for value residual connection.
+        **kwargs : dict
+            Additional keyword arguments. For flash-varlen attention, must include:
+            - varlen_kwargs: dict containing cu_seqlens and max_seqlen
 
         Raises:
-            ValueError: If the input arguments are invalid.
+            ValueError: If the input arguments are invalid or if flash-varlen is used without varlen_kwargs.
         """
         if kv is None:
             # If self-attention, we use the same tensor for q, k, and v
@@ -332,9 +333,15 @@ class Attention(nn.Module):
 
         # Prepare queries, keys, and values
         q, k, v = self._prepare_qkv(q, kv, initial_values)
+
+        # Handle flash-varlen attention
         if self.attn_type == "flash-varlen":
-            out = self._flash_varlen_attention(q, k, v, q_mask=q_mask, kv_mask=kv_mask)
+            varlen_kwargs = kwargs.get("varlen_kwargs")
+            if varlen_kwargs is None:
+                raise ValueError("flash-varlen attention requires varlen_kwargs in kwargs")
+            out = self._flash_varlen_attention(q, k, v, **varlen_kwargs)
             return self.out_proj(out)
+
         # Fused attention
         if self.attn_type == "flex":
             # TODO: Should block_mask be an argument separate from attn_mask to simplify things?

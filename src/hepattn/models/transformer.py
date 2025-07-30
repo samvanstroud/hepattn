@@ -6,7 +6,7 @@ from torch.nn.attention.flex_attention import create_block_mask, create_mask
 
 from hepattn.flex import relative_position, relative_position_wrapped
 from hepattn.flex.sliding_window import sliding_window_mask, sliding_window_mask_wrapped
-from hepattn.models.attention import Attention
+from hepattn.models.attention import Attention, repad_from_flash_varlen, unpad_for_flash_varlen
 from hepattn.models.dense import Dense
 
 create_block_mask = torch.compile(create_block_mask, dynamic=True)
@@ -207,7 +207,7 @@ class Encoder(nn.Module):
 
         # handle masking
         self.mask_mod = None
-        self.q_len = None
+        self.seq_len = None
 
         # handle attention
         attn_kwargs = layer_kwargs.get("attn_kwargs", None) or {}
@@ -220,38 +220,53 @@ class Encoder(nn.Module):
 
     def set_backend(self, attn_type: str):
         self.attn_type = attn_type
-        layer: EncoderLayer
         for layer in self.layers:
             self.attn_type = layer.attn.fn.set_backend(self.attn_type)
 
     def forward(self, x: Tensor, x_sort_value: Tensor | None = None, **kwargs) -> Tensor:
+        batch_size = x.shape[0]
+        seq_len = x.shape[-2]
+
         # If value to sort on is provided, use it to sort the tokens
         # We don't need to use the stable sort assuming that the sort values are unique
+        x_sort_idx = None
         if x_sort_value is not None:
             x_sort_idx = torch.argsort(x_sort_value, axis=-1)
             x = torch.gather(x, -2, x_sort_idx.unsqueeze(-1).expand_as(x))
 
         # Add register tokens at the beginning of the sequence
         if self.register_tokens is not None:
-            batch_size = x.shape[0]
             register_tokens = self.register_tokens.expand(batch_size, -1, -1)
             x = torch.cat([register_tokens, x], dim=1)
 
+            # Allow registers to participate in attention if a mask is provided
+            if (kv_mask := kwargs.get("kv_mask")) is not None:
+                register_mask = torch.full((1, self.num_register_tokens), True, device=kv_mask.device, dtype=kv_mask.dtype).expand(batch_size, -1)
+                kwargs["kv_mask"] = torch.cat([register_mask, kv_mask], dim=1)
+
+        # Handle flash-varlen attention unpadding at encoder level
+        varlen_kwargs = None
+        if self.attn_type == "flash-varlen" and kwargs.get("kv_mask") is not None:
+            kv_mask = kwargs["kv_mask"]
+            x, indices, varlen_kwargs = unpad_for_flash_varlen(x, kv_mask)
+            kwargs["varlen_kwargs"] = varlen_kwargs
+        elif self.attn_type == "flash-varlen":
+            raise ValueError("kv_mask must be provided for flash-varlen attention.")
+
         # Initialise sliding window mask
         if self.mask_mod is None and self.attn_type != "flash" and self.window_size:
-            self.q_len = torch.tensor([1], device=x.device)
+            self.seq_len = torch.tensor([1], device=x.device)
             self.mask_mod = (
-                sliding_window_mask(self.window_size) if not self.window_wrap else sliding_window_mask_wrapped(self.window_size, self.q_len)
+                sliding_window_mask(self.window_size) if not self.window_wrap else sliding_window_mask_wrapped(self.window_size, self.seq_len)
             )
 
         # Handle masking
         attn_mask = None
-        q_len = x.shape[-2]
         if self.attn_type == "torch" and self.mask_mod:
-            attn_mask = create_mask(self.mask_mod, 1, 1, q_len, q_len, device=x.device)
+            attn_mask = create_mask(self.mask_mod, 1, 1, seq_len, seq_len, device=x.device)
         elif self.attn_type == "flex" and self.mask_mod:
-            self.q_len[0] = q_len
-            attn_mask = create_block_mask(self.mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=q_len, device=x.device)
+            self.seq_len[0] = seq_len
+            attn_mask = create_block_mask(self.mask_mod, B=None, H=None, Q_LEN=seq_len, KV_LEN=seq_len, device=x.device)
 
         # Add wrapping for flash attention with sliding window
         if self.attn_type == "flash" and self.window_wrap:
@@ -266,12 +281,18 @@ class Encoder(nn.Module):
         if self.attn_type == "flash" and self.window_wrap:
             x = x[:, self.window_size // 2 : -self.window_size // 2]
 
+        # Repad sequence if flash-varlen attention is used
+        if varlen_kwargs is not None:
+            x = repad_from_flash_varlen(x, batch_size, seq_len, indices)
+
         # Remove register tokens
         if self.register_tokens is not None:
             x = x[:, self.num_register_tokens :]
+            if (kv_mask := kwargs.get("kv_mask")) is not None:
+                kwargs["kv_mask"] = kv_mask[:, self.num_register_tokens :]
 
         # If we sorted the tokens, undo the sorting
-        if x_sort_value is not None:
+        if x_sort_value is not None and x_sort_idx is not None:
             x_unsort_idx = torch.argsort(x_sort_idx, axis=-1)
             x = torch.gather(x, -2, x_unsort_idx.unsqueeze(-1).expand_as(x))
 
