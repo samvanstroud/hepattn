@@ -237,6 +237,11 @@ class Encoder(nn.Module):
             register_tokens = self.register_tokens.expand(batch_size, -1, -1)
             x = torch.cat([register_tokens, x], dim=1)
 
+            # Allow registers to participate in attention if a mask is provided
+            if (kv_mask := kwargs.get("kv_mask")) is not None:
+                register_mask = torch.full((1, self.num_register_tokens), True, device=kv_mask.device, dtype=kv_mask.dtype).expand(batch_size, -1)
+                kwargs["kv_mask"] = torch.cat([register_mask, kv_mask], dim=1)
+
         # Initialise sliding window mask
         if self.mask_mod is None and self.attn_type != "flash" and self.window_size:
             self.q_len = torch.tensor([1], device=x.device)
@@ -269,6 +274,8 @@ class Encoder(nn.Module):
         # Remove register tokens
         if self.register_tokens is not None:
             x = x[:, self.num_register_tokens :]
+            if (kv_mask := kwargs.get("kv_mask")) is not None:
+                kwargs["kv_mask"] = kv_mask[:, self.num_register_tokens :]
 
         # If we sorted the tokens, undo the sorting
         if x_sort_value is not None:

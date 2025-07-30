@@ -104,6 +104,16 @@ def test_register_tokens():
     assert out.sum() != 0
     assert not torch.isnan(out).any()
 
+    # Test with kv_mask - register tokens should be prepended to the mask
+    kv_mask = torch.ones(batch_size, seq_len, dtype=torch.bool)
+    # Set some positions to False to test the mask
+    kv_mask[:, -10:] = False
+
+    out_with_mask = model(x, kv_mask=kv_mask)
+    assert out_with_mask.shape == x.shape
+    assert out_with_mask.sum() != 0
+    assert not torch.isnan(out_with_mask).any()
+
     # Test without register tokens (should be unchanged)
     model_no_reg = Encoder(num_layers=3, dim=dim, num_register_tokens=None)
     out_no_reg = model_no_reg(x)
