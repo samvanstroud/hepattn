@@ -291,7 +291,7 @@ class Attention(nn.Module):
             Initial values for value residual connection.
         **kwargs : dict
             Additional keyword arguments. For flash-varlen attention, must include:
-            - varlen_kwargs: dict containing cu_seqlens, max_seqlen, indices, and batch_size
+            - varlen_kwargs: dict containing cu_seqlens and max_seqlen
 
         Raises:
             ValueError: If the input arguments are invalid or if flash-varlen is used without varlen_kwargs.

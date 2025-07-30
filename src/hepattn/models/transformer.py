@@ -208,7 +208,7 @@ class Encoder(nn.Module):
 
         # handle masking
         self.mask_mod = None
-        self.q_len = None
+        self.seq_len = None
 
         # handle attention
         attn_kwargs = layer_kwargs.get("attn_kwargs", None) or {}
@@ -219,7 +219,7 @@ class Encoder(nn.Module):
 
         self.layers = torch.nn.ModuleList([EncoderLayer(dim=dim, depth=i, **layer_kwargs) for i in range(num_layers)])
 
-    def _unpad_for_flash_varlen(self, x: Tensor, kv_mask: Tensor) -> tuple[Tensor, dict]:
+    def _unpad_for_flash_varlen(self, x: Tensor, kv_mask: Tensor) -> tuple[Tensor, Tensor, dict]:
         """Unpad input for flash-varlen attention and return unpadded tensor and state."""
         x_flat, indices, cu_seqlens, max_seqlen, _ = unpad_input(x, kv_mask.int())  # x_flat is (total_valid_tokens, dim)
         varlen_kwargs = {"cu_seqlens": cu_seqlens, "max_seqlen": max_seqlen}
@@ -269,7 +269,7 @@ class Encoder(nn.Module):
         if self.mask_mod is None and self.attn_type != "flash" and self.window_size:
             self.seq_len = torch.tensor([1], device=x.device)
             self.mask_mod = (
-                sliding_window_mask(self.window_size) if not self.window_wrap else sliding_window_mask_wrapped(self.window_size, self.q_len)
+                sliding_window_mask(self.window_size) if not self.window_wrap else sliding_window_mask_wrapped(self.window_size, self.seq_len)
             )
 
         # Handle masking
