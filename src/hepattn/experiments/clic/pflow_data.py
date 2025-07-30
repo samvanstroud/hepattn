@@ -502,8 +502,7 @@ class CLICDataset(Dataset):
 
         # regression targets
         for label in self.targets["particle"]:
-            # tgt = torch.full((self.num_objects,), torch.nan)  # number of reconstructed tracks
-            tgt = torch.full((self.num_objects,), 1e6)  # number of reconstructed tracks
+            tgt = torch.full((self.num_objects,), torch.nan)  # number of reconstructed tracks
             tgt[: self.n_particles[idx]] = data_dict["particle_data"][label][: self.n_particles[idx]]
             labels[f"particle_{label}"] = tgt
 

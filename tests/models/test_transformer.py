@@ -124,6 +124,21 @@ def test_register_tokens():
         Encoder(num_layers=3, dim=dim, num_register_tokens=num_register_tokens, window_size=10)
 
 
+def test_register_tokens_with_varlen():
+    batch_size, seq_len, dim = 8, 100, 128
+    num_register_tokens = 5
+
+    # Test with register tokens and varlen attention
+    model = Encoder(num_layers=3, dim=dim, num_register_tokens=num_register_tokens, attn_kwargs={"attn_type": "flash-varlen"})
+    x = torch.randn(batch_size, seq_len, dim)
+    out = model(x)
+
+    # Output should be same size as input (register tokens removed)
+    assert out.shape == x.shape
+    assert out.sum() != 0
+    assert not torch.isnan(out).any()
+
+
 @pytest.mark.parametrize(
     ("attn_type", "attn_type_new"),
     [

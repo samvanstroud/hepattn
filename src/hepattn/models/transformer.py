@@ -283,6 +283,7 @@ class Encoder(nn.Module):
 
         # Repad sequence if flash-varlen attention is used
         if varlen_kwargs is not None:
+            seq_len = seq_len if not self.num_register_tokens else seq_len + self.num_register_tokens
             x = repad_from_flash_varlen(x, batch_size, seq_len, indices)
 
         # Remove register tokens
