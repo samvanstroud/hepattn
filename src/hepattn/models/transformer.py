@@ -161,6 +161,7 @@ class Encoder(nn.Module):
         window_wrap: bool = False,
         score_mod: str | None = None,
         value_residual: bool = False,
+        num_register_tokens: int | None = None,
         **layer_kwargs,
     ) -> None:
         """Transformer encoder.
@@ -175,6 +176,10 @@ class Encoder(nn.Module):
             The window size for the sliding window.
         value_residual : bool, optional
             Add a residual connection from the initial layer values.
+        num_register_tokens : int | None, optional
+            Number of register tokens to add at the beginning of the sequence.
+            If None, no register tokens are added. Register tokens are removed
+            from the output by default.
         kwargs : dict
             Keyword arguments for EncoderLayer.
         """
@@ -182,6 +187,7 @@ class Encoder(nn.Module):
 
         assert not window_wrap or window_size, "Window size must be set if window wrap is True."
         assert attn_type != "flex" or score_mod is None, "Score mod is only supported with flex attention."
+        assert not (num_register_tokens is not None and window_size is not None), "Register tokens are not compatible with window attention."
         layer_kwargs = layer_kwargs or {}
 
         self.num_layers = num_layers
@@ -191,6 +197,13 @@ class Encoder(nn.Module):
         self.window_wrap = window_wrap
         self.score_mod = SCORE_MODS[score_mod] if score_mod else None
         self.value_residual = value_residual
+        self.num_register_tokens = num_register_tokens
+
+        # Initialize register tokens if specified
+        if self.num_register_tokens is not None:
+            self.register_tokens = nn.Parameter(torch.randn(1, self.num_register_tokens, dim))
+        else:
+            self.register_tokens = None
 
         # handle masking
         self.mask_mod = None
@@ -217,6 +230,12 @@ class Encoder(nn.Module):
         if x_sort_value is not None:
             x_sort_idx = torch.argsort(x_sort_value, axis=-1)
             x = torch.gather(x, -2, x_sort_idx.unsqueeze(-1).expand_as(x))
+
+        # Add register tokens at the beginning of the sequence
+        if self.register_tokens is not None:
+            batch_size = x.shape[0]
+            register_tokens = self.register_tokens.expand(batch_size, -1, -1)
+            x = torch.cat([register_tokens, x], dim=1)
 
         # Initialise sliding window mask
         if self.mask_mod is None and self.attn_type != "flash" and self.window_size:
@@ -246,6 +265,10 @@ class Encoder(nn.Module):
         # Remove wrapping for flash attention with sliding window
         if self.attn_type == "flash" and self.window_wrap:
             x = x[:, self.window_size // 2 : -self.window_size // 2]
+
+        # Remove register tokens
+        if self.register_tokens is not None:
+            x = x[:, self.num_register_tokens :]
 
         # If we sorted the tokens, undo the sorting
         if x_sort_value is not None:

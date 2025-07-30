@@ -32,10 +32,4 @@ class TestROIDataModule:
         data_iterator = iter(dataloader)
 
         for _i in range(5):
-            inputs, targets = next(data_iterator)
-
-            for k, v in inputs.items():
-                print(k, v.dtype, v.shape)
-
-            for k, v in targets.items():
-                print(k, v.dtype, v.shape)
+            next(data_iterator)
