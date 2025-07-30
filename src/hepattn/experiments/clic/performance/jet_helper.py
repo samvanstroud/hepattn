@@ -1,3 +1,8 @@
+import os
+import sys
+from contextlib import contextmanager
+from pathlib import Path
+
 import fastjet as fj
 import numpy as np
 import vector as vec
@@ -69,20 +74,52 @@ class JetHelper:
             for (j, nc, const_idxs) in self.getptsortedjets(four_vectors, pt_min, n_const_min, eta_max, get_constituent_idxs=store_constituent_idxs)
         ]
 
-    def compute_jets(self, pts, etas, phis, fourths, fourth_name, store_constituent_idxs=False):
+    def compute_jets(self, pts, etas, phis, fourths, fourth_name, store_constituent_idxs=False, progress_bar=True):
         # fourth_name can be either 'mass' or 'E'
         n_events = len(pts)
         jets = []
-        for ev_i in tqdm(range(n_events), desc="Computing jets..."):
+        pbar = tqdm(range(n_events), total=n_events, desc="Computing jets...") if progress_bar else range(n_events)
+        for ev_i in pbar:
             four_vec = self.getvectors(pts[ev_i], etas[ev_i], phis[ev_i], fourths[ev_i], fourth_name)
             jets.append(self.getptsortedcheapjets(four_vec, store_constituent_idxs=store_constituent_idxs))
         return jets
 
 
+@contextmanager
+def stdout_redirected(to=os.devnull):
+    """
+    import os
+
+    with stdout_redirected(to=filename):
+        print("from Python")
+        os.system("echo non-Python applications are also supported")
+    """  # noqa: D212, D403, D415
+    fd = sys.stdout.fileno()
+
+    # assert that Python and C stdio write using the same file descriptor
+    # assert libc.fileno(ctypes.c_void_p.in_dll(libc, "stdout")) == fd == 1
+
+    def _redirect_stdout(to):
+        sys.stdout.close()  # + implicit flush()
+        os.dup2(to.fileno(), fd)  # fd writes to 'to' file
+        sys.stdout = os.fdopen(fd, "w")  # Python writes to fd
+
+    with os.fdopen(os.dup(fd), "w") as old_stdout:
+        with Path(to).open(to, "w") as file:
+            _redirect_stdout(to=file)
+        try:
+            yield  # allow code to be run with the redirected stdout
+        finally:
+            _redirect_stdout(to=old_stdout)  # restore stdout.
+            # buffering and flags such as
+            # CLOEXEC may be different
+
+
 # multiprocessed version
 def compute_jet_multiproc(kwargs, pts, etas, phis, fourths, fourth_name, store_constituent_idxs=False):
-    jet_helper_obj = JetHelper(**kwargs)
-    return jet_helper_obj.compute_jets(pts, etas, phis, fourths, fourth_name, store_constituent_idxs)
+    with stdout_redirected(to=os.devnull):
+        jet_helper_obj = JetHelper(**kwargs)
+        return jet_helper_obj.compute_jets(pts, etas, phis, fourths, fourth_name, store_constituent_idxs, progress_bar=False)
 
 
 def compute_jets(jet_helper_obj, pts, etas, phis, fourths, fourth_name, n_procs=0, store_constituent_idxs=False):
@@ -100,7 +137,7 @@ def compute_jets(jet_helper_obj, pts, etas, phis, fourths, fourth_name, n_procs=
                     *(pts[start:end], etas[start:end], phis[start:end], fourths[start:end], fourth_name, store_constituent_idxs),
                 )
                 results.append(result)
-            jets = [jet for sublist in results for jet in sublist.get()]
+            jets = [jet for sublist in tqdm(results, total=n_procs, desc="Computing jets...", unit="Chunk") for jet in sublist.get()]
 
     else:
         jets = jet_helper_obj.compute_jets(pts, etas, phis, fourths, fourth_name, store_constituent_idxs)
