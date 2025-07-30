@@ -1,4 +1,4 @@
-name: clic_v0_50epoch_lessLR
+name: clic_v2_registres
 seed_everything: 42
 
 data:
@@ -82,7 +82,7 @@ model:
     max: 4e-5
     end: 1e-6
     pct_start: 0.05
-    weight_decay: 0.01
+    weight_decay: 0.001
     skip_scheduler: false
 
   mtl: false
@@ -129,6 +129,7 @@ model:
           attn_type: flash-varlen
           hybrid_norm: true
           value_residual: true
+          #num_register_tokens: 8
           attn_kwargs:
             num_heads: 16
 
