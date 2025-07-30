@@ -221,12 +221,9 @@ class Encoder(nn.Module):
 
     def _unpad_for_flash_varlen(self, x: Tensor, kv_mask: Tensor) -> tuple[Tensor, dict]:
         """Unpad input for flash-varlen attention and return unpadded tensor and state."""
-        x_flat, indices, cu_seqlens, max_seqlen, _ = unpad_input(x, kv_mask.int())
+        x_flat, indices, cu_seqlens, max_seqlen, _ = unpad_input(x, kv_mask.int())  # x_flat is (total_valid_tokens, dim)
         varlen_kwargs = {"cu_seqlens": cu_seqlens, "max_seqlen": max_seqlen}
-        # x_flat is now a 2D tensor (total_valid_tokens, dim)
-        # We need to make it look like a batch of sequences for the rest of the processing
-        x_unpadded = x_flat.unsqueeze(0)  # (1, total_valid_tokens, dim)
-        return x_unpadded, indices, varlen_kwargs
+        return x_flat.unsqueeze(0), indices, varlen_kwargs
 
     def _repad_from_flash_varlen(self, x: Tensor, batch_size: int, seq_len: int, indices: Tensor) -> Tensor:
         """Repad output from flash-varlen attention."""
@@ -235,7 +232,6 @@ class Encoder(nn.Module):
 
     def set_backend(self, attn_type: str):
         self.attn_type = attn_type
-        layer: EncoderLayer
         for layer in self.layers:
             self.attn_type = layer.attn.fn.set_backend(self.attn_type)
 
