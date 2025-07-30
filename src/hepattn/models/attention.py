@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from flash_attn import flash_attn_func, flash_attn_varlen_func
+from flash_attn.bert_padding import pad_input, unpad_input
 from torch import BoolTensor, Size, Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention
 from torch.nn.functional import scaled_dot_product_attention
@@ -71,6 +72,19 @@ def merge_masks(
         merged_mask = attn_mask & merged_mask if merged_mask is not None else attn_mask
 
     return merged_mask
+
+
+def unpad_for_flash_varlen(x: Tensor, kv_mask: Tensor) -> tuple[Tensor, Tensor, dict]:
+    """Unpad input for flash-varlen attention and return unpadded tensor and state."""
+    x_flat, indices, cu_seqlens, max_seqlen, _ = unpad_input(x, kv_mask.int())  # x_flat is (total_valid_tokens, dim)
+    varlen_kwargs = {"cu_seqlens": cu_seqlens, "max_seqlen": max_seqlen}
+    return x_flat.unsqueeze(0), indices, varlen_kwargs
+
+
+def repad_from_flash_varlen(x: Tensor, batch_size: int, seq_len: int, indices: Tensor) -> Tensor:
+    """Repad output from flash-varlen attention."""
+    # x is currently (1, total_valid_tokens, dim), flatten to (total_valid_tokens, dim) before repadding
+    return pad_input(x.squeeze(0), indices, batch_size, seq_len)
 
 
 def projection_packed(
