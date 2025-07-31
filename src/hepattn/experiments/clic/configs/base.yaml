@@ -1,4 +1,4 @@
-name: clic_v2_registres
+name: clic_v1_registers_nolosssplit_16hdec_2xreg
 seed_everything: 42
 
 data:
@@ -129,7 +129,7 @@ model:
           attn_type: flash-varlen
           hybrid_norm: true
           value_residual: true
-          #num_register_tokens: 8
+          num_register_tokens: 8
           attn_kwargs:
             num_heads: 16
 
@@ -142,7 +142,7 @@ model:
           dim: *dim
           hybrid_norm: true
           attn_kwargs:
-            num_heads: 8
+            num_heads: 16
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
@@ -233,11 +233,11 @@ model:
                 input_object: query
                 output_object: pflow
                 target_object: particle
-                loss_weight: 1.0
-                cost_weight: 1.0
+                loss_weight: 2.0
+                cost_weight: 2.0
                 use_incidence: true
                 use_nodes: true
-                split_charge_neutral_loss: true
+                split_charge_neutral_loss: false
                 scale_dict_path: *scale_dict_path
                 net:
                   class_path: hepattn.models.Dense

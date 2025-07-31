@@ -1099,7 +1099,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         self.inputs = [input_object + "_embed"] + [input_hit + "_" + field for field in fields]
         self.outputs = [output_object + "_regr", output_object + "_proxy_regr"]
 
-    def loss_kwargs(self, outputs: dict[str, dict[str, Tensor]], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+    """def loss_kwargs(self, outputs: dict[str, dict[str, Tensor]], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         # Adding this to get access to the classification task output
         classification = outputs.get("classification")
 
@@ -1110,7 +1110,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         if class_prob is None:
             return {"output_class": None}
 
-        return {"output_class": class_prob.detach().argmax(-1)}
+        return {"output_class": class_prob.detach().argmax(-1)}"""
 
     def get_charged(self, pred: Tensor, target: Tensor) -> Tensor:
         """Get a boolean mask for charged particles based on their class."""
@@ -1187,8 +1187,8 @@ class IncidenceBasedRegressionTask(RegressionTask):
         cost = self.cost_weight * torch.sqrt(dphi**2 + deta**2)
         return {"regression": cost}
 
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor], output_class: Tensor | None) -> dict[str, Tensor]:
-        if output_class is None:
+    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor], output_class: Tensor | None = None) -> dict[str, Tensor]:
+        if self.split_charge_neutral_loss and output_class is None:
             raise RuntimeError("'output_class' is empty for the IncidenceBasedRegressionTask.")
 
         loss = None
