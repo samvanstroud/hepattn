@@ -2,7 +2,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoderLayer
-from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectRegressionTask, ObjectHitMaskTask
+from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectRegressionTask, ObjectHitMaskTask, PhiAlignmentTask
 
 
 class MaskFormer(nn.Module):
@@ -171,6 +171,8 @@ class MaskFormer(nn.Module):
             if self.preserve_posenc:
                 x = self.add_positional_encodings(x)
 
+            # Check if any phi alignment tasks exist
+            has_phi_alignment_task = any(isinstance(task, PhiAlignmentTask) for task in self.tasks)
             for task in self.tasks:
                 # Get the outputs of the task given the current embeddings and record them
                 task_outputs = task(x)
@@ -185,8 +187,7 @@ class MaskFormer(nn.Module):
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
                 # Store attention masks from hit mask tasks for use by other tasks
-                #TODO add here if phialignment task in tasks
-                if isinstance(task, ObjectHitMaskTask):
+                if has_phi_alignment_task and isinstance(task, ObjectHitMaskTask):
                     if task.outputs and task.outputs[0] in task_outputs:
                         attn_logits = task_outputs[task.outputs[0]]
                         attn_mask = attn_logits.sigmoid() >= 0.1
@@ -224,9 +225,6 @@ class MaskFormer(nn.Module):
                 attn_mask = None
 
             self.attn_mask_logging(attn_mask, x, layer_index)     
-
-            if self.phi_analysis:
-                self.store_key_phi_info(x)
             
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
@@ -276,10 +274,10 @@ class MaskFormer(nn.Module):
         # sort queries
         query_sort_value = x.get(f"query_phi")
         query_sort_idx = torch.argsort(query_sort_value, axis=-1)
-        attn_mask_im = attn_mask_im.index_select(0, query_sort_idx.to(attn_mask_im.device))
+        attn_mask_im = attn_mask_im.index_select(0, query_sort_idx[0].to(attn_mask_im.device))
         # sort query phi for storing too
         query_phi = x.get(f"query_phi").detach().cpu().numpy()  # [num_queries]
-        query_phi_sorted = query_phi[query_sort_idx.cpu().numpy()]
+        query_phi_sorted = query_phi[0][query_sort_idx[0].cpu().numpy()]
         self.last_query_phi = query_phi_sorted
         return attn_mask_im
     
@@ -316,32 +314,6 @@ class MaskFormer(nn.Module):
                     "step": self.log_step,
                     "layer": layer_index,
                 }
-    # def final_attn_mask_logging(self, attn_logits, attn_mask, x, layer_index, threshold=0.1):
-    #     if (self.log_attn_mask
-    #         and (attn_logits is not None)
-    #         and (self.log_step % 1000 == 0) or (not self.training)
-    #         ):
-    #         if not hasattr(self, "final_attn_masks_to_log"):
-    #             self.final_attn_masks_to_log = {}
-    #         if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
-    #             # sigmoid the attn mask to get the probability of the hit being attended to
-    #             attn_logits_im = attn_logits[0].detach().cpu().clone()
-    #             attn_mask_im = attn_mask[0].detach().cpu().clone()
-    #             attn_mask_im = self.sort_attn_mask(attn_mask_im, x)
-    #             attn_logits_im = self.sort_attn_mask(attn_logits_im, x)
-    #             self.final_attn_masks_to_log[layer_index] = {
-    #                 "mask": attn_mask_im,
-    #                 "probs": attn_logits_im,
-    #                 "step": self.log_step,
-    #                 "layer": layer_index,
-    #             }
-
-    def store_key_phi_info(self, x: dict):
-        self.last_key_phi =x['key_phi'][0].cpu().numpy()  
-        if "key_posenc" in x:
-            self.last_key_posenc = x["key_posenc"][0].cpu().numpy()
-        else:
-            self.last_key_posenc = None
 
     def add_positional_encodings(self, x: dict):
         if (self.query_posenc is not None):
@@ -354,14 +326,14 @@ class MaskFormer(nn.Module):
         if self.query_posenc is not None:
             if self.learnable_query_phi:
                 # Use learnable parameter, expand to batch size
-                query_phi = self.query_phi_param
+                query_phi = self.query_phi_param.unsqueeze(0)
             else:
-                query_phi = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+                query_phi = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5).unsqueeze(0)
             x["query_phi"] = query_phi
             x["query_posenc"] = self.query_posenc(x)
             if self.phi_analysis:
                 self.last_query_phi = x["query_phi"].detach().cpu().numpy()
-                self.last_query_posenc = x["query_posenc"].detach().cpu().numpy()
+                self.last_query_posenc = x["query_posenc"][0].detach().cpu().numpy()
         if self.key_posenc is not None:
             x["key_posenc"] = self.key_posenc(x)
             if self.phi_analysis:

@@ -163,3 +163,6 @@ pytest-temp
 *.csv
 *.npy
 *.npz
+
+*/submit/*
+*/configs/*
