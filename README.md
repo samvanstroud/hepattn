@@ -46,7 +46,7 @@ apptainer shell --nv pixi.sif
 ```
 
 **📝 Note**: If you are not using the `pixi` container, you will need to make sure 
-`pixi` is installed according to https://pixi.sh/latest/. 
+`pixi` is installed according to https://pixi.sh/latest/installation/. 
 
 You can then install the project with locked dependencies:
 
