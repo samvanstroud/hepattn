@@ -5,7 +5,7 @@ project(
   VERSION ${SKBUILD_PROJECT_VERSION}
   LANGUAGES CXX)
   
-SET(CMAKE_CXX_FLAGS "-Wall -O2 -Wfatal-errors -fstrict-aliasing -m64 -std=c++17 -fopenmp -flto -march=native -mfpmath=sse")
+SET(CMAKE_CXX_FLAGS "-Wall -O2 -Wfatal-errors -fstrict-aliasing -std=c++17 -fopenmp -flto -march=native")
 
 find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
 

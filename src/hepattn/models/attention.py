@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
-from flash_attn import flash_attn_func, flash_attn_varlen_func
-from flash_attn.bert_padding import pad_input, unpad_input
+from flash_attn_interface import flash_attn_func, flash_attn_varlen_func
+from hepattn.utils.bert_padding import pad_input, unpad_input
 from torch import BoolTensor, Size, Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention
 from torch.nn.functional import scaled_dot_product_attention

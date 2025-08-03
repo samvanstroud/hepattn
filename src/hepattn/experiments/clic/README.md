@@ -13,6 +13,14 @@ sbatch hepattn/src/hepattn/experiments/clic/submit_training_sam.sh
 
 At UCL, files are available on `plus1` under `/unix/atlastracking/svanstroud/dmitrii_clic`, and also on `hypatia` under `/share/gpu1/syw24/dmitrii_clic`.
 
+On Isambard, you can ue
+
+```
+train_path: /projects/u5ar/data/clic/train_clic_fix.root
+valid_path: /projects/u5ar/data/clic/val_clic_fix.root
+test_path: /projects/u5ar/data/clic/test_clic_fix.root
+```
+
 | File Name | Purpose / Usage | Preprocessing Applied | Notes / Details |
 | :------------------------------ | :------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `train_clic` | For **training** the model. | "Train-like" preprocessing | Applies cuts on tracks, topoclusters, and truth particles; creates target incidence matrix. |
