@@ -38,7 +38,7 @@ echo "Running training script..."
 
 # Python command that will be run
 CONFIG_PATH="configs/base.yaml"
-PYTORCH_CMD="python main.py fit --config $CONFIG_PATH --data.num_workers 32"
+PYTORCH_CMD="python main.py fit --config $CONFIG_PATH"
 
 # Pixi command that runs the python command inside the pixi env
 PIXI_CMD="pixi run $PYTORCH_CMD"

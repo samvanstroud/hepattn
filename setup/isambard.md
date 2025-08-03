@@ -32,6 +32,13 @@ Install dependencies using `pixi`:
 pixi install
 ```
 
+For some reason, when (re)activing the environment, you may see an error.
+To fix it just `rm` the offending dirctory:
+
+```bash
+rm -r /home/u5ar/svanstroud.u5ar/.cache/rattler/cache/uv-cache/archive-v0/
+```
+
 
 ## FlashAttention3 (FA3) Beta
 
