@@ -242,8 +242,8 @@ class Attention(nn.Module):
         v = self.separate_heads(v, self.num_heads)
 
         # Residual connection with initial values
-        if self.value_residual:
-            if not initial_values and self.is_first_layer:
+        if self.value_residual and initial_values is not None:
+            if self.is_first_layer:
                 initial_values["v"] = v
             else:
                 v = v * mix + initial_values["v"] * (1.0 - mix)
