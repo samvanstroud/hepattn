@@ -225,8 +225,8 @@ class MaskFormer(nn.Module):
 
             self.attn_mask_logging(attn_mask, x, layer_index)     
 
-            if self.phi_analysis:
-                self.store_key_phi_info(x)
+            # if self.phi_analysis:
+            #     self.store_key_phi_info(x)
             
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
@@ -316,25 +316,6 @@ class MaskFormer(nn.Module):
                     "step": self.log_step,
                     "layer": layer_index,
                 }
-    # def final_attn_mask_logging(self, attn_logits, attn_mask, x, layer_index, threshold=0.1):
-    #     if (self.log_attn_mask
-    #         and (attn_logits is not None)
-    #         and (self.log_step % 1000 == 0) or (not self.training)
-    #         ):
-    #         if not hasattr(self, "final_attn_masks_to_log"):
-    #             self.final_attn_masks_to_log = {}
-    #         if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
-    #             # sigmoid the attn mask to get the probability of the hit being attended to
-    #             attn_logits_im = attn_logits[0].detach().cpu().clone()
-    #             attn_mask_im = attn_mask[0].detach().cpu().clone()
-    #             attn_mask_im = self.sort_attn_mask(attn_mask_im, x)
-    #             attn_logits_im = self.sort_attn_mask(attn_logits_im, x)
-    #             self.final_attn_masks_to_log[layer_index] = {
-    #                 "mask": attn_mask_im,
-    #                 "probs": attn_logits_im,
-    #                 "step": self.log_step,
-    #                 "layer": layer_index,
-    #             }
 
     def store_key_phi_info(self, x: dict):
         self.last_key_phi =x['key_phi'][0].cpu().numpy()  
@@ -365,8 +346,13 @@ class MaskFormer(nn.Module):
         if self.key_posenc is not None:
             x["key_posenc"] = self.key_posenc(x)
             if self.phi_analysis:
-                self.last_key_phi = x["key_phi"].detach().cpu().numpy()
-                self.last_key_posenc = x["key_posenc"][0].cpu().numpy()
+                key_phi = x["key_phi"].detach().cpu().numpy()
+                self.last_key_phi = key_phi
+                key_posenc =  x["key_posenc"][0].cpu()
+                self.last_key_posenc = key_posenc.numpy()
+                key_sort_idx = torch.argsort(torch.tensor(key_phi), axis=-1)
+                key_posencs_sorted = key_posenc[key_sort_idx[0]]
+                self.last_key_posenc_sorted = key_posencs_sorted
         return x
     
 
