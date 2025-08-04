@@ -42,21 +42,32 @@ else:
     )
 
 
-def match_individual(solver_fn, cost: np.ndarray, default_idx: torch.Tensor) -> torch.Tensor:
-    pred_idx = torch.as_tensor(solver_fn(cost))
+def match_individual(solver_fn, cost: np.ndarray, default_idx: np.ndarray) -> np.ndarray:
+    pred_idx = solver_fn(cost)
     if solver_fn == SOLVERS["scipy"]:
-        pred_idx = torch.concatenate([pred_idx, default_idx[~torch.isin(default_idx, pred_idx)]])
+        pred_idx = np.concatenate([pred_idx, default_idx[~np.isin(default_idx, pred_idx)]])
     return pred_idx
 
 
+def match_chunk(solver_fn, costs_chunk: np.ndarray, lengths_chunk: np.ndarray, default_idx: np.ndarray) -> np.ndarray:
+    results = np.empty((len(costs_chunk), costs_chunk.shape[2]), dtype=np.int32)
+    for i, (cost, length) in enumerate(zip(costs_chunk, lengths_chunk, strict=False)):
+        cost_subset = cost[:, :length].T
+        results[i] = match_individual(solver_fn, cost_subset, default_idx)
+    return results
+
+
 def match_parallel(solver_fn, costs: np.ndarray, batch_obj_lengths: torch.Tensor, n_jobs: int = 8) -> torch.Tensor:
-    default_idx = torch.arange(costs.shape[2])
+    batch_size = len(costs)
+    chunk_size = (batch_size + n_jobs - 1) // n_jobs
+    default_idx = np.arange(costs.shape[2], dtype=np.int32)
+    lengths_np = batch_obj_lengths.squeeze(-1).cpu().numpy().astype(np.int32)
+
     with Pool(processes=n_jobs) as pool:
-        # Prepare the arguments for the parallel function
-        args = ((solver_fn, costs[k][:, : batch_obj_lengths[k]].T, default_idx) for k in range(len(costs)))
-        # Use the pool to map the function to the arguments
-        pred_idxs = pool.starmap(match_individual, args)
-    return torch.stack(pred_idxs, dim=0)
+        chunks = [(costs[i : i + chunk_size], lengths_np[i : i + chunk_size], default_idx) for i in range(0, batch_size, chunk_size)]
+        chunk_results = pool.starmap(match_chunk, [(solver_fn, *chunk) for chunk in chunks])
+
+    return torch.from_numpy(np.concatenate(chunk_results, axis=0))
 
 
 class Matcher(nn.Module):
@@ -106,14 +117,14 @@ class Matcher(nn.Module):
         object_valid_mask = object_valid_mask.detach().bool()
         batch_obj_lengths = torch.sum(object_valid_mask, dim=1).unsqueeze(-1)
 
-        idxs = []
-        default_idx = torch.arange(costs.shape[2])
-
         if self.parallel_solver:
             # If we are using a parallel solver, we can use it to speed up the matching
             return match_parallel(SOLVERS[self.solver], costs, batch_obj_lengths, n_jobs=self.n_jobs)
 
         # Do the matching sequentially for each example in the batch
+        idxs = []
+        default_idx = torch.arange(costs.shape[2])
+
         for k in range(len(costs)):
             # remove invalid targets for efficiency
             cost = costs[k][:, : batch_obj_lengths[k]].T
