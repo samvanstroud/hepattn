@@ -1,4 +1,4 @@
-name: clic_v1_registers_nolosssplit_16hdec_2xreg
+name: clic_v2
 seed_everything: 42
 
 data:
@@ -26,7 +26,6 @@ data:
   valid_path: /share/gpu1/syw24/dmitrii_clic/val_clic_fix.root
   test_path: /share/gpu1/syw24/dmitrii_clic/test_clic_fix.root
 
-  # Number of events to include in each set
   num_workers: 8
   num_train: -1
   num_test: -1
@@ -35,7 +34,7 @@ data:
   batch_size: 128
   incidence_cutval: 0.01
 
-  scale_dict_path: &scale_dict_path /share/gpu1/syw24/hepattn/src/hepattn/experiments/clic/configs/clic_var_transform.yaml
+  scale_dict_path: &scale_dict_path configs/clic_var_transform.yaml
 
 trainer:
   max_epochs: 50

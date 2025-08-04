@@ -152,12 +152,15 @@ def test_register_tokens_with_varlen():
 @pytest.mark.gpu
 def test_encoder_change_backends(attn_type, attn_type_new):
     model = Encoder(num_layers=3, dim=128, attn_type=attn_type).cuda().half()
-    x = torch.randn(8, 128, 128, device="cuda").half()
+    x_a = x_b = torch.randn(8, 128, 128, device="cuda").half()
+    kv_mask = torch.full((8, x_a.shape[-2]), True, dtype=torch.bool, device="cuda")
+
     with torch.no_grad():
-        out = model(x)
-        # Change backend
+        out = model(x_a, kv_mask=kv_mask if attn_type == "flash-varlen" else None)
         change_attn_backends(model, attn_type_new)
-        out_new = model(x)
-    assert out_new.shape == x.shape
+        out_new = model(x_b, kv_mask=kv_mask if attn_type_new == "flash-varlen" else None)
+
+    assert out_new.shape == x_a.shape
+
     # We allow this tolerance because of fp16 precision issues
     torch.testing.assert_close(out, out_new, atol=5e-3, rtol=5e-3)
