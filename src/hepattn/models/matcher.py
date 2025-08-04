@@ -49,25 +49,17 @@ def match_individual(solver_fn, cost: np.ndarray, default_idx: np.ndarray) -> np
     return pred_idx
 
 
-def match_chunk(solver_fn, costs_chunk: np.ndarray, lengths_chunk: np.ndarray, default_idx: np.ndarray) -> np.ndarray:
-    results = np.empty((len(costs_chunk), costs_chunk.shape[2]), dtype=np.int32)
-    for i, (cost, length) in enumerate(zip(costs_chunk, lengths_chunk, strict=True)):
-        cost_subset = cost[:, :length].T
-        results[i] = match_individual(solver_fn, cost_subset, default_idx)
-    return results
-
-
 def match_parallel(solver_fn, costs: np.ndarray, batch_obj_lengths: torch.Tensor, n_jobs: int = 8) -> torch.Tensor:
     batch_size = len(costs)
     chunk_size = (batch_size + n_jobs - 1) // n_jobs
     default_idx = np.arange(costs.shape[2], dtype=np.int32)
     lengths_np = batch_obj_lengths.squeeze(-1).cpu().numpy().astype(np.int32)
 
+    args = [(solver_fn, costs[i][:, : lengths_np[i]].T, default_idx) for i in range(batch_size)]
     with Pool(processes=n_jobs) as pool:
-        chunks = [(costs[i : i + chunk_size], lengths_np[i : i + chunk_size], default_idx) for i in range(0, batch_size, chunk_size)]
-        chunk_results = pool.starmap(match_chunk, [(solver_fn, *chunk) for chunk in chunks])
+        results = pool.starmap(match_individual, args, chunksize=chunk_size)
 
-    return torch.from_numpy(np.concatenate(chunk_results, axis=0))
+    return torch.from_numpy(np.stack(results))
 
 
 class Matcher(nn.Module):

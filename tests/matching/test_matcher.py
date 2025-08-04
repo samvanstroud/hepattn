@@ -87,7 +87,7 @@ def test_parallel_matching_performance(solver):
     matcher_sequential = Matcher(default_solver=solver, adaptive_solver=False, parallel_solver=False)
 
     # Parallel matcher with 2 jobs
-    matcher_parallel = Matcher(default_solver=solver, adaptive_solver=False, parallel_solver=True, n_jobs=2)
+    matcher_parallel = Matcher(default_solver=solver, adaptive_solver=False, parallel_solver=True, n_jobs=4)
 
     # Time sequential execution
     start_time = time.time()
