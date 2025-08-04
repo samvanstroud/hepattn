@@ -42,21 +42,24 @@ else:
     )
 
 
-def match_individual(solver_fn, cost: np.ndarray, default_idx: torch.Tensor) -> torch.Tensor:
-    pred_idx = torch.as_tensor(solver_fn(cost))
+def match_individual(solver_fn, cost: np.ndarray, default_idx: np.ndarray) -> np.ndarray:
+    pred_idx = solver_fn(cost)
     if solver_fn == SOLVERS["scipy"]:
-        pred_idx = torch.concatenate([pred_idx, default_idx[~torch.isin(default_idx, pred_idx)]])
+        pred_idx = np.concatenate([pred_idx, default_idx[~np.isin(default_idx, pred_idx)]])
     return pred_idx
 
 
 def match_parallel(solver_fn, costs: np.ndarray, batch_obj_lengths: torch.Tensor, n_jobs: int = 8) -> torch.Tensor:
-    default_idx = torch.arange(costs.shape[2])
+    batch_size = len(costs)
+    chunk_size = (batch_size + n_jobs - 1) // n_jobs
+    default_idx = np.arange(costs.shape[2], dtype=np.int32)
+    lengths_np = batch_obj_lengths.squeeze(-1).cpu().numpy().astype(np.int32)
+
+    args = [(solver_fn, costs[i][:, : lengths_np[i]].T, default_idx) for i in range(batch_size)]
     with Pool(processes=n_jobs) as pool:
-        # Prepare the arguments for the parallel function
-        args = ((solver_fn, costs[k][:, : batch_obj_lengths[k]].T, default_idx) for k in range(len(costs)))
-        # Use the pool to map the function to the arguments
-        pred_idxs = pool.starmap(match_individual, args)
-    return torch.stack(pred_idxs, dim=0)
+        results = pool.starmap(match_individual, args, chunksize=chunk_size)
+
+    return torch.from_numpy(np.stack(results))
 
 
 class Matcher(nn.Module):
@@ -106,14 +109,14 @@ class Matcher(nn.Module):
         object_valid_mask = object_valid_mask.detach().bool()
         batch_obj_lengths = torch.sum(object_valid_mask, dim=1).unsqueeze(-1)
 
-        idxs = []
-        default_idx = torch.arange(costs.shape[2])
-
         if self.parallel_solver:
             # If we are using a parallel solver, we can use it to speed up the matching
             return match_parallel(SOLVERS[self.solver], costs, batch_obj_lengths, n_jobs=self.n_jobs)
 
         # Do the matching sequentially for each example in the batch
+        idxs = []
+        default_idx = torch.arange(costs.shape[2])
+
         for k in range(len(costs)):
             # remove invalid targets for efficiency
             cost = costs[k][:, : batch_obj_lengths[k]].T
@@ -122,7 +125,7 @@ class Matcher(nn.Module):
             # These indicies can be used to permute the predictions so they now match the truth objects
             idxs.append(pred_idx)
 
-        return torch.stack(idxs)
+        return torch.from_numpy(np.stack(idxs))
 
     @torch.no_grad()
     def forward(self, costs, object_valid_mask=None):
