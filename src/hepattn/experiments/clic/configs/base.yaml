@@ -26,12 +26,12 @@ data:
   valid_path: /projects/u5ar/data/clic/val_clic_fix.root
   test_path: /projects/u5ar/data/clic/test_clic_fix.root
 
-  num_workers: 8
+  num_workers: 16
   num_train: -1
   num_test: -1
   num_val: 5000
 
-  batch_size: 128
+  batch_size: 512
   incidence_cutval: 0.01
 
   scale_dict_path: &scale_dict_path configs/clic_var_transform.yaml
@@ -39,7 +39,7 @@ data:
 trainer:
   max_epochs: 50
   accelerator: gpu
-  devices: 2
+  devices: 1
   precision: bf16-mixed
   gradient_clip_val: 0.1
   log_every_n_steps: 50
@@ -149,6 +149,7 @@ model:
           default_solver: scipy
           adaptive_solver: false
           parallel_solver: true
+          n_jobs: 16
 
       tasks:
         class_path: torch.nn.ModuleList
