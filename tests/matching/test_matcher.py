@@ -80,7 +80,7 @@ def test_parallel_matching_performance(solver):
     torch.manual_seed(42)
 
     # Use a larger batch size where parallel should show benefits
-    batch_size, num_queries = 64, 100
+    batch_size, num_queries = 512, 100
     costs = torch.randn(batch_size, num_queries, num_queries)
 
     # Sequential matcher
@@ -104,4 +104,4 @@ def test_parallel_matching_performance(solver):
 
     # Check that parallel is faster
     speedup_ratio = sequential_time / parallel_time
-    assert speedup_ratio > 1, f"Parallel execution seems much slower: {speedup_ratio:.2f}x speedup"
+    assert speedup_ratio > 1, f"Parallel execution seems slower: {speedup_ratio:.2f}x speedup"
