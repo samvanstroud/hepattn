@@ -133,7 +133,7 @@ class Matcher(nn.Module):
             # These indicies can be used to permute the predictions so they now match the truth objects
             idxs.append(pred_idx)
 
-        return torch.stack(idxs)
+        return torch.from_numpy(np.stack(idxs))
 
     @torch.no_grad()
     def forward(self, costs, object_valid_mask=None):
