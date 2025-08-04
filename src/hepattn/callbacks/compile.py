@@ -11,6 +11,8 @@ class Compile(Callback):
             print("-" * 80)
             print("compiling model...")
         for name, submodule in module.named_children():
+            if submodule.__class__.__module__.startswith("torchmetrics"):
+                continue
             if self.trainer.is_global_zero:
                 print(f" -> compiling {name}...")
             submodule.compile(dynamic=True)
