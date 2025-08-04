@@ -51,7 +51,7 @@ def match_individual(solver_fn, cost: np.ndarray, default_idx: np.ndarray) -> np
 
 def match_chunk(solver_fn, costs_chunk: np.ndarray, lengths_chunk: np.ndarray, default_idx: np.ndarray) -> np.ndarray:
     results = np.empty((len(costs_chunk), costs_chunk.shape[2]), dtype=np.int32)
-    for i, (cost, length) in enumerate(zip(costs_chunk, lengths_chunk, strict=False)):
+    for i, (cost, length) in enumerate(zip(costs_chunk, lengths_chunk, strict=True)):
         cost_subset = cost[:, :length].T
         results[i] = match_individual(solver_fn, cost_subset, default_idx)
     return results
