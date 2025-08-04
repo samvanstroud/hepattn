@@ -1,5 +1,6 @@
 from hepattn.callbacks.attn_mask_logger import AttnMaskLogger, AttentionStatsLogger
 from hepattn.callbacks.phi_analysis_logger import PhiAnalysisLogger
+from hepattn.callbacks.posenc_analysis_logger import PositionalEncodingAnalysisLogger
 from hepattn.callbacks.checkpoint import Checkpoint
 from hepattn.callbacks.compile import Compile
 from hepattn.callbacks.gradient_logger import GradientLoggerCallback
@@ -14,6 +15,7 @@ __all__ = [
     "AttnMaskLogger",
     "AttentionStatsLogger",
     "PhiAnalysisLogger",
+    "PositionalEncodingAnalysisLogger",
     "Checkpoint",
     "Compile",
     "GradientLoggerCallback",
