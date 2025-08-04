@@ -189,11 +189,9 @@ model:
                 losses:
                   mask_bce: 5.0
                   mask_dice: 1.0
-                  mask_focal: 2.0
                 costs:
                   # mask_bce: 5.0
                   mask_dice: 1.0
-                  # mask_focal: 2.0
                 dim: *dim
                 null_weight: 1.0
                 has_intermediate_loss: true
