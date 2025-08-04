@@ -1,12 +1,10 @@
 #!/bin/bash
 
 #SBATCH --job-name=clic-train
-#SBATCH --gpus=2                    # this also allocates 72 CPU cores and 115GB memory
+#SBATCH --gpus=2                    # this also allocates 72 CPU cores and 115GB memory per gpu
+#SBATCH --ntasks-per-node=2
 #SBATCH --time=12:00:00
 #SBATCH --output=slurm-logs/clic-train_%j.out
-# #SBATCH --nodes=1
-# #SBATCH --export=ALL
-# #SBATCH --ntasks-per-node=2        # must match number of devices
 
 # Comet variables
 echo "Setting comet experiment key"
@@ -41,7 +39,7 @@ CONFIG_PATH="configs/base.yaml"
 PYTORCH_CMD="python main.py fit --config $CONFIG_PATH"
 
 # Pixi command that runs the python command inside the pixi env
-PIXI_CMD="pixi run $PYTORCH_CMD"
+PIXI_CMD="srun pixi run $PYTORCH_CMD"
 
 # Apptainer command that runs the pixi command inside the pixi apptainer image
 # Add srun in front of apptainer command for multiple gpus training
