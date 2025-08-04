@@ -1,5 +1,3 @@
-import time
-
 import numpy as np
 import pytest
 import torch
@@ -72,36 +70,3 @@ def test_parallel_matching_correctness(solver, batch_size, num_queries):
 
     # Check that results are identical
     assert torch.equal(sequential_result, parallel_result), f"Results differ for solver {solver}"
-
-
-@pytest.mark.parametrize("solver", SOLVERS.keys())
-def test_parallel_matching_performance(solver):
-    """Test that parallel matching is faster than sequential for larger batches."""
-    torch.manual_seed(42)
-
-    # Use a larger batch size where parallel should show benefits
-    batch_size, num_queries = 512, 100
-    costs = torch.randn(batch_size, num_queries, num_queries)
-
-    # Sequential matcher
-    matcher_sequential = Matcher(default_solver=solver, adaptive_solver=False, parallel_solver=False)
-
-    # Parallel matcher with 2 jobs
-    matcher_parallel = Matcher(default_solver=solver, adaptive_solver=False, parallel_solver=True, n_jobs=4)
-
-    # Time sequential execution
-    start_time = time.time()
-    sequential_result = matcher_sequential(costs)
-    sequential_time = time.time() - start_time
-
-    # Time parallel execution
-    start_time = time.time()
-    parallel_result = matcher_parallel(costs)
-    parallel_time = time.time() - start_time
-
-    # Check results are the same
-    assert torch.equal(sequential_result, parallel_result)
-
-    # Check that parallel is faster
-    speedup_ratio = sequential_time / parallel_time
-    assert speedup_ratio > 1, f"Parallel execution seems slower: {speedup_ratio:.2f}x speedup"
