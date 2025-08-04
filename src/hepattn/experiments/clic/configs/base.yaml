@@ -26,7 +26,6 @@ data:
   valid_path: /projects/u5ar/data/clic/val_clic_fix.root
   test_path: /projects/u5ar/data/clic/test_clic_fix.root
 
-  # Number of events to include in each set
   num_workers: 8
   num_train: -1
   num_test: -1
@@ -53,7 +52,7 @@ trainer:
       project_name: hepattn-clic
 
   callbacks:
-    #- class_path: hepattn.callbacks.Compile
+    - class_path: hepattn.callbacks.Compile
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint

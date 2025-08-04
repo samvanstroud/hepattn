@@ -51,7 +51,7 @@ def object_ce_cost(pred_logits, targets):
         cost_class: [batch_size, num_objects, num_targets] - classification cost matrix
     """
     assert pred_logits.shape[-1] > 1
-    probs = pred_logits.softmax(-1)
+    probs = torch.softmax(pred_logits, dim=-1)
 
     batch_size, num_queries, _ = probs.shape
     num_targets = targets.size(1)
@@ -347,22 +347,22 @@ def regr_smooth_l1_cost(pred, targets):
 
 
 cost_fns = {
-    "object_bce": object_bce_cost,
-    "object_ce": object_ce_cost,
-    "mask_bce": mask_bce_cost,
-    "mask_dice": mask_dice_cost,
-    "mask_focal": mask_focal_cost,
-    "mask_iou": mask_iou_cost,
-    "kl_div": kl_div_cost,
-    "mask_kl_div": mask_kl_div_cost,
+    "object_bce": torch.compile(object_bce_cost, dynamic=True),
+    "object_ce": torch.compile(object_ce_cost, dynamic=True),
+    "mask_bce": torch.compile(mask_bce_cost, dynamic=True),
+    "mask_dice": torch.compile(mask_dice_cost, dynamic=True),
+    "mask_focal": torch.compile(mask_focal_cost, dynamic=True),
+    "mask_iou": torch.compile(mask_iou_cost, dynamic=True),
+    "kl_div": torch.compile(kl_div_cost, dynamic=True),
+    "mask_kl_div": torch.compile(mask_kl_div_cost, dynamic=True),
 }
 
 loss_fns = {
-    "object_bce": object_bce_loss,
-    "object_ce": object_ce_loss,
-    "mask_bce": mask_bce_loss,
-    "mask_dice": mask_dice_loss,
-    "mask_focal": mask_focal_loss,
-    "kl_div": kl_div_loss,
-    "mask_kl_div": mask_kl_div_loss,
+    "object_bce": torch.compile(object_bce_loss, dynamic=True),
+    "object_ce": torch.compile(object_ce_loss, dynamic=True),
+    "mask_bce": torch.compile(mask_bce_loss, dynamic=True),
+    "mask_dice": torch.compile(mask_dice_loss, dynamic=True),
+    "mask_focal": torch.compile(mask_focal_loss, dynamic=True),
+    "kl_div": torch.compile(kl_div_loss, dynamic=True),
+    "mask_kl_div": torch.compile(mask_kl_div_loss, dynamic=True),
 }

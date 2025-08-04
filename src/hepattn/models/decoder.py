@@ -211,7 +211,7 @@ class MaskFormerDecoderLayer(nn.Module):
             attn_mask = attn_mask.detach()
             # True values indicate a slot will be included in the attention computation, while False will be ignored.
             # If the attn mask is completely invalid for a given query, allow it to attend everywhere
-            attn_mask[torch.where(attn_mask.sum(-1) == 0)] = True
+            attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
         else:
             attn_mask = None
 
