@@ -3,7 +3,7 @@
 #SBATCH --job-name=clic-train
 #SBATCH --gpus=1                    # this also allocates 72 CPU cores and 115GB memory per gpu
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=slurm-logs/clic-train_%j.out
 
 # Comet variables
