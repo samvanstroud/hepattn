@@ -79,6 +79,17 @@ class AttnMaskLogger(Callback):
                 self._log_attention_mask(pl_module, mask, step, layer, "local_ca_mask_val")
             # Clear after logging
             delattr(model, "attn_masks_to_log")
+        
+        # Log decoder attention masks
+        if hasattr(model, "decoder_attn_masks_to_log"):
+            for mask_info in model.decoder_attn_masks_to_log.values():
+                mask = mask_info["mask"]
+                step = mask_info["step"]
+                layer = mask_info["layer"]
+                self._log_attention_mask(pl_module, mask, step, layer, "decoder_ca_mask_val")
+            # Clear after logging
+            delattr(model, "decoder_attn_masks_to_log")
+
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
@@ -99,6 +110,16 @@ class AttnMaskLogger(Callback):
                 self._log_attention_mask(pl_module, mask, step, layer, "local_ca_mask")
             # Clear after logging
             delattr(model, "attn_masks_to_log")
+        
+        # Log decoder attention masks
+        if hasattr(model, "decoder_attn_masks_to_log"):
+            for mask_info in model.decoder_attn_masks_to_log.values():
+                mask = mask_info["mask"]
+                step = mask_info["step"]
+                layer = mask_info["layer"]
+                self._log_attention_mask(pl_module, mask, step, layer, "decoder_ca_mask")
+            # Clear after logging
+            delattr(model, "decoder_attn_masks_to_log")
 
 class AttentionStatsLogger(Callback):
     """Callback for logging basic attention statistics."""
@@ -140,33 +161,51 @@ class AttentionStatsLogger(Callback):
             return
             
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
-        mask_attr = None
         if hasattr(model, 'attn_masks_to_log'):
             mask_attr = 'attn_masks_to_log'
-        elif hasattr(model, 'final_attn_masks_to_log'):
+            for mask_info in getattr(model, mask_attr).values():
+                step = mask_info["step"]
+                mask = mask_info["mask"]
+                layer = mask_info["layer"]
+                self._log_attention_stats(pl_module, mask, step, layer, "train/attn_mask")
+        if hasattr(model, 'final_attn_masks_to_log'):
             mask_attr = 'final_attn_masks_to_log'
-        if mask_attr is None:
-            return
-        for mask_info in getattr(model, mask_attr).values():
-            step = mask_info["step"]
-            mask = mask_info["mask"]
-            layer = mask_info["layer"]
-            self._log_attention_stats(pl_module, mask, step, layer, "train")
+            for mask_info in getattr(model, mask_attr).values():
+                step = mask_info["step"]
+                mask = mask_info["mask"]
+                layer = mask_info["layer"]
+                self._log_attention_stats(pl_module, mask, step, layer, "train/final_attn_mask")
+        if hasattr(model, 'decoder_attn_masks_to_log'):
+            mask_attr = 'decoder_attn_masks_to_log'
+            for mask_info in getattr(model, mask_attr).values():
+                step = mask_info["step"]
+                mask = mask_info["mask"]
+                layer = mask_info["layer"]
+                self._log_attention_stats(pl_module, mask, step, layer, "train/decoder_attn_mask")
+
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if not self.log_val:
             return   
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
-        mask_attr = None
         if hasattr(model, 'attn_masks_to_log'):
             mask_attr = 'attn_masks_to_log'
-        elif hasattr(model, 'final_attn_masks_to_log'):
+            for mask_info in getattr(model, mask_attr).values():
+                step = mask_info["step"]
+                mask = mask_info["mask"]
+                layer = mask_info["layer"]
+                self._log_attention_stats(pl_module, mask, step, layer, "val/attn_mask")
+        if hasattr(model, 'final_attn_masks_to_log'):
             mask_attr = 'final_attn_masks_to_log'
-        if mask_attr is None:
-            return
-        for mask_info in getattr(model, mask_attr).values():
-            step = mask_info["step"]
-            mask = mask_info["mask"]
-            layer = mask_info["layer"]
-            self._log_attention_stats(pl_module, mask, step, layer, "val")
-
+            for mask_info in getattr(model, mask_attr).values():
+                step = mask_info["step"]
+                mask = mask_info["mask"]
+                layer = mask_info["layer"]
+                self._log_attention_stats(pl_module, mask, step, layer, "val/final_attn_mask")
+        if hasattr(model, 'decoder_attn_masks_to_log'):
+            mask_attr = 'decoder_attn_masks_to_log'
+            for mask_info in getattr(model, mask_attr).values():
+                step = mask_info["step"]
+                mask = mask_info["mask"]
+                layer = mask_info["layer"]
+                self._log_attention_stats(pl_module, mask, step, layer, "val/decoder_attn_mask")
