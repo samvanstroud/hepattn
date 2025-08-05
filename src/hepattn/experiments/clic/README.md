@@ -20,7 +20,8 @@ python main.py test \
     --trainer.precision 32-true
 ```
 
-Flags `--data.is_inference true` and `--trainer.precision 32-true` are important for correct evaluation of the model performance.
+Flags `--data.is_inference true` and `--trainer.precision 32-true` are important for correct evaluation of the model performance. \
+**Don't forget to change the attention type to `torch` in the config file.**
 
 ## CLIC Data
 
