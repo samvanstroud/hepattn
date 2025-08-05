@@ -71,7 +71,6 @@ trainer:
   default_root_dir: logs
   gradient_clip_val: 0.1
   enable_progress_bar: true
-  
   # Specify loggers here
   logger:
     class_path: lightning.pytorch.loggers.CometLogger
@@ -100,10 +99,10 @@ trainer:
       init_args:
         log_train: true
         log_val: true
-    # - class_path: hepattn.callbacks.PhiAnalysisLogger
-    #   init_args:
-    #     regressed_phi: true
-    #     queryPE: true
+    - class_path: hepattn.callbacks.PhiAnalysisLogger
+      init_args:
+        regressed_phi: true
+        queryPE: true
     - class_path: hepattn.callbacks.PositionalEncodingAnalysisLogger
     - class_path: hepattn.callbacks.AttnMaskLogger
 
@@ -128,33 +127,7 @@ model:
       input_sort_field: phi
       num_queries: *num_objects
       dim: &dim 256
-      log_attn_mask: true
-      learnable_query_phi: false
-      query_posenc:
-          class_path: hepattn.models.PositionEncoder
-          init_args:
-            input_name: query
-            fields:
-              - phi
-            sym_fields:
-              - phi
-            dim: *dim
-            alpha: 2
-            base: 50000
-      key_posenc:
-          class_path: hepattn.models.PositionEncoder
-          init_args:
-            input_name: key
-            fields:
-              - phi
-            sym_fields:
-              - phi
-            dim: *dim
-            alpha: 2
-            base: 50000
-      preserve_posenc: true
-      log_attn_mask: true
-      phi_analysis: true
+      log_final_attn_mask: true
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -194,6 +167,47 @@ model:
                     sym_fields:
                       - phi
                     dim: *dim
+      decoder:
+        class_path: hepattn.models.MaskFormerDecoder
+        init_args:
+          num_decoder_layers: 4
+          decoder_layer_config:
+            dim: *dim
+            norm: RMSNorm
+            hybrid_norm: true
+          num_queries: *num_objects
+          dim: *dim
+          mask_attention: true
+          log_attn_mask: true
+          learnable_query_phi: false
+          phi_analysis: true
+          strided_mask: true
+          strided_mask_window_size: 512
+          preserve_posenc: true
+
+          query_posenc:
+              class_path: hepattn.models.PositionEncoder
+              init_args:
+                input_name: query
+                fields:
+                  - phi
+                sym_fields:
+                  - phi
+                dim: *dim
+                alpha: 2
+                base: 50000
+          key_posenc:
+              class_path: hepattn.models.PositionEncoder
+              init_args:
+                input_name: key
+                fields:
+                  - phi
+                sym_fields:
+                  - phi
+                dim: *dim
+                alpha: 2
+                base: 50000
+
 
       encoder:
         class_path: hepattn.models.Encoder
@@ -206,12 +220,6 @@ model:
           hybrid_norm: true
           norm: RMSNorm
 
-      num_decoder_layers: 4
-      decoder_layer_config:
-        dim: *dim
-        norm: RMSNorm
-        mask_attention: true
-        hybrid_norm: true
 
       tasks:
         class_path: torch.nn.ModuleList
