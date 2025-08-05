@@ -87,7 +87,7 @@ def create_pos_enc_visualizations(
     
     # 4. Phi distribution plots
     if hit_phi is not None or query_phi is not None:
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        fig, axes = plt.subplots(2, 4, figsize=(20, 10))
         fig.suptitle('Phi Distribution Analysis', fontsize=16, fontweight='bold')
         
         # Query phi distribution
@@ -98,6 +98,11 @@ def create_pos_enc_visualizations(
             axes[0, 0].set_ylabel('Frequency')
             axes[0, 0].set_title('Query Phi Distribution')
             axes[0, 0].grid(True, alpha=0.3)
+            
+            # Circular histogram (polar plot) for queries
+            axes[0, 1] = fig.add_subplot(2, 4, 2, projection='polar')
+            axes[0, 1].hist(query_phi.numpy(), bins=36, alpha=0.7, edgecolor='black', color='skyblue')
+            axes[0, 1].set_title('Query Phi Distribution (Circular)', pad=20)
         
         # Hit phi distribution
         if hit_phi is not None:
@@ -107,36 +112,71 @@ def create_pos_enc_visualizations(
             axes[1, 0].set_ylabel('Frequency')
             axes[1, 0].set_title('Hit Phi Distribution')
             axes[1, 0].grid(True, alpha=0.3)
+            
+            # Circular histogram (polar plot) for hits
+            axes[1, 1] = fig.add_subplot(2, 4, 6, projection='polar')
+            axes[1, 1].hist(hit_phi.numpy(), bins=36, alpha=0.7, edgecolor='black', color='lightcoral')
+            axes[1, 1].set_title('Hit Phi Distribution (Circular)', pad=20)
         
         # If both are available, add comparison
         if hit_phi is not None and query_phi is not None:
             # Overlay both distributions
-            axes[0, 1].hist(query_phi.numpy(), bins=50, alpha=0.7, label='Queries', color='skyblue')
-            axes[0, 1].hist(hit_phi.numpy(), bins=50, alpha=0.7, label='Hits', color='lightcoral')
-            axes[0, 1].set_xlabel('Phi (radians)')
-            axes[0, 1].set_ylabel('Frequency')
-            axes[0, 1].set_title('Query vs Hit Phi Distribution')
-            axes[0, 1].legend()
-            axes[0, 1].grid(True, alpha=0.3)
+            axes[0, 2].hist(query_phi.numpy(), bins=50, alpha=0.7, label='Queries', color='skyblue')
+            axes[0, 2].hist(hit_phi.numpy(), bins=50, alpha=0.7, label='Hits', color='lightcoral')
+            axes[0, 2].set_xlabel('Phi (radians)')
+            axes[0, 2].set_ylabel('Frequency')
+            axes[0, 2].set_title('Query vs Hit Phi Distribution')
+            axes[0, 2].legend()
+            axes[0, 2].grid(True, alpha=0.3)
             
             # Box plot comparison
-            axes[1, 1].boxplot([query_phi.numpy(), hit_phi.numpy()], labels=['Queries', 'Hits'])
-            axes[1, 1].set_ylabel('Phi (radians)')
-            axes[1, 1].set_title('Phi Distribution Comparison')
-            axes[1, 1].grid(True, alpha=0.3)
+            axes[1, 2].boxplot([query_phi.numpy(), hit_phi.numpy()], labels=['Queries', 'Hits'])
+            axes[1, 2].set_ylabel('Phi (radians)')
+            axes[1, 2].set_title('Phi Distribution Comparison')
+            axes[1, 2].grid(True, alpha=0.3)
+            
+            # Combined circular plot
+            axes[0, 3] = fig.add_subplot(2, 4, 4, projection='polar')
+            axes[0, 3].hist(query_phi.numpy(), bins=36, alpha=0.7, label='Queries', color='skyblue')
+            axes[0, 3].hist(hit_phi.numpy(), bins=36, alpha=0.7, label='Hits', color='lightcoral')
+            axes[0, 3].set_title('Combined Phi Distribution (Circular)', pad=20)
+            axes[0, 3].legend()
         else:
-            # If only one type is available, add circular histograms
+            # If only one type is available, add placeholder for comparison plots
             if query_phi is not None:
-                # Circular histogram (polar plot) for queries
-                ax_polar = fig.add_subplot(2, 2, 2, projection='polar')
-                ax_polar.hist(query_phi.numpy(), bins=36, alpha=0.7, edgecolor='black', color='skyblue')
-                ax_polar.set_title('Query Phi Distribution (Circular)', pad=20)
+                axes[0, 2].text(0.5, 0.5, 'No hit phi data\nfor comparison', 
+                               ha='center', va='center', transform=axes[0, 2].transAxes,
+                               bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.5))
+                axes[0, 2].set_title('Query vs Hit Phi Distribution')
+                
+                axes[1, 2].text(0.5, 0.5, 'No hit phi data\nfor comparison', 
+                               ha='center', va='center', transform=axes[1, 2].transAxes,
+                               bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.5))
+                axes[1, 2].set_title('Phi Distribution Comparison')
+                
+                # Combined circular plot (just queries)
+                axes[0, 3] = fig.add_subplot(2, 4, 4, projection='polar')
+                axes[0, 3].hist(query_phi.numpy(), bins=36, alpha=0.7, color='skyblue')
+                axes[0, 3].set_title('Query Phi Distribution (Circular)', pad=20)
             
             if hit_phi is not None:
-                # Circular histogram (polar plot) for hits
-                ax_polar2 = fig.add_subplot(2, 2, 4, projection='polar')
-                ax_polar2.hist(hit_phi.numpy(), bins=36, alpha=0.7, edgecolor='black', color='lightcoral')
-                ax_polar2.set_title('Hit Phi Distribution (Circular)', pad=20)
+                axes[0, 2].text(0.5, 0.5, 'No query phi data\nfor comparison', 
+                               ha='center', va='center', transform=axes[0, 2].transAxes,
+                               bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.5))
+                axes[0, 2].set_title('Query vs Hit Phi Distribution')
+                
+                axes[1, 2].text(0.5, 0.5, 'No query phi data\nfor comparison', 
+                               ha='center', va='center', transform=axes[1, 2].transAxes,
+                               bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.5))
+                axes[1, 2].set_title('Phi Distribution Comparison')
+                
+                # Combined circular plot (just hits)
+                axes[0, 3] = fig.add_subplot(2, 4, 4, projection='polar')
+                axes[0, 3].hist(hit_phi.numpy(), bins=36, alpha=0.7, color='lightcoral')
+                axes[0, 3].set_title('Hit Phi Distribution (Circular)', pad=20)
+                
+        # Hide unused subplots
+        axes[1, 3].set_visible(False)
                 
         plt.tight_layout()
         figures['phi_distributions'] = fig
