@@ -279,6 +279,7 @@ class MaskFormerDecoder(nn.Module):
         x["key_embed"] = key_embed_sorted
 
         # Sort key_valid mask - [batch, constituents]
+        key_valid_sorted = None
         if key_valid is not None:
             key_valid_sorted = key_valid[0][key_sort_idx[0]]  # [constituents]
             key_valid_sorted = key_valid_sorted.unsqueeze(0)  # [1, constituents]
@@ -298,6 +299,7 @@ class MaskFormerDecoder(nn.Module):
         x["query_embed"] = query_embed_sorted
         
         # Sort query_mask - [batch, queries]
+        query_mask_sorted = None
         if query_mask is not None:
             query_mask_sorted = query_mask[0][query_sort_idx]  # [queries]
             query_mask_sorted = query_mask_sorted.unsqueeze(0)  # [1, queries]

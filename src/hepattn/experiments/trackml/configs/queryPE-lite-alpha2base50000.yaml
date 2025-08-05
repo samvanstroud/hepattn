@@ -101,7 +101,7 @@ trainer:
         log_val: true
     - class_path: hepattn.callbacks.PhiAnalysisLogger
       init_args:
-        regressed_phi: true
+        regressed_phi: false
         queryPE: true
     - class_path: hepattn.callbacks.PositionalEncodingAnalysisLogger
     - class_path: hepattn.callbacks.AttnMaskLogger

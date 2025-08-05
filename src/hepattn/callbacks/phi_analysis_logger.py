@@ -102,7 +102,14 @@ class PhiAnalysisLogger(Callback):
         layer = mask_info["layer"]
         logger = getattr(pl_module, 'logger', None)
 
-        phi_constituents = getattr(model, "last_key_phi", None)
+
+
+        # Check for attention masks from the decoder
+        if hasattr(model, "decoder") and hasattr(model.decoder, 'last_key_phi'):
+            phi_constituents = model.decoder.last_key_phi
+            if phi_constituents is None:
+                print(f"[PhiAnalysisLogger] Warning: last_key_phi is None for layer {layer} at step {step} - skipping phi analysis")
+                return
         mask_np = mask.cpu().numpy() if not isinstance(mask, np.ndarray) else mask
         phi_constituents_np = phi_constituents.cpu().numpy() if hasattr(phi_constituents, 'cpu') else phi_constituents
 
@@ -148,7 +155,12 @@ class PhiAnalysisLogger(Callback):
                 # Now reg_phi_sel matches the original queries_to_process
                 diff_regressed_meanhit = cyclic_diff_vec(reg_phi_sel, mean_phi)
         if self.queryPE:
-            query_phi = getattr(model, "last_query_phi", None)
+            # Check for attention masks from the decoder
+            if hasattr(model, "decoder") and hasattr(model.decoder, 'last_query_phi'):
+                query_phi = model.decoder.last_query_phi
+                if query_phi is None:
+                    print(f"[PhiAnalysisLogger] Warning: last_key_phi is None for layer {layer} at step {step} - skipping phi analysis")
+                    return
             query_phi_np = query_phi.cpu().numpy() if hasattr(query_phi, 'cpu') else query_phi
             query_phi_sel = query_phi_np[queries_to_process]
             diff_meanhit_query = cyclic_diff_vec(mean_phi, query_phi_sel)

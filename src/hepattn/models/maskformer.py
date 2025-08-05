@@ -21,7 +21,7 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
         log_final_attn_mask: bool = False,
-
+        phi_analysis: bool = False,
 
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -67,8 +67,10 @@ class MaskFormer(nn.Module):
         self.raw_variables = raw_variables or []
         self.log_final_attn_mask = log_final_attn_mask
         self.log_step = 0
+        self.phi_analysis = phi_analysis
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
+        self.log_step += 1
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
 
@@ -181,16 +183,16 @@ class MaskFormer(nn.Module):
             and (self.log_step % N_STEPS_LOG_ATTN_MASK == 0) or (not self.training)
             ):
             if not hasattr(self, "final_attn_masks_to_log"):
-                # sigmoid the attn mask to get the probability of the hit being attended to
-                attn_mask_im = attn_logits[0].detach().cpu().clone().sigmoid()
-                attn_mask_im = self.sort_attn_mask_im(attn_mask_im, x)
-                self.final_attn_masks_to_log = {
-                    "mask": attn_mask_im >= threshold,
-                    "probs": attn_mask_im,
-                    "step": self.log_step,
-                    "layer": "final",
-                }
-
+                self.final_attn_masks_to_log = {}
+            # sigmoid the attn mask to get the probability of the hit being attended to
+            attn_mask_im = attn_logits[0].detach().cpu().clone().sigmoid()
+            attn_mask_im = self.sort_attn_mask_im(attn_mask_im, x)
+            self.final_attn_masks_to_log["final"] = {
+                "mask": attn_mask_im >= threshold,
+                "probs": attn_mask_im,
+                "step": self.log_step,
+                "layer": "final",
+            }
     
 
     def predict(self, outputs: dict) -> dict:
@@ -267,16 +269,12 @@ class MaskFormer(nn.Module):
             # Get the indicies that can permute the predictions to yield their optimal matching
             pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
     
-            if (self.log_attn_mask
+            if (self.log_final_attn_mask
             # and (attn_mask is not None)
             and (self.log_step % 1000 == 0) or (not self.training)
             ):
                 # store pred_idxs for each layer
                 self.log_pred_idxs[layer_name] = pred_idxs.detach().cpu().numpy()
-
-
-
-
 
             for task in self.tasks:
                 # Tasks without a object dimension do not need permutation (constituent-level or sample-level)
