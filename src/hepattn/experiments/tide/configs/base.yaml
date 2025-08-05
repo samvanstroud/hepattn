@@ -283,10 +283,7 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 256
-      num_queries: *num_tracks
       input_sort_field: phi
-      use_attn_masks: true
-      use_query_masks: false
       target_object: sudo
 
       input_nets:
@@ -408,10 +405,13 @@ model:
           dim: *dim
           attn_type: torch
 
-      num_decoder_layers: 4
-      decoder_layer_config:
-        dim: *dim
+      decoder:
+        num_decoder_layers: 4
+        num_queries: *num_tracks
         mask_attention: true
+        use_query_masks: false
+        decoder_layer_config:
+          dim: *dim
 
       matcher:
         class_path: hepattn.models.matcher.Matcher

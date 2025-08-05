@@ -51,7 +51,7 @@ def object_ce_cost(pred_logits, targets):
         cost_class: [batch_size, num_objects, num_targets] - classification cost matrix
     """
     assert pred_logits.shape[-1] > 1
-    probs = pred_logits.softmax(-1)
+    probs = torch.softmax(pred_logits, dim=-1)
 
     batch_size, num_queries, _ = probs.shape
     num_targets = targets.size(1)
@@ -110,8 +110,7 @@ def mask_dice_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None
 
     numerator = 2 * torch.einsum("bnc,bmc->bnm", inputs, targets)
     denominator = inputs.sum(-1).unsqueeze(2) + targets.sum(-1).unsqueeze(1)
-    cost = 1 - (numerator + 1) / (denominator + 1)
-    return cost
+    return 1 - (numerator + 1) / (denominator + 1)
 
 
 def mask_iou_cost(pred_logits, targets, input_pad_mask=None, eps=1e-6):
@@ -126,9 +125,7 @@ def mask_iou_cost(pred_logits, targets, input_pad_mask=None, eps=1e-6):
     # Context manager necessary to overwrite global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
         intersection = torch.einsum("bnc,bmc->bnm", probs, targets)
-        cost = 1 - (intersection + eps) / (eps + num_pred + num_targets - intersection)
-
-    return cost
+        return 1 - (intersection + eps) / (eps + num_pred + num_targets - intersection)
 
 
 def mask_focal_loss(pred_logits, targets, gamma=2.0, object_valid_mask=None, input_pad_mask=None, sample_weight=None):
@@ -194,9 +191,7 @@ def mask_focal_cost(pred_logits, targets, gamma=2.0, input_pad_mask=None, sample
 
     # Context manager necessary to overwride global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
-        cost = torch.einsum("bnc,bmc->bnm", focal_pos, targets) + torch.einsum("bnc,bmc->bnm", focal_neg, (1 - targets))
-
-    return cost
+        return torch.einsum("bnc,bmc->bnm", focal_pos, targets) + torch.einsum("bnc,bmc->bnm", focal_neg, (1 - targets))
 
 
 def mask_bce_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=None, sample_weight=None):
@@ -255,9 +250,7 @@ def mask_bce_cost(pred_logits, targets, input_pad_mask=None, sample_weight=None)
 
     # Context manager necessary to overwrite global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
-        cost = torch.einsum("bnc,bmc->bnm", pos, targets) + torch.einsum("bnc,bmc->bnm", neg, (1 - targets))
-
-    return cost
+        return torch.einsum("bnc,bmc->bnm", pos, targets) + torch.einsum("bnc,bmc->bnm", neg, (1 - targets))
 
 
 def kl_div_loss(pred_logits, true, mask=None, weight=None, eps=1e-8):  # noqa: ARG001
@@ -297,7 +290,7 @@ def mask_kl_div_loss(pred_logits, targets, object_valid_mask=None, input_pad_mas
         pred_logits = pred_logits.masked_fill(~input_pad_mask.unsqueeze(1), float("-inf"))
         targets = targets * input_pad_mask.unsqueeze(1)
         # Renormalise to keep targets sums to 1 for each object
-        targets = targets / (targets.sum(-1, keepdim=True) + eps)
+        targets = targets / targets.sum(-1, keepdim=True) + eps
 
     pred_probs = torch.softmax(pred_logits, dim=-1)
     loss = -targets * torch.log(pred_probs + eps)
@@ -327,16 +320,14 @@ def mask_kl_div_cost(pred_logits, targets, input_pad_mask=None, sample_weight=No
         pred_logits = pred_logits.masked_fill(~input_pad_mask.unsqueeze(1), float("-inf"))
         targets = targets * input_pad_mask.unsqueeze(1)
         # Renormalise to keep targets sums to 1 for each object
-        targets = targets / (targets.sum(-1, keepdim=True) + eps)
+        targets = targets / targets.sum(-1, keepdim=True) + eps
 
     pred_probs = torch.softmax(pred_logits, dim=-1)
 
     # Context manager necessary to overwrite global autocast to ensure float32 cost is returned
     with torch.autocast(device_type="cuda", enabled=False):
         log_pred = torch.log(pred_probs + eps)
-        cost = torch.einsum("bnm,btm->bnt", -log_pred, targets)
-
-    return cost
+        return torch.einsum("bnm,btm->bnt", -log_pred, targets)
 
 
 def regr_mse_loss(pred, targets):
@@ -356,22 +347,22 @@ def regr_smooth_l1_cost(pred, targets):
 
 
 cost_fns = {
-    "object_bce": object_bce_cost,
-    "object_ce": object_ce_cost,
-    "mask_bce": mask_bce_cost,
-    "mask_dice": mask_dice_cost,
-    "mask_focal": mask_focal_cost,
-    "mask_iou": mask_iou_cost,
-    "kl_div": kl_div_cost,
-    "mask_kl_div": mask_kl_div_cost,
+    "object_bce": torch.compile(object_bce_cost, dynamic=True),
+    "object_ce": torch.compile(object_ce_cost, dynamic=True),
+    "mask_bce": torch.compile(mask_bce_cost, dynamic=True),
+    "mask_dice": torch.compile(mask_dice_cost, dynamic=True),
+    "mask_focal": torch.compile(mask_focal_cost, dynamic=True),
+    "mask_iou": torch.compile(mask_iou_cost, dynamic=True),
+    "kl_div": torch.compile(kl_div_cost, dynamic=True),
+    "mask_kl_div": torch.compile(mask_kl_div_cost, dynamic=True),
 }
 
 loss_fns = {
-    "object_bce": object_bce_loss,
-    "object_ce": object_ce_loss,
-    "mask_bce": mask_bce_loss,
-    "mask_dice": mask_dice_loss,
-    "mask_focal": mask_focal_loss,
-    "kl_div": kl_div_loss,
-    "mask_kl_div": mask_kl_div_loss,
+    "object_bce": torch.compile(object_bce_loss, dynamic=True),
+    "object_ce": torch.compile(object_ce_loss, dynamic=True),
+    "mask_bce": torch.compile(mask_bce_loss, dynamic=True),
+    "mask_dice": torch.compile(mask_dice_loss, dynamic=True),
+    "mask_focal": torch.compile(mask_focal_loss, dynamic=True),
+    "kl_div": torch.compile(kl_div_loss, dynamic=True),
+    "mask_kl_div": torch.compile(mask_kl_div_loss, dynamic=True),
 }

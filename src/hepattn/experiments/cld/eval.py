@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 import h5py
@@ -137,7 +136,7 @@ def main():
                 # The masks will have had the particle padding applied, but also the hit padding (since they are batched)
                 flow_hit_valid = preds[f"flow_{hit}_assignment/flow_{hit}_valid"][0][:, : len(hit_valid)]
 
-            particle_valid = particle_valid & (particle_hit_valid.sum(-1) > 0)
+            particle_valid &= particle_hit_valid.sum(-1) > 0
 
             hit_iou = (particle_hit_valid & flow_hit_valid).sum(-1) / (particle_hit_valid | flow_hit_valid).sum(-1)
 

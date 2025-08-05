@@ -354,10 +354,7 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 256
-      num_queries: *num_particles
       input_sort_field: pos.phi
-      use_attn_masks: true
-      use_query_masks: false
 
       input_nets:
         class_path: torch.nn.ModuleList
@@ -506,10 +503,13 @@ model:
           window_size: 1024
           window_wrap: true
 
-      num_decoder_layers: 8
-      decoder_layer_config:
-        dim: *dim
+      decoder:
+        num_decoder_layers: 8
+        num_queries: *num_particles
         mask_attention: true
+        use_query_masks: false
+        decoder_layer_config:
+          dim: *dim
 
       matcher:
         class_path: hepattn.models.matcher.Matcher

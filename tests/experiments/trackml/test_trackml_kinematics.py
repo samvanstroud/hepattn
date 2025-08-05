@@ -32,7 +32,7 @@ class TestTrackMLEvent:
         particle_min_num_hits = 1
         event_max_num_particles = 100000
 
-        dataset = TrackMLDataset(
+        return TrackMLDataset(
             dirpath=dirpath,
             inputs=input_fields,
             targets=target_fields,
@@ -43,8 +43,6 @@ class TestTrackMLEvent:
             particle_min_num_hits=particle_min_num_hits,
             event_max_num_particles=event_max_num_particles,
         )
-
-        return dataset
 
     def test_trackml_plot_kinematics(self, trackml_dataset):
         fig = plot_trackml_kinematics(trackml_dataset)

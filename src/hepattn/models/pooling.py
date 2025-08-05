@@ -42,5 +42,4 @@ class Pooling(nn.Module):
         w = torch.softmax(w, dim=-1)  # (..., N)
         w = w.masked_fill(~x_valid, 0.0)
         # Weighted sum of all the embeddings (..., N, E) -> (..., E)
-        x = torch.sum(x * w.unsqueeze(-1), dim=-2)
-        return x
+        return torch.sum(x * w.unsqueeze(-1), dim=-2)

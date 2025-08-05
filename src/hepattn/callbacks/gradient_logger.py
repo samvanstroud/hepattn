@@ -38,9 +38,7 @@ class GradientLoggerCallback(Callback):
                     # Log gradient statistics
                     grad_mean = param.grad.mean().item()
                     grad_std = param.grad.std().item()
-                    self.log(
-                        {f"grad/{name}_mean": grad_mean, f"grad/{name}_std": grad_std}, "gradients"
-                    )
+                    self.log({f"grad/{name}_mean": grad_mean, f"grad/{name}_std": grad_std}, "gradients")
 
                 else:
                     self.log({f"grad/{name}_mean": None, f"grad/{name}_std": None}, "gradients")

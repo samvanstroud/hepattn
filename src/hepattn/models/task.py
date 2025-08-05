@@ -10,9 +10,16 @@ from hepattn.models.loss import cost_fns, loss_fns, mask_focal_loss
 
 
 class Task(nn.Module, ABC):
-    def __init__(self):
+    """Abstract base class for all tasks.
+
+    A task represents a specific learning objective (e.g., classification, regression)
+    that can be trained as part of a multi-task learning setup.
+    """
+
+    def __init__(self, has_intermediate_loss: bool, permute_loss: bool = True):
         super().__init__()
-        self.has_intermediate_loss = False
+        self.has_intermediate_loss = has_intermediate_loss
+        self.permute_loss = permute_loss
 
     @abstractmethod
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -136,8 +143,28 @@ class HitFilterTask(Task):
         mask_keys: bool = False,
         loss_fn: Literal["bce", "focal", "both"] = "bce",
     ):
-        """Task used for classifying whether hits belong to reconstructable objects or not."""
-        super().__init__()
+        """Task used for classifying whether hits belong to reconstructable objects or not.
+
+        Parameters
+        ----------
+        name : str
+            Name of the task.
+        hit_name : str
+            Name of the hit object type.
+        target_field : str
+            Name of the target field to predict.
+        dim : int
+            Embedding dimension.
+        threshold : float, optional
+            Threshold for classification, by default 0.1.
+        mask_keys : bool, optional
+            Whether to mask keys, by default False.
+        loss_fn : Literal["bce", "focal", "both"], optional
+            Loss function to use, by default "bce".
+        has_intermediate_loss : bool, optional
+            Whether task has intermediate loss, by default True.
+        """
+        super().__init__(has_intermediate_loss=has_intermediate_loss, permute_loss=False)
 
         self.name = name
         self.hit_name = hit_name
@@ -254,7 +281,7 @@ class ObjectHitMaskTask(Task):
 
         return {self.input_hit: attn_mask}
 
-    def predict(self, outputs, threshold=0.5):
+    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Object-hit pairs that have a predicted probability above the threshold are predicted as being associated to one-another
         return {self.output_object_hit + "_valid": outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= threshold}
 
@@ -337,17 +364,12 @@ class RegressionTask(Task):
     def metrics(self, preds, targets):
         metrics = {}
         for field in self.fields:
-            # Get the target and prediction only for valid targets
+            # note these might be scaled features
             pred = preds[self.output_object + "_" + field][targets[self.target_object + "_valid"]]
             target = targets[self.target_object + "_" + field][targets[self.target_object + "_valid"]]
-            # Get the error between the prediction and target for this field
-            err = pred - target
-            # Compute the RMSE and log it
-            metrics[field + "_rmse"] = torch.sqrt(torch.mean(torch.square(err)))
-            # Compute the relative error / resolution and log it
-            metrics[field + "_mean_rel_err"] = torch.mean(err / target)
-            metrics[field + "_std_rel_err"] = torch.std(err / target)
-
+            abs_err = (pred - target).abs()
+            metrics[field + "_abs_res"] = torch.mean(abs_err)
+            metrics[field + "_abs_norm_res"] = torch.mean(abs_err / target.abs() + 1e-8)
         return metrics
 
 
@@ -424,7 +446,7 @@ class GaussianRegressionTask(Task):
 
         # Only compute NLL for valid tracks or track-hit pairs
         # nll = nll[targets[self.target_object + "_valid"]]
-        log_likelihood = log_likelihood * targets[self.target_object + "_valid"].type_as(log_likelihood)
+        log_likelihood *= targets[self.target_object + "_valid"].type_as(log_likelihood)
         # Take the average and apply the task weight
         return {"nll": -self.loss_weight * log_likelihood.mean()}
 
@@ -495,7 +517,7 @@ class ObjectGaussianRegressionTask(GaussianRegressionTask):
         jac = torch.sum(diagu, dim=-1)  # (B, N, N)
 
         log_likelihood = self.likelihood_norm - 0.5 * zsq + jac
-        log_likelihood = log_likelihood * targets[f"{self.target_object}_valid"].unsqueeze(1).type_as(log_likelihood)
+        log_likelihood *= targets[f"{self.target_object}_valid"].unsqueeze(1).type_as(log_likelihood)
         costs = -log_likelihood
 
         return {"nll": self.cost_weight * costs}
@@ -581,7 +603,7 @@ class ObjectHitRegressionTask(RegressionTask):
         x_obj_hit = torch.einsum("...nie,...mie->...nmi", x_obj, x_hit)  # Shape BNMD
 
         # Shape of padding goes BM -> B1M -> B1M1 -> BNMD
-        x_obj_hit = x_obj_hit * x[self.input_hit + "_valid"].unsqueeze(-2).unsqueeze(-1).expand_as(x_obj_hit).float()
+        x_obj_hit *= x[self.input_hit + "_valid"].unsqueeze(-2).unsqueeze(-1).expand_as(x_obj_hit).float()
         return x_obj_hit
 
 
@@ -598,8 +620,36 @@ class ClassificationTask(Task):
         loss_weight: float = 1.0,
         multilabel: bool = False,
         permute_loss: bool = True,
+        has_intermediate_loss: bool = True,
     ):
-        super().__init__()
+        """Classification task for objects.
+
+        Parameters
+        ----------
+        name : str
+            Name of the task.
+        input_object : str
+            Name of the input object.
+        output_object : str
+            Name of the output object.
+        target_object : str
+            Name of the target object.
+        classes : list[str]
+            List of class names.
+        dim : int
+            Embedding dimension.
+        class_weights : dict[str, float] | None, optional
+            Weights for each class, by default None.
+        loss_weight : float, optional
+            Weight for the loss function, by default 1.0.
+        multilabel : bool, optional
+            Whether this is a multilabel classification, by default False.
+        permute_loss : bool, optional
+            Whether to permute loss, by default True.
+        has_intermediate_loss : bool, optional
+            Whether task has intermediate loss, by default True.
+        """
+        super().__init__(has_intermediate_loss=has_intermediate_loss, permute_loss=permute_loss)
 
         self.name = name
         self.input_object = input_object
@@ -611,7 +661,6 @@ class ClassificationTask(Task):
         self.loss_weight = loss_weight
         self.multilabel = multilabel
         self.class_net = Dense(dim, len(classes))
-        self.permute_loss = permute_loss
 
         if self.class_weights is not None:
             self.class_weights_values = torch.tensor([class_weights[class_name] for class_name in self.classes])
@@ -930,23 +979,224 @@ class PhiAlignmentTask(Task):
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         """Compute MSE loss for angular difference."""
         losses = {}
-        output = outputs[self.output_object + "_phi_diff"]
-        
-        # For loss computation, we target zero angular difference
-        # This encourages queries to align with the average phi of their attended hits
-        target = torch.zeros_like(output)
-        
-        # Only compute loss for valid objects
-        object_valid = targets[self.target_object + "_valid"]
-        output = output[object_valid]
-        target = target[object_valid]
-        
-        # Compute MSE loss
+        output = outputs[self.output_object + "_incidence"]
+        target = targets[self.target_object + "_incidence"].type_as(output)
+
+        # Create a mask for valid nodes and objects
+        node_mask = targets[self.input_hit + "_valid"].unsqueeze(1).expand_as(output)
+        object_mask = targets[self.target_object + "_valid"].unsqueeze(-1).expand_as(output)
+        mask = node_mask & object_mask
+        # Calculate the loss from each specified loss function.
         for loss_fn, loss_weight in self.losses.items():
-            if loss_fn == "phi_diff_mse":
-                losses[loss_fn] = loss_weight * torch.nn.functional.mse_loss(output, target)
-            else:
-                # Default to MSE
-                losses[loss_fn] = loss_weight * torch.nn.functional.mse_loss(output, target)
-        
+            losses[loss_fn] = loss_weight * loss_fns[loss_fn](output, target, mask=mask)
+
         return losses
+
+
+class IncidenceBasedRegressionTask(RegressionTask):
+    def __init__(
+        self,
+        name: str,
+        input_hit: str,
+        input_object: str,
+        output_object: str,
+        target_object: str,
+        fields: list[str],
+        loss_weight: float,
+        cost_weight: float,
+        scale_dict_path: str,
+        net: nn.Module,
+        use_incidence: bool = True,
+        use_nodes: bool = False,
+        split_charge_neutral_loss: bool = False,
+        has_intermediate_loss: bool = True,
+    ):
+        """Regression task that uses incidence information to predict regression targets.
+
+        Parameters
+        ----------
+        targets : list
+            List of target names
+        add_momentum : bool
+            Whether to add scalar momentum to the predictions, computed from the px, py, pz predictions
+        """
+        super().__init__(
+            name=name,
+            output_object=output_object,
+            target_object=target_object,
+            fields=fields,
+            loss_weight=loss_weight,
+            cost_weight=cost_weight,
+            has_intermediate_loss=has_intermediate_loss,
+        )
+        self.input_hit = input_hit
+        self.input_object = input_object
+        self.scaler = FeatureScaler(scale_dict_path=scale_dict_path)
+        self.use_incidence = use_incidence
+        self.cost_weight = cost_weight
+        self.net = net
+        self.split_charge_neutral_loss = split_charge_neutral_loss
+        self.use_nodes = use_nodes
+
+        self.loss_masks = {
+            "e": self.get_neutral,  # Only neutral particles
+            "pt": self.get_charged,  # Only charged particles
+        }
+
+        self.inputs = [input_object + "_embed"] + [input_hit + "_" + field for field in fields]
+        self.outputs = [output_object + "_regr", output_object + "_proxy_regr"]
+
+    """def loss_kwargs(self, outputs: dict[str, dict[str, Tensor]], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        # Adding this to get access to the classification task output
+        classification = outputs.get("classification")
+
+        if classification is None:
+            return {"output_class": None}
+
+        class_prob = classification.get(self.output_object + "_class_prob")
+        if class_prob is None:
+            return {"output_class": None}
+
+        return {"output_class": class_prob.detach().argmax(-1)}"""
+
+    def get_charged(self, pred: Tensor, target: Tensor) -> Tensor:
+        """Get a boolean mask for charged particles based on their class."""
+        return (pred <= 2) & (target <= 2)
+
+    def get_neutral(self, pred: Tensor, target: Tensor) -> Tensor:
+        """Get a boolean mask for neutral particles based on their class."""
+        return (pred > 2) & (target > 2)
+
+    def forward(self, x: dict[str, Tensor], pads: dict[str, Tensor] | None = None) -> dict[str, Tensor]:
+        # get the predictions
+        if self.use_incidence:
+            inc = x["incidence"].detach()
+            proxy_feats, is_charged = self.get_proxy_feats(inc, x, class_probs=x["class_probs"].detach())
+            input_data = torch.cat(
+                [
+                    x[self.input_object + "_embed"],
+                    proxy_feats,
+                    is_charged.unsqueeze(-1),
+                ],
+                -1,
+            )
+            if self.use_nodes:
+                valid_mask = x[self.input_hit + "_valid"].unsqueeze(-1)
+                masked_embed = x[self.input_hit + "_embed"] * valid_mask
+                node_feats = torch.bmm(inc, masked_embed)
+                input_data = torch.cat([input_data, node_feats], dim=-1)
+        else:
+            input_data = x[self.input_object + "_embed"]
+            proxy_feats = torch.zeros_like(input_data[..., : len(self.fields)])
+        preds = self.net(input_data)
+        return {self.output_object + "_regr": preds, self.output_object + "_proxy_regr": proxy_feats}
+
+    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
+        # Split the regression vector into the separate fields
+        pflow_regr = outputs[self.output_object + "_regr"]
+        proxy_regr = outputs[self.output_object + "_proxy_regr"]
+        return {self.output_object + "_" + field: pflow_regr[..., i] for i, field in enumerate(self.fields)} | {
+            self.output_object + "_proxy_" + field: proxy_regr[..., i] for i, field in enumerate(self.fields)
+        }
+
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        metrics = super().metrics(preds, targets)
+        # Add metrics for the proxy regression
+        for field in self.fields:
+            # note these might be scaled features
+            pred = preds[self.output_object + "_proxy_" + field][targets[self.target_object + "_valid"]]
+            target = targets[self.target_object + "_" + field][targets[self.target_object + "_valid"]]
+            abs_err = (pred - target).abs()
+            metrics[field + "_proxy_abs_res"] = abs_err.mean()
+            metrics[field + "_proxy_abs_norm_res"] = torch.mean(abs_err / target.abs() + 1e-8)
+        return metrics
+
+    def cost(self, outputs, targets) -> dict[str, Tensor]:
+        eta_pos = self.fields.index("eta")
+        sinphi_pos = self.fields.index("sinphi")
+        cosphi_pos = self.fields.index("cosphi")
+
+        pred_phi = torch.atan2(
+            outputs[self.output_object + "_regr"][..., sinphi_pos],
+            outputs[self.output_object + "_regr"][..., cosphi_pos],
+        )[:, :, None]
+        pred_eta = outputs[self.output_object + "_regr"][..., eta_pos][:, :, None]
+        target_phi = torch.atan2(
+            targets[self.target_object + "_sinphi"],
+            targets[self.target_object + "_cosphi"],
+        )[:, None, :]
+        target_eta = targets[self.target_object + "_eta"][:, None, :]
+        # Compute the cost based on the difference in phi and eta
+        dphi = (pred_phi - target_phi + torch.pi) % (2 * torch.pi) - torch.pi
+        deta = (pred_eta - target_eta) * self.scaler["eta"].scale
+
+        # Compute the cost as the sum of the squared differences
+        cost = self.cost_weight * torch.sqrt(dphi**2 + deta**2)
+        return {"regression": cost}
+
+    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor], output_class: Tensor | None = None) -> dict[str, Tensor]:
+        if self.split_charge_neutral_loss and output_class is None:
+            raise RuntimeError("'output_class' is empty for the IncidenceBasedRegressionTask.")
+
+        loss = None
+        target_class = targets[self.target_object + "_class"]
+        # output_class = outputs["classification"][self.output_object + "_class_prob"].detach().argmax(-1)
+        for i, field in enumerate(self.fields):
+            target = targets[self.target_object + "_" + field]
+            output = outputs[self.output_object + "_regr"][..., i]
+            mask = targets[self.target_object + "_valid"].clone()
+            if self.split_charge_neutral_loss and field in self.loss_masks:
+                mask &= self.loss_masks[field](output_class, target_class)
+            if loss is None:
+                loss = torch.nn.functional.smooth_l1_loss(output[mask], target[mask], reduction="mean")
+            else:
+                loss += torch.nn.functional.smooth_l1_loss(output[mask], target[mask], reduction="mean")
+        # Average over all the features
+        loss /= len(self.fields)
+
+        # Compute the regression loss only for valid objects
+        return {"smooth_l1": self.loss_weight * loss}
+
+    def scale_proxy_feats(self, proxy_feats: Tensor):
+        return torch.cat([self.scaler[field].transform(proxy_feats[..., i]).unsqueeze(-1) for i, field in enumerate(self.fields)], -1)
+
+    def get_proxy_feats(
+        self,
+        incidence: Tensor,
+        inputs: dict[str, Tensor],
+        class_probs: Tensor,
+    ) -> tuple[Tensor, Tensor]:
+        proxy_feats = torch.cat(
+            [inputs[self.input_hit + "_" + field].unsqueeze(-1) for field in self.fields],
+            axis=-1,
+        )
+
+        charged_inc = incidence * inputs[self.input_hit + "_is_track"].unsqueeze(1)
+        # Use the most weighted track as proxy for charged particles
+        charged_inc_top2 = (topk_attn(charged_inc, 2, dim=-2) & (charged_inc > 0)).float()
+        charged_inc_max = charged_inc.max(-2, keepdim=True)[0]
+        charged_inc_new = (charged_inc == charged_inc_max) & (charged_inc > 0)
+        # TODO: check this
+        # charged_inc_new = charged_inc.float()
+        zero_track_mask = charged_inc_new.sum(-1, keepdim=True) == 0
+        charged_inc = torch.where(zero_track_mask, charged_inc_top2, charged_inc_new)
+
+        # Split charged and neutral
+        is_charged = class_probs.argmax(-1) < 3
+
+        proxy_feats_charged = torch.bmm(charged_inc, proxy_feats)
+        proxy_feats_charged[..., 0] = proxy_feats_charged[..., 1] * torch.cosh(proxy_feats_charged[..., 2])
+        proxy_feats_charged = self.scale_proxy_feats(proxy_feats_charged) * is_charged.unsqueeze(-1)
+
+        inc_e_weighted = incidence * proxy_feats[..., 0].unsqueeze(1)
+        inc_e_weighted *= 1 - inputs[self.input_hit + "_is_track"].unsqueeze(1)
+        inc = inc_e_weighted / (inc_e_weighted.sum(dim=-1, keepdim=True) + 1e-6)
+
+        proxy_feats_neutral = torch.einsum("bnf,bpn->bpf", proxy_feats, inc)
+        proxy_feats_neutral[..., 0] = inc_e_weighted.sum(-1)
+        proxy_feats_neutral[..., 1] = proxy_feats_neutral[..., 0] / torch.cosh(proxy_feats_neutral[..., 2])
+
+        proxy_feats_neutral = self.scale_proxy_feats(proxy_feats_neutral) * (~is_charged).unsqueeze(-1)
+        proxy_feats = proxy_feats_charged + proxy_feats_neutral
+
+        return proxy_feats, is_charged

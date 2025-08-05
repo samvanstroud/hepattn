@@ -221,9 +221,8 @@ class PixelClusterDataset(Dataset):
 
             # If true, then the cluster is dropped if it contains a particle with a zero barcode
             x["particle_barcode"] = file["particle_barcode"][idx]
-            if not self.cluster_allow_notruth_particle:
-                if np.any(np.isclose(x["particle_barcode"], 0)):
-                    return None
+            if not self.cluster_allow_notruth_particle and np.any(np.isclose(x["particle_barcode"], 0)):
+                return None
 
             # Apply region cut using barrel endcap flag
             x["cluster_bec"] = file["cluster_bec"][idx]
@@ -293,7 +292,7 @@ class PixelClusterDataset(Dataset):
             x["particle_y"] = x["particle_index_y"]
 
             # Convert MeV to GeV and TeV
-            x["particle_p"] = x["particle_p"] / 1000.0
+            x["particle_p"] /= 1000.0
 
             # Get particle PDGID
             x["particle_pdgid"] = file["particle_pdgid"][idx]
@@ -310,20 +309,19 @@ class PixelClusterDataset(Dataset):
 
             # Ignore particles with no barcode if specified
             if not self.particle_allow_notruth:
-                x["particle_valid"] = x["particle_valid"] & (~x["particle_notruth"])
+                x["particle_valid"] &= ~x["particle_notruth"]
 
             # Ignore secondary particles if specified
             if not self.particle_allow_secondary:
-                x["particle_valid"] = x["particle_valid"] & (~x["particle_secondary"])
+                x["particle_valid"] &= ~x["particle_secondary"]
 
             # Apply particle position cuts
-            x["particle_valid"] = x["particle_valid"] & (np.abs(x["particle_x"]) <= self.particle_max_x)
-            x["particle_valid"] = x["particle_valid"] & (np.abs(x["particle_y"]) <= self.particle_max_y)
+            x["particle_valid"] &= np.abs(x["particle_x"]) <= self.particle_max_x
+            x["particle_valid"] &= np.abs(x["particle_y"]) <= self.particle_max_y
 
             # If specified, drop the cluster if any particles failed the particle cuts
-            if not self.cluster_allow_dropped_particle:
-                if np.any(~x["particle_valid"]):
-                    return None
+            if not self.cluster_allow_dropped_particle and np.any(~x["particle_valid"]):
+                return None
 
             ########################################################################
             # Now we have performed the particle cuts, we can apply cluster cuts that depent on the particles
@@ -331,12 +329,11 @@ class PixelClusterDataset(Dataset):
             x["cluster_multiplicity"] = np.sum(x["particle_valid"])
 
             # Apply cluster multiplicity cut
-            if self.cluster_multiplicities is not None:
-                if x["cluster_multiplicity"] not in self.cluster_multiplicities:
-                    return None
+            if self.cluster_multiplicities is not None and x["cluster_multiplicity"] not in self.cluster_multiplicities:
+                return None
 
             # Apply multiplicity subsampling
-            if x["cluster_multiplicity"] in self.cluster_multiplicity_subsample_frac:
+            if x["cluster_multiplicity"] in self.cluster_multiplicity_subsample_frac:  # noqa: SIM102
                 # Reject the cluster with probability 1 - subsample rate
                 if self.rng.random() > self.cluster_multiplicity_subsample_frac[x["cluster_multiplicity"]]:
                     return None

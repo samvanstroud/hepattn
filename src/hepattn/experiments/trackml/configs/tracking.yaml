@@ -121,7 +121,6 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 256
-      num_queries: *num_objects
       input_sort_field: phi
       input_nets:
         class_path: torch.nn.ModuleList
@@ -175,12 +174,14 @@ model:
           hybrid_norm: true
           norm: RMSNorm
 
-      num_decoder_layers: 4
-      intermediate_losses: true
-      decoder_layer_config:
-        dim: *dim
-        norm: RMSNorm
+      decoder:
+        num_decoder_layers: 4
+        num_queries: *num_objects
         mask_attention: true
+        use_query_masks: false
+        decoder_layer_config:
+          dim: *dim
+          norm: RMSNorm
 
       tasks:
         class_path: torch.nn.ModuleList

@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from hepattn.models.decoder import MaskFormerDecoderLayer
+from hepattn.models.decoder import MaskFormerDecoder, MaskFormerDecoderLayer
 
 BATCH_SIZE = 2
 SEQ_LEN = 10
@@ -12,7 +12,141 @@ NUM_HEADS = 8
 HEAD_DIM = DIM // NUM_HEADS
 
 
-# Now let's write the tests
+class TestMaskFormerDecoder:
+    @pytest.fixture
+    def decoder_layer_config(self):
+        return {
+            "dim": DIM,
+            "norm": "LayerNorm",
+            "dense_kwargs": {},
+            "attn_kwargs": {},
+            "bidirectional_ca": True,
+            "hybrid_norm": False,
+        }
+
+    @pytest.fixture
+    def decoder(self, decoder_layer_config):
+        return MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=True,
+        )
+
+    @pytest.fixture
+    def decoder_no_mask_attention(self, decoder_layer_config):
+        """Decoder with mask_attention=False for testing without tasks."""
+        config = decoder_layer_config.copy()
+        return MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=config,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=False,
+        )
+
+    @pytest.fixture
+    def sample_decoder_data(self):
+        x = {
+            "query_embed": torch.randn(BATCH_SIZE, NUM_QUERIES, DIM),
+            "key_embed": torch.randn(BATCH_SIZE, SEQ_LEN, DIM),
+            "key_posenc": torch.randn(BATCH_SIZE, SEQ_LEN, DIM),
+            "key_valid": torch.ones(BATCH_SIZE, SEQ_LEN, dtype=torch.bool),
+            "key_is_input1": torch.zeros(SEQ_LEN, dtype=torch.bool),
+            "key_is_input2": torch.zeros(SEQ_LEN, dtype=torch.bool),
+        }
+        # Set some positions to be input1 and input2
+        x["key_is_input1"][:3] = True
+        x["key_is_input2"][3:6] = True
+
+        input_names = ["input1", "input2"]
+        return x, input_names
+
+    def test_initialization(self, decoder, decoder_layer_config):
+        """Test that the decoder initializes correctly."""
+        assert decoder.num_queries == NUM_QUERIES
+        assert decoder.mask_attention is True
+        assert decoder.use_query_masks is False
+        assert decoder.log_attn_mask is False
+        assert len(decoder.decoder_layers) == NUM_LAYERS
+        assert decoder.tasks is None
+        assert decoder.query_posenc is None
+        assert decoder.preserve_posenc is False
+
+        # Check that decoder layers are initialized correctly
+        for layer in decoder.decoder_layers:
+            assert isinstance(layer, MaskFormerDecoderLayer)
+            assert layer.mask_attention is True
+
+    def test_initialization_with_options(self, decoder_layer_config):
+        """Test initialization with various options."""
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=False,
+            use_query_masks=True,
+            log_attn_mask=True,
+        )
+
+        assert decoder.mask_attention is False
+        assert decoder.use_query_masks is True
+        assert decoder.log_attn_mask is True
+
+    def test_forward_without_tasks(self, decoder_no_mask_attention, sample_decoder_data):
+        """Test forward pass without any tasks defined."""
+        x, input_names = sample_decoder_data
+        decoder_no_mask_attention.tasks = []  # Empty task list
+
+        updated_x, outputs = decoder_no_mask_attention(x, input_names)
+
+        # Check that x was updated with new embeddings
+        assert "query_embed" in updated_x
+        assert "key_embed" in updated_x
+        assert updated_x["query_embed"].shape == (BATCH_SIZE, NUM_QUERIES, DIM)
+        assert updated_x["key_embed"].shape == (BATCH_SIZE, SEQ_LEN, DIM)
+
+        # Check outputs structure
+        assert len(outputs) == NUM_LAYERS
+        for i in range(NUM_LAYERS):
+            assert f"layer_{i}" in outputs
+            assert isinstance(outputs[f"layer_{i}"], dict)
+
+    def test_forward_shapes(self, decoder_no_mask_attention, sample_decoder_data):
+        """Test that forward pass maintains correct tensor shapes."""
+        x, input_names = sample_decoder_data
+        decoder_no_mask_attention.tasks = []
+
+        original_query_shape = x["query_embed"].shape
+        original_key_shape = x["key_embed"].shape
+
+        updated_x, _ = decoder_no_mask_attention(x, input_names)
+
+        assert updated_x["query_embed"].shape == original_query_shape
+        assert updated_x["key_embed"].shape == original_key_shape
+
+    def test_add_query_posenc_no_posenc(self, decoder, sample_decoder_data):
+        """Test add_query_posenc when no positional encoding is set."""
+        x, _ = sample_decoder_data
+        original_embed = x["query_embed"].clone()
+
+        updated_x = decoder.add_query_posenc(x)
+
+        # Should remain unchanged when no query_posenc is set
+        assert torch.equal(updated_x["query_embed"], original_embed)
+
+    def test_re_add_original_embeddings_no_preserve(self, decoder, sample_decoder_data):
+        """Test re_add_original_embeddings when preserve_posenc is False."""
+        x, _ = sample_decoder_data
+        original_query = x["query_embed"].clone()
+        original_key = x["key_embed"].clone()
+
+        updated_x = decoder.re_add_original_embeddings(x)
+
+        # Should remain unchanged when preserve_posenc is False
+        assert torch.equal(updated_x["query_embed"], original_query)
+        assert torch.equal(updated_x["key_embed"], original_key)
+
+
 class TestMaskFormerDecoderLayer:
     @pytest.fixture
     def decoder_layer(self):

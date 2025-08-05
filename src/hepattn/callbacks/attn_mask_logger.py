@@ -24,11 +24,7 @@ class AttnMaskLogger(Callback):
         # Log directly to Comet
         logger = getattr(pl_module, "logger", None)
         if logger is not None and hasattr(logger, "experiment"):
-            logger.experiment.log_figure(
-                figure_name=f"{prefix}_step{step}_layer{layer}",
-                figure=fig,
-                step=step
-            )
+            logger.experiment.log_figure(figure_name=f"{prefix}_step{step}_layer{layer}", figure=fig, step=step)
         plt.close(fig)
 
     def _log_attention_weights(self, pl_module, weights, step, layer, prefix="local_ca_weights"):

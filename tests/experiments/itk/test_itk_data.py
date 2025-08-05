@@ -52,7 +52,7 @@ class TestITkEvent:
         particle_min_num_hits = {"pixel": 3, "strip": 3}
         event_max_num_particles = 2000
 
-        dataset = ITkDataset(
+        return ITkDataset(
             dirpath=dirpath,
             inputs=input_fields,
             targets=target_fields,
@@ -63,8 +63,6 @@ class TestITkEvent:
             particle_min_num_hits=particle_min_num_hits,
             event_max_num_particles=event_max_num_particles,
         )
-
-        return dataset
 
     @pytest.mark.requiresdata
     def test_itk_event_display(self, itk_dataset):

@@ -299,7 +299,7 @@ def test_plot_cld_hit_dr(cld_datamodule):
         hit_r = inputs[f"{item_name}_pos.r"]
 
         # Only consider differences for hits that are away from the IP
-        mask = mask & (hit_r[..., None, :] >= 0.25)
+        mask &= hit_r[..., None, :] >= 0.25
 
         hit_phi = inputs[f"{item_name}_pos.phi"]
         hit_eta = inputs[f"{item_name}_pos.eta"]

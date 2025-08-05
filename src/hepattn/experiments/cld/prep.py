@@ -512,7 +512,7 @@ def preprocess_event(events, event_idx, namecodes, min_pt, verbose):
         cut_mask = particle_cuts[cut_name]
         cut_size = np.sum(cut_mask)
         pre_cut_size = np.sum(particle_cut_final)
-        particle_cut_final = particle_cut_final & cut_mask
+        particle_cut_final &= cut_mask
         post_cut_size = np.sum(particle_cut_final)
 
         if verbose:

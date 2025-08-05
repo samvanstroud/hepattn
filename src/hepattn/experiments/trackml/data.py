@@ -230,7 +230,7 @@ class TrackMLDataModule(LightningDataModule):
         self.kwargs = kwargs
 
     def setup(self, stage: str):
-        if stage == "fit" or stage == "test":
+        if stage in {"fit", "test"}:
             self.train_dataset = TrackMLDataset(
                 dirpath=self.train_dir,
                 num_events=self.num_train,

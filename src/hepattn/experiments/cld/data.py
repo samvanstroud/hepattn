@@ -136,7 +136,7 @@ class CLDDataset(Dataset):
             # Convert a spatial coordinate from mm to m inplace
             for coord in ["x", "y", "z"]:
                 event[f"{i}.{p}.{coord}_mm"] = event[f"{i}.{p}.{coord}"]
-                event[f"{i}.{p}.{coord}"] = 0.001 * event[f"{i}.{p}.{coord}"]
+                event[f"{i}.{p}.{coord}"] *= 0.001
 
         def add_cylindrical_coords(i, p):
             # Add standard tracking cylindrical coordinates
@@ -378,7 +378,7 @@ class CLDDataset(Dataset):
             p = np.sqrt(px**2 + py**2 + pz**2)
             item_mean_p_ratio = p / p.mean(-1)[..., None]
 
-            event[f"particle_{item_name}_valid"] = event[f"particle_{item_name}_valid"] & (item_mean_p_ratio >= min_ratio).filled(False)
+            event[f"particle_{item_name}_valid"] &= (item_mean_p_ratio >= min_ratio).filled(False)
 
         # Apply hit cuts based on angular deflection
         for item_name, cut in self.particle_hit_deflection_cuts.items():
@@ -410,7 +410,7 @@ class CLDDataset(Dataset):
                 # Requires it to pass one of the cut
                 # TODO: Removing the 3d angle and only use the xy and rz angle
                 angle_diff_or = (angle_diff <= cut["max_angle"]) | (angle_diff_xy <= cut["max_angle_xy"]) | (angle_diff_rz <= cut["max_angle_rz"])
-                event[f"particle_{item_name}_valid"] = event[f"particle_{item_name}_valid"] & angle_diff_or
+                event[f"particle_{item_name}_valid"] &= angle_diff_or
 
         # Apply hit cuts based on distance between consecutive hits on particles
         for item_name, cut in self.particle_hit_separation_cuts.items():
@@ -433,7 +433,7 @@ class CLDDataset(Dataset):
                 dr = dr[:, np.argsort(idx)]
 
                 # event[f"particle_valid"] = event[f"particle_valid"] & (dr <= max_dist).all(-1)
-                event[f"particle_{item_name}_valid"] = event[f"particle_{item_name}_valid"] & (dr <= cut["max_dist"])
+                event[f"particle_{item_name}_valid"] &= dr <= cut["max_dist"]
 
         # Merge the hits if they do not appear in the angular deflection and hit separation cuts
         # all_cut_names = set(self.charged_particle_min_num_hits) | set(self.charged_particle_max_num_hits)
@@ -485,7 +485,7 @@ class CLDDataset(Dataset):
 
         # Apply cut vetos
         for hit_name, min_num_hits in self.particle_cut_veto_min_num_hits.items():
-            event["particle_valid"] = event["particle_valid"] | (event[f"particle_{hit_name}_valid"].sum(-1) > min_num_hits)
+            event["particle_valid"] |= event[f"particle_{hit_name}_valid"].sum(-1) > min_num_hits
 
         # Remove any mask slots for invalid particles
         for input_name in self.inputs:
@@ -671,7 +671,7 @@ class CLDDataModule(LightningDataModule):
         self.kwargs = kwargs
 
     def setup(self, stage: str):
-        if stage == "fit" or stage == "test":
+        if stage in {"fit", "test"}:
             self.train_dset = CLDDataset(dirpath=self.train_dir, num_events=self.num_train, **self.kwargs)
 
         if stage == "fit":

@@ -12,14 +12,14 @@ jobs:
       - name: Setup Ruff
         uses: astral-sh/ruff-action@v3
         with:
-          version: "0.8.0"
+          version: "0.12.4"
           args: "--version"
 
       - name: Run ruff check
-        run: ruff check --fix
+        run: ruff check
 
       - name: Run ruff format
-        run: ruff format
+        run: ruff format --check
 
       #- name: Run pyright
       #  run: uv run pyright

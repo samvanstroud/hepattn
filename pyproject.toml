@@ -20,7 +20,7 @@ dependencies = [
     "atlas-ftag-tools",
     "pytest>=8.3.3,<9",
     "pytest-repeat",
-    "ruff==0.8.0",
+    "ruff==0.12.4",
     "pre-commit>=4.0.1,<5",
     "matplotlib==3.9.*",
     "lightning==2.5.0.post0",
@@ -89,7 +89,8 @@ preview = true
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["G", "D100", "D101", "D102", "D103",  "D104", "D105", "D106", "D107", "D205", "ANN", "PLW", "FBT", "EM", "PLR1714", "PLR2004", "PT018", "RET504", "COM812", "ISC001", "CPY001", "TRY003", "S101", "A003", "N812", "PLR0913", "PLR0917", "DOC201", "INP001", "PLR6301", "T201", "TD002", "TD003", "FIX002", "ARG002", "C901", "PLR0914", "PLR0912", "PLR0915", "PT011", "PLR6104", "ERA001", "PGH004", "PLC0206", "S311", "SIM102", "PLR0911", "S404", "S603", "B028"]
+
+ignore = ["G", "D100", "D101", "D102", "D103",  "D104", "D105", "D106", "D107", "D205", "ANN", "PLW", "FBT", "EM",  "PLR2004", "PT018", "COM812", "CPY001", "TRY003", "S101", "N812", "PLR0913", "PLR0917", "DOC201", "INP001", "PLR6301", "T201", "TD002", "TD003", "FIX002", "ARG002", "C901", "PLR0914", "PLR0912", "PLR0915", "PT011", "ERA001", "PGH004", "PLC0206", "S311", "PLR0911", "PLR6104", "S404", "S603", "B028"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

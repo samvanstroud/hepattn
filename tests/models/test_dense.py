@@ -1,3 +1,4 @@
+import pytest
 import torch
 from torch import nn
 
@@ -48,26 +49,26 @@ def test_nested_jagged_tensor():
     assert torch.all(output != 0), "Output should not be all zeros"
 
 
-# test gpu if cuda is available
-if torch.cuda.is_available():
+@pytest.mark.gpu
+def test_compile_gpu():
+    model = Dense(input_size=10)
+    model.cuda()
+    model = torch.compile(model)
 
-    def test_compile_gpu():
-        model = Dense(input_size=10)
-        model.cuda()
-        model = torch.compile(model)
+    x = torch.randn(5, 10).cuda()
+    output = model(x)
+    assert output.shape == (5, 10), "Output shape should match batch size and output size"
+    assert torch.all(output != 0), "Output should not be all zeros"
 
-        x = torch.randn(5, 10).cuda()
-        output = model(x)
-        assert output.shape == (5, 10), "Output shape should match batch size and output size"
-        assert torch.all(output != 0), "Output should not be all zeros"
 
-    def test_compile_gpu_nested_jagged_tensor():
-        nt = torch.nested.nested_tensor(
-            [torch.arange(12).reshape(2, 6), torch.arange(18).reshape(3, 6)], dtype=torch.float, layout=torch.jagged, device="cuda"
-        )
-        model = Dense(input_size=6, output_size=6, hidden_layers=[12, 8])
-        model.cuda()
-        model = torch.compile(model)
+@pytest.mark.gpu
+def test_compile_gpu_nested_jagged_tensor():
+    nt = torch.nested.nested_tensor(
+        [torch.arange(12).reshape(2, 6), torch.arange(18).reshape(3, 6)], dtype=torch.float, layout=torch.jagged, device="cuda"
+    )
+    model = Dense(input_size=6, output_size=6, hidden_layers=[12, 8])
+    model.cuda()
+    model = torch.compile(model)
 
-        output = model(nt)
-        assert torch.all(output != 0), "Output should not be all zeros"
+    output = model(nt)
+    assert torch.all(output != 0), "Output should not be all zeros"

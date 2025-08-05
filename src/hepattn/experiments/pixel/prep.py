@@ -53,7 +53,7 @@ def preprocess_file(
         subsample_mask = rng_generator.uniform(size=len(cluster_mask)) > float(subsample_frac)
 
         # Remove clusters that have this multiplicity but fail the subsample mask
-        cluster_mask = cluster_mask & (~(multiplicity_mask & subsample_mask))
+        cluster_mask &= ~(multiplicity_mask & subsample_mask)
 
     cluster_fields = config["cluster_fields"]
     particle_fields = config["particle_fields"]

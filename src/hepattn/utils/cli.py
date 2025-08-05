@@ -7,6 +7,8 @@ import torch
 from jsonargparse.typing import register_type
 from lightning.pytorch.cli import LightningCLI
 
+torch._dynamo.config.capture_scalar_outputs = True  # noqa: SLF001
+
 
 # Add support for converting yaml lists to tensors
 def serializer(x: torch.Tensor) -> list:

@@ -36,7 +36,7 @@ particle_masks = {
     "Primary or Secondary": (targets["particle_primary"].to(torch.bool) | targets["particle_secondary"].to(torch.bool)) & targets["particle_valid"],
 }
 
-print(f"\nCluster multiplicities ({targets["cluster_valid"].float().sum()} clusters\n")
+print(f"\nCluster multiplicities ({targets['cluster_valid'].float().sum()} clusters\n")
 
 multiplicities, multiplicity_counts = np.unique(targets["cluster_multiplicity"], return_counts=True)
 
@@ -393,7 +393,8 @@ ax[-1].axis("off")
 
 
 custom_markers = [
-    Line2D([0], [0], marker="o", color="w", label=label, markerfacecolor=color, markeredgecolor="black", markersize=10) for label, color in [
+    Line2D([0], [0], marker="o", color="w", label=label, markerfacecolor=color, markeredgecolor="black", markersize=10)
+    for label, color in [
         ("Primary", "crimson"),
         ("Secondary", "darkorange"),
         ("No Truth", "darkgray"),

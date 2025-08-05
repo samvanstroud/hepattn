@@ -65,9 +65,6 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 256
-      num_queries: 40
-      use_attn_masks: true
-      use_query_masks: false
 
       input_nets:
         class_path: torch.nn.ModuleList
@@ -188,10 +185,13 @@ model:
           dim: *dim
           attn_type: torch
 
-      num_decoder_layers: 4
-      decoder_layer_config:
-        dim: *dim
+      decoder:
+        num_decoder_layers: 4
+        num_queries: 40
         mask_attention: true
+        use_query_masks: false
+        decoder_layer_config:
+          dim: *dim
 
       pooling:
         class_path: hepattn.models.pooling.Pooling
