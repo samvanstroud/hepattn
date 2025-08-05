@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from .performance import Performance
@@ -29,7 +30,7 @@ class PlotHelper(PlotEventHelper, PlotParticleHelper):
 
     def save_and_close(self, fig: Figure, filename: Path, fig_kwargs: dict | None = None):
         fig.savefig(filename, **(fig_kwargs or {}))
-        fig.close()
+        plt.close(fig)
 
     def plot_event(self, pt_bins=None, fig_kwargs=None):
         assert self.plot_path is not None, "plot_path must be set to save figures."
