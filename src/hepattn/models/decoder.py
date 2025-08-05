@@ -12,6 +12,7 @@ from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.models.transformer import Residual
+from hepattn.utils.local_ca import auto_local_ca_mask
 
 N_STEPS_LOG_ATTN_MASK = 1000
 
@@ -29,6 +30,8 @@ class MaskFormerDecoder(nn.Module):
         preserve_posenc: bool = False,
         phi_analysis: bool = False,
         learnable_query_phi: bool = False,
+        strided_mask: bool = False,
+        strided_mask_window_size: int = 10,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -70,6 +73,8 @@ class MaskFormerDecoder(nn.Module):
             self.query_phi_param = nn.Parameter(
                 2 * torch.pi * (torch.arange(self.num_queries) / self.num_queries - 0.5)
             )
+        self.strided_mask = strided_mask
+        self.strided_mask_window_size = strided_mask_window_size
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -100,8 +105,12 @@ class MaskFormerDecoder(nn.Module):
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
             outputs[f"layer_{layer_index}"] = {}
 
+            if self.preserve_posenc:
+                x = self.add_positional_encodings(x)
+
             attn_masks = {}
             query_mask = None
+
 
             for task in self.tasks:
                 if not task.has_intermediate_loss:
@@ -139,16 +148,24 @@ class MaskFormerDecoder(nn.Module):
                 for input_name, task_attn_mask in attn_masks.items():
                     attn_mask[..., x[f"key_is_{input_name}"]] = task_attn_mask
 
-            # Log attention mask if requested
-            self.attn_mask_logging(attn_mask, x, layer_index)  
+            #order attn mask, query & key embeds, query mask and key valid in phi
+            attn_mask, x, query_mask, key_valid = self.sort_by_phi(attn_mask, x, query_mask, x.get("key_valid"))
 
-            if self.preserve_posenc:
-                x = self.add_positional_encodings(x)
+            if self.log_attn_mask and attn_mask is not None:
+                self.attn_mask_logging(attn_mask, x, layer_index)
+
+            if self.strided_mask:
+                attn_mask =  auto_local_ca_mask(x["query_embed"], x["key_embed"], self.strided_mask_window_size, wrap=False)     
+                self.strided_mask_logging(attn_mask, layer_index)
 
             # Update embeddings through decoder layer
             x["query_embed"], x["key_embed"] = decoder_layer(
-                x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=x.get("key_valid")
+                x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=key_valid
             )
+
+            # unorder query & key embeds
+            # no need to unorder the attn maskk query mask or key valid because we don't use it beyond after here anyway?
+            x = self.unsort_by_phi(x)
 
             # Unmerge the updated features back into separate input types for intermediate tasks
             for input_name in input_names:
@@ -173,15 +190,15 @@ class MaskFormerDecoder(nn.Module):
             x["query_embed"] += x["query_posenc"]
         return x
 
-    def sort_attn_mask_im(self, attn_mask_im, x):
-        key_sort_value_ = x.get(f"key_phi")
-        key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
-        attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
-        # sort queries
-        query_sort_value = x.get(f"query_phi")
-        query_sort_idx = torch.argsort(query_sort_value, axis=-1)
-        attn_mask_im = attn_mask_im.index_select(0, query_sort_idx.to(attn_mask_im.device))
-        return attn_mask_im
+    # def sort_attn_mask_im(self, attn_mask_im, x):
+    #     key_sort_value_ = x.get(f"key_phi")
+    #     key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
+    #     attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
+    #     # sort queries
+    #     query_sort_value = x.get(f"query_phi")
+    #     query_sort_idx = torch.argsort(query_sort_value, axis=-1)
+    #     attn_mask_im = attn_mask_im.index_select(0, query_sort_idx.to(attn_mask_im.device))
+    #     return attn_mask_im
     
     def attn_mask_logging(self, attn_mask, x, layer_index):
         if (self.log_attn_mask
@@ -192,8 +209,23 @@ class MaskFormerDecoder(nn.Module):
                 self.attn_masks_to_log = {}
             if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
                 attn_mask_im = attn_mask[0].detach().cpu().clone().int()
-                attn_mask_im = self.sort_attn_mask_im(attn_mask_im, x)
+                # attn_mask_im = self.sort_attn_mask_im(attn_mask_im, x)
                 self.attn_masks_to_log[layer_index] = {
+                    "mask": attn_mask_im,
+                    "step": self.log_step,
+                    "layer": layer_index,
+                }
+
+    def strided_mask_logging(self, attn_mask, layer_index):
+        if (self.log_attn_mask
+            and (attn_mask is not None)
+            and (self.log_step % N_STEPS_LOG_ATTN_MASK == 0) or (not self.training)
+            ):
+            if not hasattr(self, "strided_masks_to_log"):
+                self.strided_masks_to_log = {}
+            if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
+                attn_mask_im = attn_mask[0].detach().cpu().clone().int()
+                self.strided_masks_to_log[layer_index] = {
                     "mask": attn_mask_im,
                     "step": self.log_step,
                     "layer": layer_index,
@@ -231,6 +263,72 @@ class MaskFormerDecoder(nn.Module):
         key_sort_idx = torch.argsort(torch.tensor(key_phi), axis=-1)
         key_posencs_sorted = key_posenc[key_sort_idx[0]]
         self.last_key_posenc_sorted = key_posencs_sorted
+
+    def sort_by_phi(self, attn_mask, x, query_mask, key_valid):
+        key_sort_value_ = x.get(f"key_phi")
+        key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
+        
+        if attn_mask is not None:
+            # Sort attention mask along key dimension (dim 2) - [batch, queries, constituents]
+            attn_mask = attn_mask.index_select(2, key_sort_idx[0])
+        
+        # Sort key embeddings - [batch, constituents, dim]
+        key_embed = x.get(f"key_embed")
+        key_embed_sorted = key_embed[0][key_sort_idx[0]]  # [constituents, dim]
+        key_embed_sorted = key_embed_sorted.unsqueeze(0)  # [1, constituents, dim]
+        x["key_embed"] = key_embed_sorted
+
+        # Sort key_valid mask - [batch, constituents]
+        if key_valid is not None:
+            key_valid_sorted = key_valid[0][key_sort_idx[0]]  # [constituents]
+            key_valid_sorted = key_valid_sorted.unsqueeze(0)  # [1, constituents]
+
+        # Sort queries
+        query_sort_value = x.get(f"query_phi")
+        query_sort_idx = torch.argsort(query_sort_value, axis=-1)
+        
+        if attn_mask is not None:
+            # Sort attention mask along query dimension (dim 1) - [batch, queries, constituents]
+            attn_mask = attn_mask.index_select(1, query_sort_idx.to(attn_mask.device))
+        
+        # Sort query embeddings - [batch, queries, dim]
+        query_embed = x.get(f"query_embed")
+        query_embed_sorted = query_embed[0][query_sort_idx]  # [queries, dim]
+        query_embed_sorted = query_embed_sorted.unsqueeze(0)  # [1, queries, dim]
+        x["query_embed"] = query_embed_sorted
+        
+        # Sort query_mask - [batch, queries]
+        if query_mask is not None:
+            query_mask_sorted = query_mask[0][query_sort_idx]  # [queries]
+            query_mask_sorted = query_mask_sorted.unsqueeze(0)  # [1, queries]
+        
+        return attn_mask, x, query_mask_sorted, key_valid_sorted
+    
+    def unsort_by_phi(self, x):
+        # Get the original sorting indices
+        key_sort_value_ = x.get(f"key_phi")
+        key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
+        key_unsort_idx = torch.argsort(key_sort_idx[0])  # Reverse the sorting
+        
+        # Unsort key embeddings - [batch, constituents, dim]
+        key_embed = x.get(f"key_embed")
+        key_embed_unsorted = key_embed[0][key_unsort_idx]  # [constituents, dim]
+        key_embed_unsorted = key_embed_unsorted.unsqueeze(0)  # [1, constituents, dim]
+        x["key_embed"] = key_embed_unsorted
+
+        # Unsort queries
+        query_sort_value = x.get(f"query_phi")
+        query_sort_idx = torch.argsort(query_sort_value, axis=-1)
+        query_unsort_idx = torch.argsort(query_sort_idx)  # Reverse the sorting
+        
+        # Unsort query embeddings - [batch, queries, dim]
+        query_embed = x.get(f"query_embed")
+        query_embed_unsorted = query_embed[0][query_unsort_idx]  # [queries, dim]
+        query_embed_unsorted = query_embed_unsorted.unsqueeze(0)  # [1, queries, dim]
+        x["query_embed"] = query_embed_unsorted
+        
+        return x
+    
 
 class MaskFormerDecoderLayer(nn.Module):
     def __init__(
