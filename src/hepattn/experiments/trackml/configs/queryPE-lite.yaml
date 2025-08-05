@@ -187,10 +187,10 @@ model:
                 dim: *dim
                 alpha: 2
                 base: 50000
-          hit_posenc:
+          key_posenc:
               class_path: hepattn.models.PositionEncoder
               init_args:
-                input_name: hit
+                input_name: key
                 fields:
                   - phi
                 dim: *dim
