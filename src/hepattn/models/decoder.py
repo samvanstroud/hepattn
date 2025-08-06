@@ -266,6 +266,10 @@ class MaskFormerDecoder(nn.Module):
 
     def sort_by_phi(self, attn_mask, x, query_mask, key_valid):
         key_sort_value_ = x.get(f"key_phi")
+        if key_sort_value_ is None:
+            # If key_phi is not available, return inputs unchanged
+            return attn_mask, x, query_mask, key_valid
+            
         key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
         
         if attn_mask is not None:
@@ -286,6 +290,10 @@ class MaskFormerDecoder(nn.Module):
 
         # Sort queries
         query_sort_value = x.get(f"query_phi")
+        if query_sort_value is None:
+            # If query_phi is not available, return what we have so far
+            return attn_mask, x, query_mask, key_valid_sorted
+            
         query_sort_idx = torch.argsort(query_sort_value, axis=-1)
         
         if attn_mask is not None:
@@ -309,6 +317,10 @@ class MaskFormerDecoder(nn.Module):
     def unsort_by_phi(self, x):
         # Get the original sorting indices
         key_sort_value_ = x.get(f"key_phi")
+        if key_sort_value_ is None:
+            # If key_phi is not available, return x unchanged
+            return x
+            
         key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
         key_unsort_idx = torch.argsort(key_sort_idx[0])  # Reverse the sorting
         
@@ -320,6 +332,10 @@ class MaskFormerDecoder(nn.Module):
 
         # Unsort queries
         query_sort_value = x.get(f"query_phi")
+        if query_sort_value is None:
+            # If query_phi is not available, return what we have so far
+            return x
+            
         query_sort_idx = torch.argsort(query_sort_value, axis=-1)
         query_unsort_idx = torch.argsort(query_sort_idx)  # Reverse the sorting
         
