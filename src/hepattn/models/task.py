@@ -10,7 +10,6 @@ from hepattn.models.loss import cost_fns, loss_fns, mask_focal_loss
 from hepattn.utils.masks import topk_attn
 from hepattn.utils.scaling import FeatureScaler
 
-
 # Mapping of loss function names to torch.nn.functional loss functions
 REGRESSION_LOSS_FNS = {
     "l1": torch.nn.functional.l1_loss,
