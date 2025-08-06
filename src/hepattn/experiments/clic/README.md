@@ -12,6 +12,7 @@ sbatch hepattn/src/hepattn/experiments/clic/submit_training_sam.sh
 ## Evaluation
 
 To evaluate the model you need to run the following command:
+
 ```shell
 python main.py test \
     -c <path to config.yaml> \
@@ -20,8 +21,9 @@ python main.py test \
     --trainer.precision 32-true
 ```
 
-Flags `--data.is_inference true` and `--trainer.precision 32-true` are important for correct evaluation of the model performance. \
-**Don't forget to change the attention type to `torch` in the config file.**
+- Flags `--data.is_inference true` and `--trainer.precision 32-true` are important for correct evaluation of the model performance.
+- **Don't forget to change the attention type to `torch` in the config file.**
+- **You may also need to remove the compile callback if present in the config file.**
 
 ## CLIC Data
 
