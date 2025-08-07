@@ -105,7 +105,7 @@ def stdout_redirected(to=os.devnull):
         sys.stdout = os.fdopen(fd, "w")  # Python writes to fd
 
     with os.fdopen(os.dup(fd), "w") as old_stdout:
-        with Path(to).open(to, "w") as file:
+        with Path(to).open("w") as file:
             _redirect_stdout(to=file)
         try:
             yield  # allow code to be run with the redirected stdout
@@ -117,7 +117,7 @@ def stdout_redirected(to=os.devnull):
 
 # multiprocessed version
 def compute_jet_multiproc(kwargs, pts, etas, phis, fourths, fourth_name, store_constituent_idxs=False):
-    with stdout_redirected(to=os.devnull):
+    with stdout_redirected():
         jet_helper_obj = JetHelper(**kwargs)
         return jet_helper_obj.compute_jets(pts, etas, phis, fourths, fourth_name, store_constituent_idxs, progress_bar=False)
 

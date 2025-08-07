@@ -9,6 +9,22 @@ python main.py fit --config configs/base.yaml
 sbatch hepattn/src/hepattn/experiments/clic/submit_training_sam.sh
 ```
 
+## Evaluation
+
+To evaluate the model you need to run the following command:
+
+```shell
+python main.py test \
+    -c <path to config.yaml> \
+    --data.test_path test_clic_common_infer.root \
+    --data.is_inference true \
+    --trainer.precision 32-true
+```
+
+- Flags `--data.is_inference true` and `--trainer.precision 32-true` are important for correct evaluation of the model performance.
+- **Don't forget to change the attention type to `torch` in the config file.**
+- **You may also need to remove the compile callback if present in the config file.**
+
 ## CLIC Data
 
 At UCL, files are available on `plus1` under `/unix/atlastracking/svanstroud/dmitrii_clic`, and also on `hypatia` under `/share/gpu1/syw24/dmitrii_clic`.

@@ -10,6 +10,16 @@ from hepattn.models.loss import cost_fns, loss_fns, mask_focal_loss
 from hepattn.utils.masks import topk_attn
 from hepattn.utils.scaling import FeatureScaler
 
+# Mapping of loss function names to torch.nn.functional loss functions
+REGRESSION_LOSS_FNS = {
+    "l1": torch.nn.functional.l1_loss,
+    "l2": torch.nn.functional.mse_loss,
+    "smooth_l1": torch.nn.functional.smooth_l1_loss,
+}
+
+# Define the literal type for regression losses based on the dictionary keys
+RegressionLossType = Literal["l1", "l2", "smooth_l1"]
+
 
 class Task(nn.Module, ABC):
     """Abstract base class for all tasks.
@@ -367,6 +377,7 @@ class RegressionTask(Task):
         fields: list[str],
         loss_weight: float,
         cost_weight: float,
+        loss: RegressionLossType = "smooth_l1",
         has_intermediate_loss: bool = True,
     ):
         """Base class for regression tasks.
@@ -385,6 +396,8 @@ class RegressionTask(Task):
             Weight for the loss function.
         cost_weight : float
             Weight for the cost function.
+        loss : RegressionLossType, optional
+            Type of loss function to use, by default "smooth_l1".
         has_intermediate_loss : bool, optional
             Whether task has intermediate loss, by default True.
         """
@@ -396,6 +409,8 @@ class RegressionTask(Task):
         self.fields = fields
         self.loss_weight = loss_weight
         self.cost_weight = cost_weight
+        self.loss_fn_name = loss
+        self.loss_fn = REGRESSION_LOSS_FNS[loss]
         self.k = len(fields)
         # For standard regression number of DoFs is just the number of targets
         self.ndofs = self.k
@@ -420,13 +435,13 @@ class RegressionTask(Task):
         output = output[mask]
 
         # Compute the loss
-        loss = torch.nn.functional.smooth_l1_loss(output, target, reduction="none")
+        loss = self.loss_fn(output, target, reduction="none")
 
         # Average over all the objects
         loss = torch.mean(loss, dim=-1)
 
         # Compute the regression loss only for valid objects
-        return {"smooth_l1": self.loss_weight * loss.mean()}
+        return {self.loss_fn_name: self.loss_weight * loss.mean()}
 
     def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         metrics = {}
@@ -642,6 +657,7 @@ class ObjectRegressionTask(RegressionTask):
         loss_weight: float,
         cost_weight: float,
         dim: int,
+        loss: RegressionLossType = "smooth_l1",
         has_intermediate_loss: bool = True,
     ):
         """Regression task for objects.
@@ -664,10 +680,12 @@ class ObjectRegressionTask(RegressionTask):
             Weight for the cost function.
         dim : int
             Embedding dimension.
+        loss : RegressionLossType, optional
+            Type of loss function to use, by default "smooth_l1".
         has_intermediate_loss : bool, optional
             Whether task has intermediate loss, by default True.
         """
-        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, has_intermediate_loss=has_intermediate_loss)
+        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, loss=loss, has_intermediate_loss=has_intermediate_loss)
 
         self.input_object = input_object
         self.inputs = [input_object + "_embed"]
@@ -685,14 +703,14 @@ class ObjectRegressionTask(RegressionTask):
         num_objects = output.shape[1]
         # Index from the front so it works for both object and mask regression
         # The expand is not necessary but stops a broadcasting warning from smooth_l1_loss
-        costs = torch.nn.functional.smooth_l1_loss(
+        costs = self.loss_fn(
             output.unsqueeze(2).expand(-1, -1, num_objects, -1),
             target.unsqueeze(1).expand(-1, num_objects, -1, -1),
             reduction="none",
         )
         # Average over the regression fields dimension
         costs = costs.mean(-1)
-        return {"regr_smooth_l1": self.cost_weight * costs}
+        return {f"regr_{self.loss_fn_name}": self.cost_weight * costs}
 
 
 class ObjectHitRegressionTask(RegressionTask):
@@ -707,6 +725,7 @@ class ObjectHitRegressionTask(RegressionTask):
         loss_weight: float,
         cost_weight: float,
         dim: int,
+        loss: RegressionLossType = "smooth_l1",
         has_intermediate_loss: bool = True,
     ):
         """Regression task for object-hit associations.
@@ -731,10 +750,12 @@ class ObjectHitRegressionTask(RegressionTask):
             Weight for the cost function.
         dim : int
             Embedding dimension.
+        loss : RegressionLossType, optional
+            Type of loss function to use, by default "smooth_l1".
         has_intermediate_loss : bool, optional
             Whether task has intermediate loss, by default True.
         """
-        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, has_intermediate_loss=has_intermediate_loss)
+        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, loss=loss, has_intermediate_loss=has_intermediate_loss)
 
         self.input_hit = input_hit
         self.input_object = input_object
@@ -1059,6 +1080,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         cost_weight: float,
         scale_dict_path: str,
         net: nn.Module,
+        loss: RegressionLossType = "smooth_l1",
         use_incidence: bool = True,
         use_nodes: bool = False,
         split_charge_neutral_loss: bool = False,
@@ -1072,6 +1094,8 @@ class IncidenceBasedRegressionTask(RegressionTask):
             List of target names
         add_momentum : bool
             Whether to add scalar momentum to the predictions, computed from the px, py, pz predictions
+        loss : RegressionLossType, optional
+            Type of loss function to use, by default "smooth_l1".
         """
         super().__init__(
             name=name,
@@ -1080,6 +1104,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
             fields=fields,
             loss_weight=loss_weight,
             cost_weight=cost_weight,
+            loss=loss,
             has_intermediate_loss=has_intermediate_loss,
         )
         self.input_hit = input_hit
@@ -1201,14 +1226,14 @@ class IncidenceBasedRegressionTask(RegressionTask):
             if self.split_charge_neutral_loss and field in self.loss_masks:
                 mask &= self.loss_masks[field](output_class, target_class)
             if loss is None:
-                loss = torch.nn.functional.smooth_l1_loss(output[mask], target[mask], reduction="mean")
+                loss = self.loss_fn(output[mask], target[mask], reduction="mean")
             else:
-                loss += torch.nn.functional.smooth_l1_loss(output[mask], target[mask], reduction="mean")
+                loss += self.loss_fn(output[mask], target[mask], reduction="mean")
         # Average over all the features
         loss /= len(self.fields)
 
         # Compute the regression loss only for valid objects
-        return {"smooth_l1": self.loss_weight * loss}
+        return {self.loss_fn_name: self.loss_weight * loss}
 
     def scale_proxy_feats(self, proxy_feats: Tensor):
         return torch.cat([self.scaler[field].transform(proxy_feats[..., i]).unsqueeze(-1) for i, field in enumerate(self.fields)], -1)

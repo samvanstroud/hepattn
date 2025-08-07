@@ -83,7 +83,7 @@ class CLICDataset(Dataset):
         self.full_data_array = {}
 
         varlist = self.track_variables + self.topo_variables + self.particle_variables
-        arrays = tree.arrays(varlist, library="np", entry_stop=self.num_events)
+        arrays = tree.arrays(varlist + self.aux_vars, library="np", entry_stop=self.num_events)
         for var in tqdm(varlist):
             self.full_data_array[var] = arrays[var]
             if "phi" in var and "particle" not in var:
@@ -147,7 +147,7 @@ class CLICDataset(Dataset):
         self.aux_data_array = {}
         for var in self.aux_vars:
             print(f"Loading aux var {var}")
-            self.aux_data_array[var] = tree[var].array(library="np", entry_stop=self.num_events)[mask]
+            self.aux_data_array[var] = arrays[var][mask]
 
         self.num_events = np.sum(mask)
         print(f"Number of events after filtering: {self.num_events}")
