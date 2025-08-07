@@ -1113,22 +1113,8 @@ class IncidenceBasedRegressionTask(RegressionTask):
         self.use_nodes = use_nodes
         self.use_pt_match = use_pt_match
         self.pt_pos = self.fields.index("pt")
-
-        self.loss_masks = {
-            "e": self.get_neutral,  # Only neutral particles
-            "pt": self.get_charged,  # Only charged particles
-        }
-
         self.inputs = [input_object + "_embed"] + [input_hit + "_" + field for field in fields]
         self.outputs = [output_object + "_regr", output_object + "_proxy_regr"]
-
-    def get_charged(self, pred: Tensor, target: Tensor) -> Tensor:
-        """Get a boolean mask for charged particles based on their class."""
-        return (pred <= 2) & (target <= 2)
-
-    def get_neutral(self, pred: Tensor, target: Tensor) -> Tensor:
-        """Get a boolean mask for neutral particles based on their class."""
-        return (pred > 2) & (target > 2)
 
     def forward(self, x: dict[str, Tensor], pads: dict[str, Tensor] | None = None) -> dict[str, Tensor]:
         # get the predictions
