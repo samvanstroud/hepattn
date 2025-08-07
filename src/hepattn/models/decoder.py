@@ -146,7 +146,7 @@ class MaskFormerDecoder(nn.Module):
                     attn_mask[..., x[f"key_is_{input_name}"]] = task_attn_mask
 
             # order attn mask, query & key embeds, query mask and key valid in phi, etc.
-            # TODO would like to move this outside of layers for loop but slightly more complicated in terms of what to undo when - looking into it
+            # TODO: would like to move this outside of layers for loop but slightly more complicated in terms of what to undo when - looking into it
             attn_mask, x, query_mask, key_valid, key_sort_idx, query_sort_idx = self.sort_by_phi(attn_mask, x, query_mask, x.get("key_valid"))
             # Log attention mask if requested
             if self.log_attn_mask:
