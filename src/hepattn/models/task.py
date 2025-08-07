@@ -1216,7 +1216,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         else:
             pt_cost = 0
         # Compute the cost as the sum of the squared differences
-        cost = self.cost_weight * torch.sqrt(dphi**2 + deta**2)
+        cost = self.cost_weight * torch.sqrt(pt_cost + dphi**2 + deta**2)
         return {"regression": cost}
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor], output_class: Tensor | None = None) -> dict[str, Tensor]:
