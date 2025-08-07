@@ -129,7 +129,7 @@ class TestMaskFormerDecoder:
         x, _ = sample_decoder_data
         original_embed = x["query_embed"].clone()
 
-        updated_query, updated_key = decoder.add_positional_encodings(x)
+        updated_query, _ = decoder.add_positional_encodings(x)
 
         # Should remain unchanged when no query_posenc is set
         assert torch.equal(updated_query, original_embed)
