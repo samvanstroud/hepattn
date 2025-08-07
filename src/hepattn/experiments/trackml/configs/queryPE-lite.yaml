@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v1-queryPE-phionly-hybrid-scalePE-lite
+name: TRK-v1-queryPE-phionly-lite
 
 data:
   train_dir:  /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/train/
@@ -123,10 +123,8 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       input_sort_field: phi
-      num_queries: *num_objects
       dim: &dim 256
-      log_attn_mask: false
-      preserve_posenc: true
+      log_task_attn_mask: true
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -165,7 +163,7 @@ model:
                       - phi
                     dim: *dim
       decoder:
-        class_path: hepattn.models.MaskFormerDecoder
+        class_path: hepattn.models.decoder.MaskFormerDecoder
         init_args:
           num_decoder_layers: 4
           decoder_layer_config:
@@ -173,7 +171,6 @@ model:
             norm: RMSNorm
             hybrid_norm: true
           num_queries: *num_objects
-          dim: *dim
           mask_attention: true
           log_attn_mask: true
           posenc_analysis: true

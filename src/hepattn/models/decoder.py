@@ -185,7 +185,7 @@ class MaskFormerDecoder(nn.Module):
         if self.key_posenc is not None:
             key_posenc = self.key_posenc(x)
         if (self.query_posenc is not None) and (self.key_posenc is not None) and (self.posenc_analysis):
-            self.posenc_analysis_logging(x)
+            self.posenc_analysis_logging(x, query_posenc, key_posenc)
         return query_posenc, key_posenc
 
     def attn_mask_logging(self, attn_mask, layer_index):
@@ -200,16 +200,18 @@ class MaskFormerDecoder(nn.Module):
                     "layer": layer_index,
                 }
 
-    def posenc_analysis_logging(self, x):
-        self.last_query_phi = x["query_phi"].detach().cpu().numpy()
-        self.last_query_posenc = x["query_posenc"].detach().cpu().numpy()
-        key_phi = x["key_phi"].detach().cpu().numpy()
-        self.last_key_phi = key_phi
-        key_posenc = x["key_posenc"][0].cpu()
-        self.last_key_posenc = key_posenc.numpy()
-        key_sort_idx = torch.argsort(torch.tensor(key_phi), axis=-1)
-        key_posencs_sorted = key_posenc[key_sort_idx[0]]
-        self.last_key_posenc_sorted = key_posencs_sorted
+    def posenc_analysis_logging(self, x, query_posenc, key_posenc):
+        if query_posenc is not None:
+            self.last_query_posenc = query_posenc.detach().cpu().numpy()
+            self.last_query_phi = x["query_phi"].detach().cpu().numpy()
+        if key_posenc is not None:
+            key_phi = x["key_phi"].detach().cpu().numpy()
+            self.last_key_phi = key_phi
+            key_posenc = key_posenc[0].cpu()
+            self.last_key_posenc = key_posenc.numpy()
+            key_sort_idx = torch.argsort(torch.tensor(key_phi), axis=-1)
+            key_posencs_sorted = key_posenc[key_sort_idx[0]]
+            self.last_key_posenc_sorted = key_posencs_sorted
 
     def sort_by_phi(self, attn_mask, x, query_mask, key_valid):
         key_phi = x.get("key_phi")

@@ -64,6 +64,7 @@ class MaskFormer(nn.Module):
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
         self.log_task_attn_mask = log_task_attn_mask
+        self.log_step = 0
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         self.log_step += 1
