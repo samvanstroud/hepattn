@@ -4,6 +4,7 @@
 """
 
 from functools import partial
+import warnings
 
 import torch
 from torch import Tensor, nn
@@ -247,7 +248,7 @@ class MaskFormerDecoder(nn.Module):
                 x["key_valid"] = key_valid_sorted
         else:
             key_sort_idx = None
-            raise Warning("No key phi found, so no sorting will be performed")
+            warnings.warn("No key phi found, so no sorting will be performed")
 
         # Sort queries
         if query_phi is not None:
@@ -280,7 +281,7 @@ class MaskFormerDecoder(nn.Module):
                 query_mask = query_mask_sorted
         else:
             query_sort_idx = None
-            raise Warning("No query phi found, so no sorting will be performed")
+            warnings.warn("No query phi found, so no sorting will be performed")
 
         return (
             attn_mask,
