@@ -231,6 +231,7 @@ model:
                 input_object: query
                 output_object: pflow
                 target_object: particle
+                loss: l1
                 loss_weight: 10.0
                 cost_weight: 10.0
                 use_incidence: true
