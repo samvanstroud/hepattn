@@ -98,16 +98,19 @@ class MaskFormerDecoder(nn.Module):
         if not self.preserve_posenc:
             x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
 
-        outputs = {}
+        outputs: dict[str, dict] = {}
 
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
             outputs[f"layer_{layer_index}"] = {}
 
             if self.preserve_posenc:
-                x = self.add_positional_encodings(x)
+                x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
 
-            attn_masks = {}
+            attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
+
+            if self.tasks is None:
+                self.tasks = []
 
             for task in self.tasks:
                 if not task.has_intermediate_loss:
@@ -170,7 +173,7 @@ class MaskFormerDecoder(nn.Module):
             x["query_embed"] = x["query_embed"] + x["query_posenc"]
         if self.key_posenc is not None:
             x["key_embed"] = x["key_embed"] + x["key_posenc"]
-        return x
+        return x["query_embed"], x["key_embed"]
 
     def generate_positional_encodings(self, x: dict):
         query_posenc = None
