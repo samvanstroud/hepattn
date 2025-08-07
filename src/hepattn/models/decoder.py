@@ -212,65 +212,75 @@ class MaskFormerDecoder(nn.Module):
 
     def sort_by_phi(self, attn_mask, x, query_mask, key_valid):
         key_phi = x.get("key_phi")
-        key_sort_idx = torch.argsort(key_phi, axis=-1)
+        query_phi = x.get("query_phi")
 
-        if attn_mask is not None:
-            # Sort attention mask along key dimension (dim 2) - [batch, queries, constituents]
-            attn_mask = attn_mask.index_select(2, key_sort_idx[0])
+        # Only sort if phi values are present
+        if key_phi is not None:
+            key_sort_idx = torch.argsort(key_phi, axis=-1)
 
-        # Sort key phi for storing too
-        key_phi_sorted = key_phi[0][key_sort_idx[0]]
-        key_phi_sorted = key_phi_sorted.unsqueeze(0)  # Preserve batch dimension
-        x["key_phi"] = key_phi_sorted
+            if attn_mask is not None:
+                # Sort attention mask along key dimension (dim 2) - [batch, queries, constituents]
+                attn_mask = attn_mask.index_select(2, key_sort_idx[0])
 
-        # Sort key posenc for storing too
-        key_posenc = x.get("key_posenc")
-        if key_posenc is not None:
-            key_posenc_sorted = key_posenc[0][key_sort_idx[0]]
-            key_posenc_sorted = key_posenc_sorted.unsqueeze(0)  # Preserve batch dimension
-            x["key_posenc"] = key_posenc_sorted
+            # Sort key phi for storing too
+            key_phi_sorted = key_phi[0][key_sort_idx[0]]
+            key_phi_sorted = key_phi_sorted.unsqueeze(0)  # Preserve batch dimension
+            x["key_phi"] = key_phi_sorted
 
-        # Sort key embeddings - [batch, constituents, dim]
-        key_embed = x.get("key_embed")
-        key_embed_sorted = key_embed[0][key_sort_idx[0]]  # [constituents, dim]
-        key_embed_sorted = key_embed_sorted.unsqueeze(0)  # [1, constituents, dim]
-        x["key_embed"] = key_embed_sorted
+            # Sort key posenc for storing too
+            key_posenc = x.get("key_posenc")
+            if key_posenc is not None:
+                key_posenc_sorted = key_posenc[0][key_sort_idx[0]]
+                key_posenc_sorted = key_posenc_sorted.unsqueeze(0)  # Preserve batch dimension
+                x["key_posenc"] = key_posenc_sorted
 
-        # Sort key_valid mask - [batch, constituents]
-        if key_valid is not None:
-            key_valid_sorted = key_valid[0][key_sort_idx[0]]  # [constituents]
-            key_valid_sorted = key_valid_sorted.unsqueeze(0)  # [1, constituents]
-            x["key_valid"] = key_valid_sorted
+            # Sort key embeddings - [batch, constituents, dim]
+            key_embed = x.get("key_embed")
+            key_embed_sorted = key_embed[0][key_sort_idx[0]]  # [constituents, dim]
+            key_embed_sorted = key_embed_sorted.unsqueeze(0)  # [1, constituents, dim]
+            x["key_embed"] = key_embed_sorted
+
+            # Sort key_valid mask - [batch, constituents]
+            if key_valid is not None:
+                key_valid_sorted = key_valid[0][key_sort_idx[0]]  # [constituents]
+                key_valid_sorted = key_valid_sorted.unsqueeze(0)  # [1, constituents]
+                x["key_valid"] = key_valid_sorted
+        else:
+            key_sort_idx = None
+            raise Warning("No key phi found, so no sorting will be performed")
 
         # Sort queries
-        query_phi = x.get("query_phi")
-        query_sort_idx = torch.argsort(query_phi, axis=-1)
+        if query_phi is not None:
+            query_sort_idx = torch.argsort(query_phi, axis=-1)
 
-        # Sort query phi for storing too
-        query_phi_sorted = query_phi[query_sort_idx]
-        x["query_phi"] = query_phi_sorted
+            # Sort query phi for storing too
+            query_phi_sorted = query_phi[query_sort_idx]
+            x["query_phi"] = query_phi_sorted
 
-        # Sort query posenc for storing too
-        query_posenc = x.get("query_posenc")
-        if query_posenc is not None:
-            query_posenc_sorted = query_posenc[query_sort_idx]
-            x["query_posenc"] = query_posenc_sorted
+            # Sort query posenc for storing too
+            query_posenc = x.get("query_posenc")
+            if query_posenc is not None:
+                query_posenc_sorted = query_posenc[query_sort_idx]
+                x["query_posenc"] = query_posenc_sorted
 
-        if attn_mask is not None:
-            # Sort attention mask along query dimension (dim 1) - [batch, queries, constituents]
-            attn_mask = attn_mask.index_select(1, query_sort_idx.to(attn_mask.device))
+            if attn_mask is not None:
+                # Sort attention mask along query dimension (dim 1) - [batch, queries, constituents]
+                attn_mask = attn_mask.index_select(1, query_sort_idx.to(attn_mask.device))
 
-        # Sort query embeddings - [batch, queries, dim]
-        query_embed = x.get("query_embed")
-        query_embed_sorted = query_embed[0][query_sort_idx]  # [queries, dim]
-        query_embed_sorted = query_embed_sorted.unsqueeze(0)  # [1, queries, dim]
-        x["query_embed"] = query_embed_sorted
+            # Sort query embeddings - [batch, queries, dim]
+            query_embed = x.get("query_embed")
+            query_embed_sorted = query_embed[0][query_sort_idx]  # [queries, dim]
+            query_embed_sorted = query_embed_sorted.unsqueeze(0)  # [1, queries, dim]
+            x["query_embed"] = query_embed_sorted
 
-        # Sort query_mask - [batch, queries]
-        if query_mask is not None:
-            query_mask_sorted = query_mask[0][query_sort_idx]  # [queries]
-            query_mask_sorted = query_mask_sorted.unsqueeze(0)  # [1, queries]
-            query_mask = query_mask_sorted
+            # Sort query_mask - [batch, queries]
+            if query_mask is not None:
+                query_mask_sorted = query_mask[0][query_sort_idx]  # [queries]
+                query_mask_sorted = query_mask_sorted.unsqueeze(0)  # [1, queries]
+                query_mask = query_mask_sorted
+        else:
+            query_sort_idx = None
+            raise Warning("No query phi found, so no sorting will be performed")
 
         return (
             attn_mask,
@@ -286,64 +296,69 @@ class MaskFormerDecoder(nn.Module):
         # Get the original sorting indices
         # the unsort indices are the reverse of the sort indices
 
-        # Compute unsorting indices by finding the inverse permutation
-        # For a permutation p, the inverse permutation p_inv satisfies: p_inv[p[i]] = i
-        key_unsort_idx = torch.argsort(key_sort_idx[0], dim=0)
-        query_unsort_idx = torch.argsort(query_sort_idx, dim=0)
+        # Only unsort if sorting was performed
+        if key_sort_idx is not None:
+            # Compute unsorting indices by finding the inverse permutation
+            # For a permutation p, the inverse permutation p_inv satisfies: p_inv[p[i]] = i
+            key_unsort_idx = torch.argsort(key_sort_idx[0], dim=0)
 
-        # Unsort key phi for storing too
-        key_phi_unsorted = x.get("key_phi")[0][key_unsort_idx]
-        key_phi_unsorted = key_phi_unsorted.unsqueeze(0)
-        x["key_phi"] = key_phi_unsorted
+            # Unsort key phi for storing too
+            key_phi_unsorted = x.get("key_phi")[0][key_unsort_idx]
+            key_phi_unsorted = key_phi_unsorted.unsqueeze(0)
+            x["key_phi"] = key_phi_unsorted
 
-        # Unsort key posenc for storing too
-        key_posenc = x.get("key_posenc")
-        if key_posenc is not None:
-            key_posenc_unsorted = key_posenc[0][key_unsort_idx]
-            key_posenc_unsorted = key_posenc_unsorted.unsqueeze(0)
-            x["key_posenc"] = key_posenc_unsorted
+            # Unsort key posenc for storing too
+            key_posenc = x.get("key_posenc")
+            if key_posenc is not None:
+                key_posenc_unsorted = key_posenc[0][key_unsort_idx]
+                key_posenc_unsorted = key_posenc_unsorted.unsqueeze(0)
+                x["key_posenc"] = key_posenc_unsorted
 
-        if attn_mask is not None:
-            # Unsort attention mask along key dimension (dim 2) - [batch, queries, constituents]
-            attn_mask = attn_mask.index_select(2, key_unsort_idx.to(attn_mask.device))
+            if attn_mask is not None:
+                # Unsort attention mask along key dimension (dim 2) - [batch, queries, constituents]
+                attn_mask = attn_mask.index_select(2, key_unsort_idx.to(attn_mask.device))
 
-        # Unsort key embeddings - [batch, constituents, dim]
-        key_embed = x.get("key_embed")
-        key_embed_unsorted = key_embed[0][key_unsort_idx]  # [constituents, dim]
-        key_embed_unsorted = key_embed_unsorted.unsqueeze(0)  # [1, constituents, dim]
-        x["key_embed"] = key_embed_unsorted
+            # Unsort key embeddings - [batch, constituents, dim]
+            key_embed = x.get("key_embed")
+            key_embed_unsorted = key_embed[0][key_unsort_idx]  # [constituents, dim]
+            key_embed_unsorted = key_embed_unsorted.unsqueeze(0)  # [1, constituents, dim]
+            x["key_embed"] = key_embed_unsorted
 
-        # Unsort key_valid mask - [batch, constituents]
-        if key_valid is not None:
-            key_valid_unsorted = key_valid[0][key_unsort_idx]  # [constituents]
-            key_valid_unsorted = key_valid_unsorted.unsqueeze(0)  # [1, constituents]
-            x["key_valid"] = key_valid_unsorted
+            # Unsort key_valid mask - [batch, constituents]
+            if key_valid is not None:
+                key_valid_unsorted = key_valid[0][key_unsort_idx]  # [constituents]
+                key_valid_unsorted = key_valid_unsorted.unsqueeze(0)  # [1, constituents]
+                x["key_valid"] = key_valid_unsorted
 
-        # Unsort query phi for storing too
-        query_phi_unsorted = x.get("query_phi")[query_unsort_idx]
-        x["query_phi"] = query_phi_unsorted
+        if query_sort_idx is not None:
+            # Compute unsorting indices by finding the inverse permutation
+            query_unsort_idx = torch.argsort(query_sort_idx, dim=0)
 
-        # Unsort query posenc for storing too
-        query_posenc = x.get("query_posenc")
-        if query_posenc is not None:
-            query_posenc_unsorted = query_posenc[query_unsort_idx]
-            x["query_posenc"] = query_posenc_unsorted
+            # Unsort query phi for storing too
+            query_phi_unsorted = x.get("query_phi")[query_unsort_idx]
+            x["query_phi"] = query_phi_unsorted
 
-        # Unsort attention mask along query dimension (dim 1) - [batch, queries, constituents]
-        if attn_mask is not None:
-            attn_mask = attn_mask.index_select(1, query_unsort_idx.to(attn_mask.device))
+            # Unsort query posenc for storing too
+            query_posenc = x.get("query_posenc")
+            if query_posenc is not None:
+                query_posenc_unsorted = query_posenc[query_unsort_idx]
+                x["query_posenc"] = query_posenc_unsorted
 
-        # Unsort query embeddings - [batch, queries, dim]
-        query_embed = x.get("query_embed")
-        query_embed_unsorted = query_embed[0][query_unsort_idx]  # [queries, dim]
-        query_embed_unsorted = query_embed_unsorted.unsqueeze(0)  # [1, queries, dim]
-        x["query_embed"] = query_embed_unsorted
+            # Unsort attention mask along query dimension (dim 1) - [batch, queries, constituents]
+            if attn_mask is not None:
+                attn_mask = attn_mask.index_select(1, query_unsort_idx.to(attn_mask.device))
 
-        # Unsort query mask - [batch, queries]
-        if query_mask is not None:
-            query_mask_unsorted = query_mask[0][query_unsort_idx]  # [queries]
-            query_mask_unsorted = query_mask_unsorted.unsqueeze(0)  # [1, queries]
-            query_mask = query_mask_unsorted
+            # Unsort query embeddings - [batch, queries, dim]
+            query_embed = x.get("query_embed")
+            query_embed_unsorted = query_embed[0][query_unsort_idx]  # [queries, dim]
+            query_embed_unsorted = query_embed_unsorted.unsqueeze(0)  # [1, queries, dim]
+            x["query_embed"] = query_embed_unsorted
+
+            # Unsort query mask - [batch, queries]
+            if query_mask is not None:
+                query_mask_unsorted = query_mask[0][query_unsort_idx]  # [queries]
+                query_mask_unsorted = query_mask_unsorted.unsqueeze(0)  # [1, queries]
+                query_mask = query_mask_unsorted
 
         return attn_mask, x
 
