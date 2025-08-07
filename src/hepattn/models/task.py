@@ -57,9 +57,6 @@ class Task(nn.Module, ABC):
     def query_mask(self, outputs: dict[str, Tensor], **kwargs) -> Tensor | None:
         return None
 
-    def loss_kwargs(self, outputs: dict[str, dict[str, Tensor]], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        return {}
-
 
 class ObjectValidTask(Task):
     def __init__(
