@@ -1,4 +1,4 @@
-name: clic_v2_isambard
+name: clic_v3_morereg_l1
 seed_everything: 42
 
 data:
@@ -24,7 +24,7 @@ data:
 
   train_path: /projects/u5ar/data/clic/train_clic_fix.root
   valid_path: /projects/u5ar/data/clic/val_clic_fix.root
-  test_path: /projects/u5ar/data/clic/test_clic_fix.root
+  test_path: /projects/u5ar/data/clic/test_clic_common_infer.root
 
   num_workers: 16
   num_train: -1
@@ -37,9 +37,9 @@ data:
   scale_dict_path: &scale_dict_path configs/clic_var_transform.yaml
 
 trainer:
-  max_epochs: 50
+  max_epochs: 200
   accelerator: gpu
-  devices: 1
+  devices: 2
   precision: bf16-mixed
   gradient_clip_val: 0.1
   log_every_n_steps: 50
@@ -78,7 +78,7 @@ model:
 
   lrs_config:
     initial: 1e-5
-    max: 4e-5
+    max: 1e-4
     end: 1e-6
     pct_start: 0.05
     weight_decay: 0.001
@@ -190,11 +190,9 @@ model:
                 losses:
                   mask_bce: 5.0
                   mask_dice: 1.0
-                  mask_focal: 2.0
                 costs:
                   # mask_bce: 5.0
                   mask_dice: 1.0
-                  # mask_focal: 2.0
                 dim: *dim
                 null_weight: 1.0
                 has_intermediate_loss: true
@@ -233,8 +231,8 @@ model:
                 input_object: query
                 output_object: pflow
                 target_object: particle
-                loss_weight: 2.0
-                cost_weight: 2.0
+                loss_weight: 10.0
+                cost_weight: 10.0
                 use_incidence: true
                 use_nodes: true
                 split_charge_neutral_loss: false
@@ -245,5 +243,5 @@ model:
                     input_size: 518
                     activation: torch.nn.SiLU
                     output_size: 5
-                    hidden_layers: [128, 128, 64, 32]
+                    hidden_layers: [512, 256, 128, 64, 32]
                 has_intermediate_loss: false
