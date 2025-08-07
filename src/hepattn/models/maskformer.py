@@ -2,7 +2,9 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoder
-from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
+from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectHitMaskTask
+
+N_STEPS_LOG_ATTN_MASK = 1000
 
 
 class MaskFormer(nn.Module):
@@ -18,6 +20,7 @@ class MaskFormer(nn.Module):
         matcher: nn.Module | None = None,
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
+        log_task_attn_mask: bool = False,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object inference with attention-based decoding and optional encoder blocks.
@@ -60,8 +63,10 @@ class MaskFormer(nn.Module):
         self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
+        self.log_task_attn_mask = log_task_attn_mask
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
+        self.log_step += 1
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
 
@@ -145,8 +150,32 @@ class MaskFormer(nn.Module):
             if isinstance(task, ObjectClassificationTask):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
-
+            if isinstance(task, ObjectHitMaskTask) and self.log_task_attn_mask:
+                attn_logits = outputs["final"][task.name][task.outputs[0]].detach()
+                self.output_attn_mask_logging(attn_logits, x)
         return outputs
+
+    def sort_attn_mask_im(self, attn_mask_im, x):
+        key_sort_value_ = x.get("key_phi")
+        key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
+        attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
+        query_sort_value = x.get("query_phi")
+        query_sort_idx = torch.argsort(query_sort_value, axis=-1)
+        return attn_mask_im.index_select(0, query_sort_idx.to(attn_mask_im.device))
+
+    def output_attn_mask_logging(self, attn_logits, x, threshold=0.1):
+        if ((attn_logits is not None) and (self.log_step % N_STEPS_LOG_ATTN_MASK == 0)) or (not self.training):
+            if not hasattr(self, "output_attn_masks_to_log"):
+                self.output_attn_masks_to_log = {}
+            # sigmoid the attn mask to get the probability of the hit being attended to
+            attn_mask_im = attn_logits[0].detach().cpu().clone().sigmoid()
+            attn_mask_im = self.sort_attn_mask_im(attn_mask_im, x)
+            self.output_attn_masks_to_log["final"] = {
+                "mask": attn_mask_im >= threshold,
+                "probs": attn_mask_im,
+                "step": self.log_step,
+                "layer": "final",
+            }
 
     def predict(self, outputs: dict) -> dict:
         """Takes the raw model outputs and produces a set of actual inferences / predictions.

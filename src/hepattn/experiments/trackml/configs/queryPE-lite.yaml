@@ -125,16 +125,7 @@ model:
       input_sort_field: phi
       num_queries: *num_objects
       dim: &dim 256
-      log_attn_mask: true
-      query_posenc:
-          class_path: hepattn.models.PositionEncoder
-          init_args:
-            input_name: query
-            fields:
-              - phi
-            dim: *dim
-            alpha: 1000
-            base: 100
+      log_attn_mask: false
       preserve_posenc: true
       input_nets:
         class_path: torch.nn.ModuleList
@@ -173,6 +164,39 @@ model:
                     fields:
                       - phi
                     dim: *dim
+      decoder:
+        class_path: hepattn.models.MaskFormerDecoder
+        init_args:
+          num_decoder_layers: 4
+          decoder_layer_config:
+            dim: *dim
+            norm: RMSNorm
+            hybrid_norm: true
+          num_queries: *num_objects
+          dim: *dim
+          mask_attention: true
+          log_attn_mask: true
+          posenc_analysis: true
+          preserve_posenc: true
+          query_posenc:
+              class_path: hepattn.models.PositionEncoder
+              init_args:
+                input_name: query
+                fields:
+                  - phi
+                dim: *dim
+                alpha: 2
+                base: 50000
+          key_posenc:
+              class_path: hepattn.models.PositionEncoder
+              init_args:
+                input_name: key
+                fields:
+                  - phi
+                dim: *dim
+                alpha: 2
+                base: 50000
+
 
       encoder:
         class_path: hepattn.models.Encoder
@@ -184,13 +208,6 @@ model:
           window_wrap: true
           hybrid_norm: true
           norm: RMSNorm
-
-      num_decoder_layers: 4
-      decoder_layer_config:
-        dim: *dim
-        norm: RMSNorm
-        mask_attention: true
-        hybrid_norm: true
 
       tasks:
         class_path: torch.nn.ModuleList
