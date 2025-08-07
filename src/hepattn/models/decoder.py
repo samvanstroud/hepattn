@@ -3,8 +3,8 @@
 - https://github.com/facebookresearch/Mask2Former.
 """
 
-from functools import partial
 import warnings
+from functools import partial
 
 import torch
 from torch import Tensor, nn
