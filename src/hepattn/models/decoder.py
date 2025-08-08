@@ -185,7 +185,8 @@ class MaskFormerDecoder(nn.Module):
             )
 
             if self.sort_by_phi:
-                # only need to unsort embeds because these are the only ones that are passed on - if pass on other sorted vars would need to change this
+                # only need to unsort embeds because these are the only ones that are passed on
+                # - if pass on other sorted vars would need to change this
                 for input_key, sort_key in zip(
                     ["query_embed", "key_embed"],
                     ["query", "key"],
@@ -268,8 +269,11 @@ class MaskFormerDecoder(nn.Module):
                 var_sorted = var_sorted.unsqueeze(0)  # Preserve batch dimension
             elif len(var.shape) == 1:
                 var_sorted = var[sort_idx]
+            elif len(var.shape) == 3:
+                # For 3D tensors, sort along the middle dimension (dim=1)
+                var_sorted = var.index_select(1, sort_idx.to(var.device))
             else:
-                raise ValueError(f"Variable has invalid shape: {var.shape}")
+                raise ValueError(f"Variable {var} has invalid shape: {var.shape}")
         else:
             var_sorted = None
         return var_sorted
