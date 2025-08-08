@@ -104,7 +104,7 @@ class ObjectValidTask(Task):
         self.dim = dim
         self.null_weight = null_weight
         self.mask_queries = mask_queries
-        self.permute_loss=True
+        self.permute_loss = True
 
         # Internal
         self.inputs = [input_object + "_embed"]
@@ -293,7 +293,7 @@ class ObjectHitMaskTask(Task):
         self.null_weight = null_weight
         self.mask_attn = mask_attn
         self.has_intermediate_loss = mask_attn
-        self.permute_loss=True
+        self.permute_loss = True
 
         self.output_object_hit = output_object + "_" + input_hit
         self.target_object_hit = target_object + "_" + input_hit
@@ -399,7 +399,7 @@ class RegressionTask(Task):
         self.k = len(fields)
         # For standard regression number of DoFs is just the number of targets
         self.ndofs = self.k
-        self.permute_loss=True
+        self.permute_loss = True
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # For a standard regression task, the raw network output is the final prediction
@@ -768,8 +768,7 @@ class ObjectHitRegressionTask(RegressionTask):
         x_obj_hit = torch.einsum("...nie,...mie->...nmi", x_obj, x_hit)  # Shape BNMD
 
         # Shape of padding goes BM -> B1M -> B1M1 -> BNMD
-        x_obj_hit = x_obj_hit * x[self.input_hit + "_valid"].unsqueeze(-2).unsqueeze(-1).expand_as(x_obj_hit).float()
-        return x_obj_hit
+        return x_obj_hit * x[self.input_hit + "_valid"].unsqueeze(-2).unsqueeze(-1).expand_as(x_obj_hit).float()
 
 
 class ClassificationTask(Task):
@@ -1268,7 +1267,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
 
 class PhiAlignmentTask(Task):
     """Task to compute angular difference between query phi and average hit phi of attended hits."""
-    
+
     def __init__(
         self,
         name: str,
@@ -1284,7 +1283,7 @@ class PhiAlignmentTask(Task):
         target_field: str = "valid",
     ):
         super().__init__()
-        
+
         self.name = name
         self.input_hit = input_hit
         self.input_object = input_object
@@ -1297,20 +1296,20 @@ class PhiAlignmentTask(Task):
         self.null_weight = null_weight
         self.mask_attn = mask_attn
         self.has_intermediate_loss = mask_attn
-        
+
         # This task outputs the angular difference
         self.inputs = [input_object + "_embed", input_hit + "_embed"]
         self.outputs = [output_object + "_phi_diff"]
-        
+
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         """Compute angular difference between query phi and average hit phi."""
         # Get query phi and hit phi from the model state
         query_phi = x.get("query_phi")
         hit_phi = x.get("key_phi")
-                
+
         # Get attention mask from input dictionary
         attention_mask = x.get(f"{self.input_hit}_attn_mask")
-        
+
         if query_phi is None or hit_phi is None or attention_mask is None:
             # If we don't have phi values, return zeros
             batch_size = x[self.input_object + "_embed"].shape[0]
@@ -1320,24 +1319,24 @@ class PhiAlignmentTask(Task):
 
         # Compute average hit phi for each query based on attention mask
         hit_phi_expanded = hit_phi.unsqueeze(1).expand(-1, attention_mask.shape[1], -1)
-        
+
         # Compute weighted average of hit phi values for each query
         epsilon = 1e-8
         masked_hit_phi = hit_phi_expanded * attention_mask.int()
         sum_weights = attention_mask.int().sum(dim=-1, keepdim=True) + epsilon
         avg_hit_phi = masked_hit_phi.sum(dim=-1) / sum_weights.squeeze(-1)
-        
+
         # Compute angular difference (handling wrap-around at ±π)
         phi_diff = query_phi - avg_hit_phi
         # Handle angular wrap-around: ensure difference is in [-π, π]
         phi_diff = torch.atan2(torch.sin(phi_diff), torch.cos(phi_diff))
-        
+
         return {self.output_object + "_phi_diff": phi_diff}
-    
+
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         """Return the angular difference predictions."""
         return {self.output_object + "_phi_diff": outputs[self.output_object + "_phi_diff"].detach()}
-    
+
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         """Compute cost for matching."""
         output = outputs[self.output_object + "_phi_diff"].detach().to(torch.float32)
@@ -1353,21 +1352,21 @@ class PhiAlignmentTask(Task):
                 costs[cost_fn] = cost_weight * (output ** 2)
         
         return costs
-    
+
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         """Compute MSE loss for angular difference."""
         losses = {}
         output = outputs[self.output_object + "_phi_diff"]
-        
+
         # For loss computation, we target zero angular difference
         # This encourages queries to align with the average phi of their attended hits
         target = torch.zeros_like(output)
-        
+
         # Only compute loss for valid objects
         object_valid = targets[self.target_object + "_valid"]
         output = output[object_valid]
         target = target[object_valid]
-        
+
         # Compute MSE loss
         for loss_fn, loss_weight in self.losses.items():
             if loss_fn == "phi_diff_mse":
@@ -1375,5 +1374,4 @@ class PhiAlignmentTask(Task):
             else:
                 # Default to MSE
                 losses[loss_fn] = loss_weight * torch.nn.functional.mse_loss(output, target)
-        
         return losses

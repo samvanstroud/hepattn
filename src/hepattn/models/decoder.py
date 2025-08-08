@@ -64,7 +64,7 @@ class MaskFormerDecoder(nn.Module):
         decoder_layer_config["mask_attention"] = mask_attention
 
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
-        self.tasks = None  # Will be set by MaskFormer
+        self.tasks: list = []  # Will be set by MaskFormer
         self.num_queries = num_queries
         self.mask_attention = mask_attention
         self.use_query_masks = use_query_masks
@@ -111,9 +111,6 @@ class MaskFormerDecoder(nn.Module):
 
             attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
-
-            if self.tasks is None:
-                self.tasks = []
 
             for task in self.tasks:
                 if not task.has_intermediate_loss:
@@ -169,7 +166,7 @@ class MaskFormerDecoder(nn.Module):
                 if input_key in x:
                     x[input_key] = self.sort_var_by_phi(x[input_key], sort_indices[sort_key])
                 else:
-                    warnings.warn(f"Variable {input_name} not found in x - skipping sorting for this variable")
+                    warnings.warn(f"Variable {input_key} not found in x - skipping sorting for this variable")
 
             # Log attention mask if requested
             if self.log_attn_mask:
@@ -180,8 +177,8 @@ class MaskFormerDecoder(nn.Module):
                 x["query_embed"],
                 x["key_embed"],
                 attn_mask=attn_mask,
-                q_mask=x["query_mask"],
-                kv_mask=x["key_valid"],
+                q_mask=x.get("query_mask"),
+                kv_mask=x.get("key_valid"),
             )
 
             # only need to unsort embeds because these are the only ones that are passed on - if pass on other sorted vars would need to change this
