@@ -1,7 +1,6 @@
 """Simplified positional encoding analysis callback for MaskFormer models."""
 
 import warnings
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
@@ -288,15 +287,9 @@ class PositionalEncodingAnalysisLogger(Callback):
     the positional encodings directly from the model's instance variables.
     """
 
-    def __init__(self, output_dir: str = "pos_enc_analysis"):
-        """Initialize the positional encoding analysis logger.
-
-        Args:
-            output_dir: Directory to save analysis outputs
-        """
+    def __init__(self):
+        """Initialize the positional encoding analysis logger."""
         super().__init__()
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True, parents=True)
 
         # Track if we've logged this epoch
         self._logged_this_epoch = False

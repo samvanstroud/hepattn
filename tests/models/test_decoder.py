@@ -124,7 +124,7 @@ class TestMaskFormerDecoder:
         assert updated_x["query_embed"].shape == original_query_shape
         assert updated_x["key_embed"].shape == original_key_shape
 
-    def test_add_query_posenc_no_posenc(self, decoder, sample_decoder_data):
+    def test_add_positional_encodings_no_posenc(self, decoder, sample_decoder_data):
         """Test add_positional_encodings when no positional encoding is set."""
         x, _ = sample_decoder_data
         original_embed = x["query_embed"].clone()
@@ -134,7 +134,7 @@ class TestMaskFormerDecoder:
         # Should remain unchanged when no query_posenc is set
         assert torch.equal(updated_query, original_embed)
 
-    def test_re_add_original_embeddings_no_preserve(self, decoder, sample_decoder_data):
+    def test_add_positional_encodings_no_preserve(self, decoder, sample_decoder_data):
         """Test add_positional_encodings when preserve_posenc is False."""
         x, _ = sample_decoder_data
         original_query = x["query_embed"].clone()
