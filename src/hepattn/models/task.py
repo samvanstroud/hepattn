@@ -1340,7 +1340,7 @@ class PhiAlignmentTask(Task):
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         """Compute cost for matching."""
         output = outputs[self.output_object + "_phi_diff"].detach().to(torch.float32)
-        
+
         # For cost computation, we use the absolute angular difference
         # Since we want to minimize the difference, we use the absolute value as cost
         costs = {}
@@ -1350,7 +1350,7 @@ class PhiAlignmentTask(Task):
             else:
                 # Default to MSE cost
                 costs[cost_fn] = cost_weight * (output ** 2)
-        
+
         return costs
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:

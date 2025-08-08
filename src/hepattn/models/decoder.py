@@ -64,7 +64,7 @@ class MaskFormerDecoder(nn.Module):
         decoder_layer_config["mask_attention"] = mask_attention
 
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
-        self.tasks: list = []  # Will be set by MaskFormer
+        self.tasks: list | None = None  # Will be set by MaskFormer
         self.num_queries = num_queries
         self.mask_attention = mask_attention
         self.use_query_masks = use_query_masks
@@ -112,35 +112,36 @@ class MaskFormerDecoder(nn.Module):
             attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
 
-            for task in self.tasks:
-                if not task.has_intermediate_loss:
-                    continue
+            if self.tasks is not None:
+                for task in self.tasks:
+                    if not task.has_intermediate_loss:
+                        continue
 
-                # Get the outputs of the task given the current embeddings
-                task_outputs = task(x)
+                    # Get the outputs of the task given the current embeddings
+                    task_outputs = task(x)
 
-                # Update x with task outputs for downstream use
-                if isinstance(task, IncidenceRegressionTask):
-                    x["incidence"] = task_outputs[task.outputs[0]].detach()
-                if isinstance(task, ObjectClassificationTask):
-                    x["class_probs"] = task_outputs[task.outputs[0]].detach()
+                    # Update x with task outputs for downstream use
+                    if isinstance(task, IncidenceRegressionTask):
+                        x["incidence"] = task_outputs[task.outputs[0]].detach()
+                    if isinstance(task, ObjectClassificationTask):
+                        x["class_probs"] = task_outputs[task.outputs[0]].detach()
 
-                outputs[f"layer_{layer_index}"][task.name] = task_outputs
+                    outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
-                # Collect attention masks from tasks
-                task_attn_masks = task.attn_mask(task_outputs)
-                for input_name, attn_mask in task_attn_masks.items():
-                    if input_name in attn_masks:
-                        attn_masks[input_name] |= attn_mask
-                    else:
-                        attn_masks[input_name] = attn_mask
+                    # Collect attention masks from tasks
+                    task_attn_masks = task.attn_mask(task_outputs)
+                    for input_name, attn_mask in task_attn_masks.items():
+                        if input_name in attn_masks:
+                            attn_masks[input_name] |= attn_mask
+                        else:
+                            attn_masks[input_name] = attn_mask
 
-                # Collect query masks
-                if self.use_query_masks:
-                    task_query_mask = task.query_mask(task_outputs)
-                    if task_query_mask is not None:
-                        query_mask = task_query_mask if query_mask is None else query_mask | task_query_mask
-                        x["query_mask"] = query_mask
+                    # Collect query masks
+                    if self.use_query_masks:
+                        task_query_mask = task.query_mask(task_outputs)
+                        if task_query_mask is not None:
+                            query_mask = task_query_mask if query_mask is None else query_mask | task_query_mask
+                            x["query_mask"] = query_mask
 
             # Construct the full attention mask for MaskAttention decoder
             attn_mask = None
