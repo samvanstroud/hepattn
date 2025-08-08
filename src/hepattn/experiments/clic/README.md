@@ -18,7 +18,8 @@ python main.py test \
     -c <path to config.yaml> \
     --data.test_path test_clic_common_infer.root \
     --data.is_inference true \
-    --trainer.precision 32-true
+    --trainer.precision 32-true \
+    --matmutl_precision highest
 ```
 
 - Flags `--data.is_inference true` and `--trainer.precision 32-true` are important for correct evaluation of the model performance.
