@@ -24,14 +24,15 @@ def get_local_ca_mask(n_objects, n_inputs, window_size, stride=1, device=None, w
 
     return mask
 
-# def auto_local_ca_mask(q, kv, window_size, wrap=False):
-#     n_objects = q.shape[1]
-#     n_inputs = kv.shape[1]
-#     device = q.device
-#     stride = n_inputs / n_objects
-#     mask = get_local_ca_mask(n_objects, n_inputs, window_size, stride, device, wrap)
-#     assert not (~mask.any(dim=0)).any(), "Some columns are all False, increase window size"
-#     return mask.unsqueeze(0)
+def auto_local_ca_mask(q, kv, window_size, wrap=True):
+    n_objects = q.shape[1]
+    n_inputs = kv.shape[1]
+    device = q.device
+    stride = n_inputs / n_objects
+    mask = get_local_ca_mask(n_objects, n_inputs, window_size, stride, device, wrap)
+    assert not (~mask.any(dim=0)).any(), "Some columns are all False, increase window size"
+    return mask.unsqueeze(0)
+
 
 # def auto_local_ca_mask(q, kv, window_size, wrap=False, diagonal=False):
 #     n_objects = q.shape[1]
@@ -40,38 +41,23 @@ def get_local_ca_mask(n_objects, n_inputs, window_size, stride=1, device=None, w
     
 #     # Original behavior: stride based on ratio
 #     stride = n_inputs / n_objects
-#     mask = get_local_ca_mask(n_objects, n_inputs, window_size, stride, device, wrap)
+    
 #     if diagonal:
-#         # Flip the mask vertically to create top-left to bottom-right diagonal
-#         mask = torch.flip(mask, dims=[0])
-
-#     # assert not (~mask.any(dim=0)).any(), "Some columns are all False, increase window size"
+#         # Create mask with reversed query ordering using vectorized operations
+#         # Create indices for reversed query ordering
+#         query_indices = torch.arange(n_objects - 1, -1, -1, device=device)
+#         positions = query_indices * stride
+        
+#         # Create start and end positions for each query
+#         starts = torch.clamp(positions - window_size//2, 0, n_inputs)
+#         ends = torch.clamp(positions + window_size//2 + 1, 0, n_inputs)
+        
+#         # Create mask using broadcasting
+#         key_indices = torch.arange(n_inputs, device=device)
+#         mask = ((key_indices.unsqueeze(0) >= starts.unsqueeze(1)) & 
+#                 (key_indices.unsqueeze(0) < ends.unsqueeze(1)))
+#     else:
+#         mask = get_local_ca_mask(n_objects, n_inputs, window_size, stride, device, wrap)
+    
+#     assert not (~mask.any(dim=0)).any(), "Some columns are all False, increase window size"
 #     return mask.unsqueeze(0)
-
-def auto_local_ca_mask(q, kv, window_size, wrap=False, diagonal=False):
-    n_objects = q.shape[1]
-    n_inputs = kv.shape[1]
-    device = q.device
-    
-    # Original behavior: stride based on ratio
-    stride = n_inputs / n_objects
-    
-    if diagonal:
-        # Create mask with reversed query ordering using vectorized operations
-        # Create indices for reversed query ordering
-        query_indices = torch.arange(n_objects - 1, -1, -1, device=device)
-        positions = query_indices * stride
-        
-        # Create start and end positions for each query
-        starts = torch.clamp(positions - window_size//2, 0, n_inputs)
-        ends = torch.clamp(positions + window_size//2 + 1, 0, n_inputs)
-        
-        # Create mask using broadcasting
-        key_indices = torch.arange(n_inputs, device=device)
-        mask = ((key_indices.unsqueeze(0) >= starts.unsqueeze(1)) & 
-                (key_indices.unsqueeze(0) < ends.unsqueeze(1)))
-    else:
-        mask = get_local_ca_mask(n_objects, n_inputs, window_size, stride, device, wrap)
-    
-    assert not (~mask.any(dim=0)).any(), "Some columns are all False, increase window size"
-    return mask.unsqueeze(0)
