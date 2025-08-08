@@ -1161,11 +1161,12 @@ class IncidenceBasedRegressionTask(RegressionTask):
         output = outputs[self.output_object + "_regr"].detach().to(torch.float32)
         target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1).to(torch.float32)
         num_objects = output.shape[1]
+        num_targets = target.shape[1]
 
-        # The expand is not necessary but stops a broadcasting warning from smooth_l1_loss
+        # The expand is not necessary but stops a broadcasting warning
         costs = self.loss_fn(
             output.unsqueeze(2).expand(-1, -1, num_objects, -1),
-            target.unsqueeze(1).expand(-1, num_objects, -1, -1),
+            target.unsqueeze(1).expand(-1, num_targets, -1, -1),
             reduction="none",
         )
 
