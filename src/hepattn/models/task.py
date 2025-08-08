@@ -57,9 +57,6 @@ class Task(nn.Module, ABC):
     def query_mask(self, outputs: dict[str, Tensor], **kwargs) -> Tensor | None:
         return None
 
-    def loss_kwargs(self, outputs: dict[str, dict[str, Tensor]], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        return {}
-
 
 class ObjectValidTask(Task):
     def __init__(
@@ -1084,7 +1081,6 @@ class IncidenceBasedRegressionTask(RegressionTask):
         use_incidence: bool = True,
         use_nodes: bool = False,
         use_pt_match: bool = False,
-        split_charge_neutral_loss: bool = False,
         has_intermediate_loss: bool = True,
     ):
         """Regression task that uses incidence information to predict regression targets.
@@ -1114,38 +1110,11 @@ class IncidenceBasedRegressionTask(RegressionTask):
         self.use_incidence = use_incidence
         self.cost_weight = cost_weight
         self.net = net
-        self.split_charge_neutral_loss = split_charge_neutral_loss
         self.use_nodes = use_nodes
         self.use_pt_match = use_pt_match
-
-        self.loss_masks = {
-            "e": self.get_neutral,  # Only neutral particles
-            "pt": self.get_charged,  # Only charged particles
-        }
-
+        self.pt_pos = self.fields.index("pt")
         self.inputs = [input_object + "_embed"] + [input_hit + "_" + field for field in fields]
         self.outputs = [output_object + "_regr", output_object + "_proxy_regr"]
-
-    """def loss_kwargs(self, outputs: dict[str, dict[str, Tensor]], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        # Adding this to get access to the classification task output
-        classification = outputs.get("classification")
-
-        if classification is None:
-            return {"output_class": None}
-
-        class_prob = classification.get(self.output_object + "_class_prob")
-        if class_prob is None:
-            return {"output_class": None}
-
-        return {"output_class": class_prob.detach().argmax(-1)}"""
-
-    def get_charged(self, pred: Tensor, target: Tensor) -> Tensor:
-        """Get a boolean mask for charged particles based on their class."""
-        return (pred <= 2) & (target <= 2)
-
-    def get_neutral(self, pred: Tensor, target: Tensor) -> Tensor:
-        """Get a boolean mask for neutral particles based on their class."""
-        return (pred > 2) & (target > 2)
 
     def forward(self, x: dict[str, Tensor], pads: dict[str, Tensor] | None = None) -> dict[str, Tensor]:
         # get the predictions
@@ -1210,7 +1179,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         dphi = (pred_phi - target_phi + torch.pi) % (2 * torch.pi) - torch.pi
         deta = (pred_eta - target_eta) * self.scaler["eta"].scale
         if self.use_pt_match:
-            pred_pt = outputs[self.output_object + "_regr"][..., self.fields.index("pt")][:, :, None]
+            pred_pt = outputs[self.output_object + "_regr"][..., self.pt_pos][:, :, None]
             target_pt = targets[self.target_object + "_pt"][:, None, :]
             pt_cost = (target_pt - pred_pt) ** 2 / (target_pt**2 + 1e-8)
         else:
@@ -1219,19 +1188,12 @@ class IncidenceBasedRegressionTask(RegressionTask):
         cost = self.cost_weight * torch.sqrt(pt_cost + dphi**2 + deta**2)
         return {"regression": cost}
 
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor], output_class: Tensor | None = None) -> dict[str, Tensor]:
-        if self.split_charge_neutral_loss and output_class is None:
-            raise RuntimeError("'output_class' is empty for the IncidenceBasedRegressionTask.")
-
+    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         loss = None
-        target_class = targets[self.target_object + "_class"]
-        # output_class = outputs["classification"][self.output_object + "_class_prob"].detach().argmax(-1)
         for i, field in enumerate(self.fields):
             target = targets[self.target_object + "_" + field]
             output = outputs[self.output_object + "_regr"][..., i]
             mask = targets[self.target_object + "_valid"].clone()
-            if self.split_charge_neutral_loss and field in self.loss_masks:
-                mask &= self.loss_masks[field](output_class, target_class)
             if loss is None:
                 loss = self.loss_fn(output[mask], target[mask], reduction="mean")
             else:

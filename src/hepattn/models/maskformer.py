@@ -240,8 +240,6 @@ class MaskFormer(nn.Module):
             for task in self.tasks:
                 if layer_name != "final" and not task.has_intermediate_loss:
                     continue
-                # In case if some tasks needed to get access to other task's output
-                extra_kwargs = task.loss_kwargs(outputs[layer_name], targets)
-                losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets, **extra_kwargs)
+                losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses
