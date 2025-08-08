@@ -1080,7 +1080,6 @@ class IncidenceBasedRegressionTask(RegressionTask):
         loss: RegressionLossType = "smooth_l1",
         use_incidence: bool = True,
         use_nodes: bool = False,
-        use_pt_match: bool = False,
         has_intermediate_loss: bool = True,
     ):
         """Regression task that uses incidence information to predict regression targets.
@@ -1111,8 +1110,6 @@ class IncidenceBasedRegressionTask(RegressionTask):
         self.cost_weight = cost_weight
         self.net = net
         self.use_nodes = use_nodes
-        self.use_pt_match = use_pt_match
-        self.pt_pos = self.fields.index("pt")
         self.inputs = [input_object + "_embed"] + [input_hit + "_" + field for field in fields]
         self.outputs = [output_object + "_regr", output_object + "_proxy_regr"]
 
@@ -1160,46 +1157,31 @@ class IncidenceBasedRegressionTask(RegressionTask):
             metrics[field + "_proxy_abs_norm_res"] = torch.mean(abs_err / target.abs() + 1e-8)
         return metrics
 
-    def cost(self, outputs, targets) -> dict[str, Tensor]:
-        eta_pos = self.fields.index("eta")
-        sinphi_pos = self.fields.index("sinphi")
-        cosphi_pos = self.fields.index("cosphi")
+    def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        output = outputs[self.output_object + "_regr"].detach().to(torch.float32)
+        target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1).to(torch.float32)
+        num_objects = output.shape[1]
 
-        pred_phi = torch.atan2(
-            outputs[self.output_object + "_regr"][..., sinphi_pos],
-            outputs[self.output_object + "_regr"][..., cosphi_pos],
-        )[:, :, None]
-        pred_eta = outputs[self.output_object + "_regr"][..., eta_pos][:, :, None]
-        target_phi = torch.atan2(
-            targets[self.target_object + "_sinphi"],
-            targets[self.target_object + "_cosphi"],
-        )[:, None, :]
-        target_eta = targets[self.target_object + "_eta"][:, None, :]
-        # Compute the cost based on the difference in phi and eta
-        dphi = (pred_phi - target_phi + torch.pi) % (2 * torch.pi) - torch.pi
-        deta = (pred_eta - target_eta) * self.scaler["eta"].scale
-        if self.use_pt_match:
-            pred_pt = outputs[self.output_object + "_regr"][..., self.pt_pos][:, :, None]
-            target_pt = targets[self.target_object + "_pt"][:, None, :]
-            pt_cost = (target_pt - pred_pt) ** 2 / (target_pt**2 + 1e-8)
-        else:
-            pt_cost = 0
-        # Compute the cost as the sum of the squared differences
-        cost = self.cost_weight * torch.sqrt(pt_cost + dphi**2 + deta**2)
-        return {"regression": cost}
+        # The expand is not necessary but stops a broadcasting warning from smooth_l1_loss
+        costs = self.loss_fn(
+            output.unsqueeze(2).expand(-1, -1, num_objects, -1),
+            target.unsqueeze(1).expand(-1, num_objects, -1, -1),
+            reduction="none",
+        )
+
+        return {f"regr_{self.loss_fn_name}": self.cost_weight * costs.mean(-1)}
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        loss = None
-        for i, field in enumerate(self.fields):
-            target = targets[self.target_object + "_" + field]
-            output = outputs[self.output_object + "_regr"][..., i]
-            mask = targets[self.target_object + "_valid"].clone()
-            if loss is None:
-                loss = self.loss_fn(output[mask], target[mask], reduction="mean")
-            else:
-                loss += self.loss_fn(output[mask], target[mask], reduction="mean")
-        # Average over all the features
-        loss /= len(self.fields)
+        target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1)
+        output = outputs[self.output_object + "_regr"]
+
+        # Only compute loss for valid targets
+        mask = targets[self.target_object + "_valid"]
+        target = target[mask]
+        output = output[mask]
+
+        # Compute the loss for all fields at once
+        loss = self.loss_fn(output, target, reduction="mean")
 
         # Compute the regression loss only for valid objects
         return {self.loss_fn_name: self.loss_weight * loss}
