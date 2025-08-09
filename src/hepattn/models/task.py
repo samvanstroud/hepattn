@@ -1081,6 +1081,8 @@ class IncidenceBasedRegressionTask(RegressionTask):
         use_incidence: bool = True,
         use_nodes: bool = False,
         has_intermediate_loss: bool = True,
+        mode: str = "offset",
+        cost: str = "old",
     ):
         """Regression task that uses incidence information to predict regression targets.
 
@@ -1112,8 +1114,17 @@ class IncidenceBasedRegressionTask(RegressionTask):
         self.use_nodes = use_nodes
         self.inputs = [input_object + "_embed"] + [input_hit + "_" + field for field in fields]
         self.outputs = [output_object + "_regr", output_object + "_proxy_regr"]
+        self.mode = mode
+        if mode not in {"offset", "scale"}:
+            raise ValueError(f"Invalid mode {mode}, must be 'offset' or 'scale'")
+        if cost == "old":
+            self.cost = self.old_cost
+        elif cost == "new":
+            self.cost = self.new_cost
+        else:
+            raise ValueError(f"Invalid cost mode {cost}")
 
-    def forward(self, x: dict[str, Tensor], pads: dict[str, Tensor] | None = None) -> dict[str, Tensor]:
+    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # get the predictions
         if self.use_incidence:
             inc = x["incidence"].detach()
@@ -1134,7 +1145,12 @@ class IncidenceBasedRegressionTask(RegressionTask):
         else:
             input_data = x[self.input_object + "_embed"]
             proxy_feats = torch.zeros_like(input_data[..., : len(self.fields)])
-        preds = self.net(input_data) + proxy_feats
+        if self.mode == "offset":
+            preds = self.net(input_data) + proxy_feats
+        elif self.mode == "scale":
+            preds = self.net(input_data) * proxy_feats
+        else:
+            raise ValueError(f"Invalid mode {self.mode}")
         return {self.output_object + "_regr": preds, self.output_object + "_proxy_regr": proxy_feats}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -1157,7 +1173,35 @@ class IncidenceBasedRegressionTask(RegressionTask):
             metrics[field + "_proxy_abs_norm_res"] = torch.mean(abs_err / target.abs() + 1e-8)
         return metrics
 
-    def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+    def old_cost(self, outputs, targets) -> dict[str, Tensor]:
+        eta_pos = self.fields.index("eta")
+        sinphi_pos = self.fields.index("sinphi")
+        cosphi_pos = self.fields.index("cosphi")
+
+        pred_phi = torch.atan2(
+            outputs[self.output_object + "_regr"][..., sinphi_pos],
+            outputs[self.output_object + "_regr"][..., cosphi_pos],
+        )[:, :, None]
+        pred_eta = outputs[self.output_object + "_regr"][..., eta_pos][:, :, None]
+        target_phi = torch.atan2(
+            targets[self.target_object + "_sinphi"],
+            targets[self.target_object + "_cosphi"],
+        )[:, None, :]
+        target_eta = targets[self.target_object + "_eta"][:, None, :]
+        # Compute the cost based on the difference in phi and eta
+        dphi = (pred_phi - target_phi + torch.pi) % (2 * torch.pi) - torch.pi
+        deta = (pred_eta - target_eta) * self.scaler["eta"].scale
+        if self.use_pt_match:
+            pred_pt = outputs[self.output_object + "_regr"][..., self.pt_pos][:, :, None]
+            target_pt = targets[self.target_object + "_pt"][:, None, :]
+            pt_cost = (target_pt - pred_pt) ** 2 / (target_pt**2 + 1e-8)
+        else:
+            pt_cost = 0
+        # Compute the cost as the sum of the squared differences
+        cost = self.cost_weight * torch.sqrt(pt_cost + dphi**2 + deta**2)
+        return {"regression": cost}
+
+    def new_cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         output = outputs[self.output_object + "_regr"].detach().to(torch.float32)
         target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1).to(torch.float32)
         num_objects = output.shape[1]
@@ -1181,10 +1225,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         target = target[mask]
         output = output[mask]
 
-        # Compute the loss for all fields at once
         loss = self.loss_fn(output, target, reduction="mean")
-
-        # Compute the regression loss only for valid objects
         return {self.loss_fn_name: self.loss_weight * loss}
 
     def scale_proxy_feats(self, proxy_feats: Tensor):
