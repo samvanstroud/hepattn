@@ -16,8 +16,7 @@ class Dense(nn.Module):
         bias: bool = True,
         norm_input: bool = False,
     ) -> None:
-        """
-        A fully connected feed forward neural network, which can take in additional contextual information.
+        """A fully connected feed forward neural network, which can take in additional contextual information.
 
         Args:
             input_size: Input size.
@@ -70,4 +69,4 @@ class Dense(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x: Tensor) -> Tensor:
-    return self.net(x)
+        return self.net(x)
