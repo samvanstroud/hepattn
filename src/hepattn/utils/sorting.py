@@ -21,7 +21,7 @@ class Sorting:
         x : dict[str, Tensor]
             Dictionary containing embeddings and other data to be sorted.
 
-        Returns : dict[str, Tensor]
+        Returns:
         -------
         dict[str, Tensor]
             Sort indices for key and query dimensions.
@@ -79,7 +79,7 @@ class Sorting:
         outputs : dict
             Dictionary containing model outputs that need to be unsorted.
 
-        Returns :
+        Returns
         -------
         dict[str, dict[str, dict[str, Tensor]]]
             Outputs with tensors unsorted back to their original order.
@@ -123,7 +123,7 @@ class Sorting:
             Task outputs with tensors unsorted.
         """
         unsorted_outputs = {}
-        
+
         for output_name, output_tensor in task_outputs.items():
             if not isinstance(output_tensor, torch.Tensor):
                 unsorted_outputs[output_name] = output_tensor
@@ -144,10 +144,14 @@ class Sorting:
         key_unsort_idx : Tensor
             Unsorted indices for key dimension.
 
-        Returns
+        Returns:
         -------
         Tensor
             Unsorted tensor.
+        Raises:
+        ------
+        ValueError
+            If tensor has unsupported shape for unsorting.
         """
         if key_unsort_idx is None or len(tensor.shape) < 2:
             return tensor
@@ -174,12 +178,12 @@ class Sorting:
         num_hits : int
             Number of hits.
 
-        Returns
+        Returns:
         -------
         Tensor
             Sorted tensor.
 
-        Raises
+        Raises:
         ------
         ValueError
             If tensor has unsupported shape for sorting.
@@ -215,12 +219,12 @@ class Sorting:
         x : dict[str, Tensor]
             Dictionary containing the key_embed tensor.
 
-        Returns
+        Returns:
         -------
         int
             Number of hits from key_embed tensor.
 
-        Raises
+        Raises:
         ------
         ValueError
             If key_embed is not found in x.

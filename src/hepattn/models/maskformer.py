@@ -1,6 +1,7 @@
+from typing import Any
+
 import torch
 from torch import Tensor, nn
-from typing import Any
 
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectHitMaskTask
