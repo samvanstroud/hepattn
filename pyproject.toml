@@ -33,7 +33,7 @@ dependencies = [
     "scikit-learn>=1.6.1,<2",
     "onnx>=1.18.0",
     "onnxruntime>=1.22.0",
-    "einops>=0.8.1,<0.9", "ty>=0.0.1a17,<0.0.1a18",
+    "einops>=0.8.1,<0.9",
 ]
 
 [dependency-groups]
