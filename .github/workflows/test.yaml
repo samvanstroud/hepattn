@@ -14,7 +14,7 @@ jobs:
           pixi-version: v0.50.2
           cache: true
           locked: true
-          environments: [cpu, tide]
+          environments: cpu,tide
 
       # Step 3: Run tests
       - name: Test pixi
