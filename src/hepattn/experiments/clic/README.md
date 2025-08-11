@@ -1,6 +1,6 @@
 ## Running the model
 
-```
+```shell
 cd hepattn
 apptainer shell --nv --bind /share/ pixi.sif
 pixi shell
@@ -25,6 +25,13 @@ python main.py test \
 - Flags `--data.is_inference true` and `--trainer.precision 32-true` are important for correct evaluation of the model performance.
 - **Don't forget to change the attention type to `torch` in the config file.**
 - **You may also need to remove the compile callback if present in the config file.**
+
+
+To start a notebook on a compute node:
+
+```shell
+jupyter notebook --no-browser --ip=0.0.0.0 --port 8888
+```
 
 ## CLIC Data
 
