@@ -13,7 +13,7 @@ from hepattn.flex.sliding_window import (
     sliding_window_mask_strided,
     sliding_window_mask_strided_wrapped,
 )
-from hepattn.flex.utils import create_block_mask
+from torch.nn.attention.flex_attention import create_block_mask, create_mask
 
 LOG_EVERY_N_STEPS = 1000
 
@@ -48,6 +48,7 @@ class MaskFormer(nn.Module):
         window_size: int = 512,
         combine_masks="and",
         attn_type: str = "torch",
+        window_wrap: bool = True,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object inference with attention-based decoding and optional encoder blocks.
@@ -112,6 +113,11 @@ class MaskFormer(nn.Module):
         self.use_decoder_mask = use_decoder_mask
         self.combine_masks = combine_masks
         self.attn_type = attn_type
+        self.window_wrap = window_wrap
+
+       # Set the backend for all decoder layers to match the attention type
+        for decoder_layer in self.decoder_layers:
+            decoder_layer.set_backend(attn_type)
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Atomic input names
@@ -194,45 +200,70 @@ class MaskFormer(nn.Module):
 
         sort_indices = self.get_sort_indices(x)
         if self.use_decoder_mask:
+            device = x["query_embed"].device
             if self.attn_type == "torch":
-                decoder_mask = auto_local_ca_mask(
-                    self.sort_var_by_phi(x["query_embed"], sort_indices["query"]),
-                    self.sort_var_by_phi(x["key_embed"], sort_indices["key"]),
-                    self.window_size,
-                    wrap=True,
-                    diagonal=self.diagonal,
-                )
+                # For torch attention, we need sorted embeddings for auto_local_ca_mask
+                if sort_indices and "key" in sort_indices and "query" in sort_indices:
+                    decoder_mask = auto_local_ca_mask(
+                        self.sort_var_by_phi(x["query_embed"], sort_indices["query"]),
+                        self.sort_var_by_phi(x["key_embed"], sort_indices["key"]),
+                        self.window_size,
+                        wrap=True,
+                        diagonal=self.diagonal,
+                    )
+                else:
+                    # If we can't sort, create a simple mask without sorting
+                    decoder_mask = auto_local_ca_mask(
+                        x["query_embed"],
+                        x["key_embed"],
+                        self.window_size,
+                        wrap=True,
+                        diagonal=self.diagonal,
+                    )
             elif self.attn_type == "flex":
-                self.q_len = torch.tensor([1], device=x.device)
-                self.stride = x.shape[-2] / self.num_queries
-                self.mask_mod = (
-                    sliding_window_mask_strided(
-                        self.window_size, stride=self.stride, q_len=self.q_len
+                # Calculate stride based on the ratio of key length to query length
+                q_len = x["query_embed"].shape[-2]
+                kv_len = x["key_embed"].shape[-2]
+                stride = kv_len / q_len
+                # Make stride a tensor on the right device (no .item())
+                if torch.is_tensor(stride):
+                    stride = stride.to(device=device)
+                else:
+                    # pick a float dtype already in use if any; else default dtype
+                    # Fix for TorchDynamo: avoid generator expression in next()
+                    base_float = torch.get_default_dtype()
+                    if torch.is_floating_point(x["query_embed"]):
+                        base_float = x["query_embed"].dtype
+                    stride = torch.tensor(stride, device=device, dtype=base_float)
+                # Create the mask_mod function based on whether wrapping is enabled
+                if self.window_wrap:
+                    # For wrapping, we need the sequence length (kv_len) as a tensor
+                    seq_len_tensor = torch.tensor([1], device=device)
+                    mask_mod = sliding_window_mask_strided_wrapped(
+                        self.window_size,
+                        stride=torch.tensor([1], device=device),
+                        kv_len=torch.tensor([1], device=device)
                     )
-                    if not self.window_wrap
-                    else sliding_window_mask_strided_wrapped(
-                        self.window_size, self.stride, self.q_len
+                else:
+                    mask_mod = sliding_window_mask_strided(
+                        self.window_size, stride=stride
                     )
-                )
 
-                # Handle masking
-                q_len = x.shape[-2]
-                kv_len = x.shape[-1]
-                self.q_len[0] = q_len
+                # Create the block mask
                 decoder_mask = create_block_mask(
-                    self.mask_mod,
+                    mask_mod,
                     B=None,
                     H=None,
                     Q_LEN=q_len,
                     KV_LEN=kv_len,
-                    device=x.device,
+                    device=device,
                 )
             else:
                 raise ValueError(
                     f"Invalid attention type when use_decoder_mask is True: {self.attn_type}, must be 'torch' or 'flex'"
                 )
 
-            self.decoder_attn_mask_logging(decoder_mask)
+            
 
         # Pass encoded inputs through decoder to produce outputs
         outputs = {}
@@ -296,6 +327,11 @@ class MaskFormer(nn.Module):
                     attn_mask[..., x[f"key_is_{input_name}"]] = input_attn_mask
 
             # If no attention masks were specified, set it to none to avoid redundant masking
+                attn_mask = self.sort_attn_mask_by_phi(
+                    attn_mask, sort_indices["key"], sort_indices["query"]
+                )
+                self.attn_mask_logging(attn_mask, x, layer_index)
+
             elif self.use_decoder_mask:
                 attn_mask = decoder_mask
             else:
@@ -306,26 +342,22 @@ class MaskFormer(nn.Module):
             # - would need to sort and unsort more vars and easy to make errors or miss something? could change?
             # TODO: would also be nice if we sorted before the encoder and then unsorted after producing decoder layer?
 
-            attn_mask = self.sort_attn_mask_by_phi(
-                attn_mask, sort_indices["key"], sort_indices["query"]
-            )
             # can't use sorted embeds from earlier because we update embeddings in between
             for input, sort_key in zip(
                 ["query_embed", "key_embed", "query_mask", "key_valid"],
                 ["query", "key", "query", "key"],
             ):
-                x[input] = self.sort_var_by_phi(x[input], sort_indices[sort_key])
+                if input in x:
+                    x[input] = self.sort_var_by_phi(x[input], sort_indices[sort_key])
 
-            if attn_mask is not None:
-                self.attn_mask_logging(attn_mask, x, layer_index)
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"],
                 x["key_embed"],
                 attn_mask=attn_mask,
-                q_mask=x["query_mask"],
-                kv_mask=x["key_valid"],
+                q_mask=x.get("query_mask"),
+                kv_mask=x.get("key_valid"),
             )
 
             # only need to unsort embeds because these are the only ones that are passed on - if pass on other sorted vars would need to change this
@@ -393,8 +425,11 @@ class MaskFormer(nn.Module):
                 var_sorted = var_sorted.unsqueeze(0)  # Preserve batch dimension
             elif len(var.shape) == 1:
                 var_sorted = var[sort_idx]
+            elif len(var.shape) == 3:
+                # For 3D tensors, sort along the middle dimension (dim=1)
+                var_sorted = var.index_select(1, sort_idx.to(var.device))
             else:
-                raise ValueError(f"Variable has invalid shape: {var.shape}")
+                raise ValueError(f"Variable {var} has invalid shape: {var.shape}")
         else:
             var_sorted = None
         return var_sorted
@@ -506,6 +541,7 @@ class MaskFormer(nn.Module):
             else:
                 query_phi = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
             x["query_phi"] = query_phi
+            device = query_phi.device
             query_posenc = self.query_posenc(x)
             if self.phi_analysis:
                 self.last_query_phi = x["query_phi"].detach().cpu().numpy()
@@ -513,13 +549,13 @@ class MaskFormer(nn.Module):
         if self.key_posenc is not None:
             x["key_posenc"] = self.key_posenc(x)
             if self.phi_analysis:
-                key_phi = x["key_phi"].detach().cpu().numpy()
-                self.last_key_phi = key_phi
-                key_posenc = x["key_posenc"][0].cpu()
-                self.last_key_posenc = key_posenc.numpy()
+                key_phi = x["key_phi"]
+                self.last_key_phi = key_phi.detach().cpu().numpy()
+                key_posenc = x["key_posenc"][0]
+                self.last_key_posenc = key_posenc.cpu().numpy()
                 key_sort_idx = torch.argsort(torch.tensor(key_phi), axis=-1)
-                key_posencs_sorted = key_posenc[key_sort_idx[0]]
-                self.last_key_posenc_sorted = key_posencs_sorted
+                self.last_key_posenc_sorted = key_posenc[key_sort_idx[0]]
+                key_posencs_sorted = key_posenc[key_sort_idx[0].to(device)]
         return query_posenc, key_posenc
 
     def predict(self, outputs: dict) -> dict:

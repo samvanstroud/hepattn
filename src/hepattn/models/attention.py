@@ -24,6 +24,7 @@ VARLEN_ATTN_TYPES = [
 # Which attention types support attention masking
 ATTN_MASK_ATTN_TYPES = [
     "torch",
+    "flex"
 ]
 
 # Which attention types support attention biasing
@@ -320,7 +321,7 @@ class Attention(nn.Module):
         if kv_mask is not None:
             msg = f"Only the backends {VARLEN_ATTN_TYPES} support kv masking"
             assert self.attn_type in VARLEN_ATTN_TYPES, msg
-
+            
         if attn_mask is not None:
             msg = f"Only the backends {ATTN_MASK_ATTN_TYPES} support attention masking"
             assert self.attn_type in ATTN_MASK_ATTN_TYPES, msg

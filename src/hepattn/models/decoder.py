@@ -24,11 +24,13 @@ class MaskFormerDecoderLayer(nn.Module):
         mask_attention: bool = True,
         bidirectional_ca: bool = True,
         hybrid_norm: bool = False,
+        local_strided_attn: bool = False,
     ) -> None:
         super().__init__()
 
         self.mask_attention = mask_attention
         self.bidirectional_ca = bidirectional_ca
+        self.local_strided_attn = local_strided_attn
 
         # handle hybridnorm
         qkv_norm = hybrid_norm
@@ -56,6 +58,8 @@ class MaskFormerDecoderLayer(nn.Module):
             # True values indicate a slot will be included in the attention computation, while False will be ignored.
             # If the attn mask is completely invalid for a given query, allow it to attend everywhere
             attn_mask[torch.where(attn_mask.sum(-1) == 0)] = True
+        elif self.local_strided_attn:
+            assert attn_mask is not None, "attn_mask must be provided for local strided attn"
         else:
             attn_mask = None
 

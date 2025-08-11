@@ -839,9 +839,121 @@ class ObjectClassificationTask(Task):
 
         return outputs[self.output_object + "_class_prob"].detach().argmax(-1) < self.num_classes  # Valid if class is less than num_classes
 
+# class PhiAlignmentTask(Task):
+#     """Task to compute angular difference between query phi and average hit phi of attended hits."""
+    
+#     def __init__(
+#         self,
+#         name: str,
+#         input_hit: str,
+#         input_object: str,
+#         output_object: str,
+#         target_object: str,
+#         losses: dict[str, float],
+#         costs: dict[str, float],
+#         dim: int,
+#         null_weight: float = 1.0,
+#         mask_attn: bool = True,
+#         target_field: str = "valid",
+#     ):
+#         super().__init__()
+        
+#         self.name = name
+#         self.input_hit = input_hit
+#         self.input_object = input_object
+#         self.output_object = output_object
+#         self.target_object = target_object
+#         self.target_field = target_field
+#         self.losses = losses
+#         self.costs = costs
+#         self.dim = dim
+#         self.null_weight = null_weight
+#         self.mask_attn = mask_attn
+#         self.has_intermediate_loss = mask_attn
+        
+#         # This task outputs the angular difference
+#         self.inputs = [input_object + "_embed", input_hit + "_embed"]
+#         self.outputs = [output_object + "_phi_diff"]
+        
+#     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+#         """Compute angular difference between query phi and average hit phi."""
+#         # Get query phi and hit phi from the model state
+#         query_phi = x.get("query_phi")
+#         hit_phi = x.get("key_phi")
+                
+#         # Get attention mask from input dictionary
+#         attention_mask = x.get(f"{self.input_hit}_attn_mask")
+        
+#         if query_phi is None or hit_phi is None or attention_mask is None:
+#             # If we don't have phi values, return zeros
+#             batch_size = x[self.input_object + "_embed"].shape[0]
+#             num_queries = x[self.input_object + "_embed"].shape[1]
+#             device = x[self.input_object + "_embed"].device
+#             return {self.output_object + "_phi_diff": torch.zeros(batch_size, num_queries, device=device)}
+
+#         # Compute average hit phi for each query based on attention mask
+#         hit_phi_expanded = hit_phi.unsqueeze(1).expand(-1, attention_mask.shape[1], -1)
+        
+#         # Compute weighted average of hit phi values for each query
+#         epsilon = 1e-8
+#         masked_hit_phi = hit_phi_expanded * attention_mask.int()
+#         sum_weights = attention_mask.int().sum(dim=-1, keepdim=True) + epsilon
+#         avg_hit_phi = masked_hit_phi.sum(dim=-1) / sum_weights.squeeze(-1)
+        
+#         # Compute angular difference (handling wrap-around at ±π)
+#         phi_diff = query_phi - avg_hit_phi
+#         # Handle angular wrap-around: ensure difference is in [-π, π]
+#         phi_diff = torch.atan2(torch.sin(phi_diff), torch.cos(phi_diff))
+        
+#         return {self.output_object + "_phi_diff": phi_diff}
+    
+#     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
+#         """Return the angular difference predictions."""
+#         return {self.output_object + "_phi_diff": outputs[self.output_object + "_phi_diff"].detach()}
+    
+#     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+#         """Compute cost for matching."""
+#         output = outputs[self.output_object + "_phi_diff"].detach().to(torch.float32)
+        
+#         # For cost computation, we use the absolute angular difference
+#         # Since we want to minimize the difference, we use the absolute value as cost
+#         costs = {}
+#         for cost_fn, cost_weight in self.costs.items():
+#             if cost_fn == "phi_diff_abs":
+#                 costs[cost_fn] = cost_weight * torch.abs(output)
+#             else:
+#                 # Default to MSE cost
+#                 costs[cost_fn] = cost_weight * (output ** 2)
+        
+#         return costs
+    
+#     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+#         """Compute MSE loss for angular difference."""
+#         losses = {}
+#         output = outputs[self.output_object + "_phi_diff"]
+        
+#         # For loss computation, we target zero angular difference
+#         # This encourages queries to align with the average phi of their attended hits
+#         target = torch.zeros_like(output)
+        
+#         # Only compute loss for valid objects
+#         object_valid = targets[self.target_object + "_valid"]
+#         output = output[object_valid]
+#         target = target[object_valid]
+        
+#         # Compute MSE loss
+#         for loss_fn, loss_weight in self.losses.items():
+#             if loss_fn == "phi_diff_mse":
+#                 losses[loss_fn] = loss_weight * torch.nn.functional.mse_loss(output, target)
+#             else:
+#                 # Default to MSE
+#                 losses[loss_fn] = loss_weight * torch.nn.functional.mse_loss(output, target)
+        
+#         return losses
+
 class PhiAlignmentTask(Task):
     """Task to compute angular difference between query phi and average hit phi of attended hits."""
-    
+
     def __init__(
         self,
         name: str,
@@ -855,9 +967,24 @@ class PhiAlignmentTask(Task):
         null_weight: float = 1.0,
         mask_attn: bool = True,
         target_field: str = "valid",
+        query_phi_field: str = "query_phi",
+        hit_phi_field: str = "key_phi",
+        attention_mask_field: str = None,
+        alignment_strategy: Literal["mean", "median", "weighted_mean"] = "median",
+        use_circular_average: bool = True,
     ):
         super().__init__()
-        
+
+        # Validate required parameters
+        if not losses:
+            raise ValueError("At least one loss function must be specified")
+        if not costs:
+            raise ValueError("At least one cost function must be specified")
+        if dim <= 0:
+            raise ValueError("dim must be positive")
+        if null_weight <= 0:
+            raise ValueError("null_weight must be positive")
+
         self.name = name
         self.input_hit = input_hit
         self.input_object = input_object
@@ -870,83 +997,346 @@ class PhiAlignmentTask(Task):
         self.null_weight = null_weight
         self.mask_attn = mask_attn
         self.has_intermediate_loss = mask_attn
-        
+
+        # Configurable phi field names
+        self.query_phi_field = query_phi_field
+        self.hit_phi_field = hit_phi_field
+        self.attention_mask_field = (
+            attention_mask_field or f"{self.input_hit}_attn_mask"
+        )
+
+        # Alignment strategy configuration
+        self.alignment_strategy = alignment_strategy
+        self.use_circular_average = use_circular_average
+
         # This task outputs the angular difference
         self.inputs = [input_object + "_embed", input_hit + "_embed"]
         self.outputs = [output_object + "_phi_diff"]
-        
+
+    @staticmethod
+    def compute_angular_difference(phi1: Tensor, phi2: Tensor) -> Tensor:
+        """Compute angular difference between two phi values, handling wrap-around.
+
+        Args:
+            phi1: First phi values
+            phi2: Second phi values
+
+        Returns:
+            Angular difference in range [-π, π]
+        """
+        phi_diff = phi1 - phi2
+        return torch.atan2(torch.sin(phi_diff), torch.cos(phi_diff))
+
+    @staticmethod
+    def compute_circular_average(phi_values: Tensor, weights: Tensor = None) -> Tensor:
+        """Compute circular average of phi values.
+
+        Args:
+            phi_values: Phi values to average [batch_size, num_queries, num_hits]
+            weights: Optional weights for weighted average [batch_size, num_queries, num_hits]
+
+        Returns:
+            Circular average of phi values [batch_size, num_queries]
+        """
+        if weights is None:
+            weights = torch.ones_like(phi_values)
+
+        # Convert to complex numbers for circular averaging
+        complex_phis = torch.complex(torch.cos(phi_values), torch.sin(phi_values))
+
+        # Weighted sum
+        weighted_sum = (complex_phis * weights).sum(dim=-1)
+
+        # Convert back to angle
+        return torch.angle(weighted_sum)
+
+    @staticmethod
+    def compute_circular_median(phi_values: Tensor, weights: Tensor = None) -> Tensor:
+        """Compute circular median of phi values.
+
+        Args:
+            phi_values: Phi values to find median of [batch_size, num_queries, num_hits]
+            weights: Optional weights [batch_size, num_queries, num_hits]
+
+        Returns:
+            Circular median of phi values [batch_size, num_queries]
+        """
+        if weights is None:
+            weights = torch.ones_like(phi_values)
+
+        # For circular median, we need to find the angle that minimizes
+        # the sum of angular distances to all points
+        # This is computationally expensive, so we'll use an approximation
+
+        # Convert to complex numbers
+        complex_phis = torch.complex(torch.cos(phi_values), torch.sin(phi_values))
+
+        # Weighted sum (approximation of median)
+        weighted_sum = (complex_phis * weights).sum(dim=-1)
+
+        return torch.angle(weighted_sum)
+
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        """Compute angular difference between query phi and average hit phi."""
+        """Compute angular difference between query phi and average hit phi.
+
+        This method computes the angular difference between the query phi values
+        and the weighted average of hit phi values based on attention masks.
+        The result is wrapped to the range [-π, π] to handle angular periodicity.
+
+        Args:
+            x: Dictionary containing input tensors including:
+                - query_phi: Query phi values [batch_size, num_queries]
+                - key_phi: Hit phi values [batch_size, num_hits]
+                - attention_mask: Attention mask [batch_size, num_queries, num_hits]
+                - input_object_embed: Object embeddings
+                - input_hit_embed: Hit embeddings
+
+        Returns:
+            Dictionary containing the computed angular difference
+        """
         # Get query phi and hit phi from the model state
-        query_phi = x.get("query_phi")
-        hit_phi = x.get("key_phi")
-                
+        query_phi = x.get(self.query_phi_field)
+        hit_phi = x.get(self.hit_phi_field)
+
         # Get attention mask from input dictionary
-        attention_mask = x.get(f"{self.input_hit}_attn_mask")
-        
+        attention_mask = x.get(self.attention_mask_field)
+
         if query_phi is None or hit_phi is None or attention_mask is None:
-            # If we don't have phi values, return zeros
+            # If we don't have phi values, return zeros with proper shape
             batch_size = x[self.input_object + "_embed"].shape[0]
             num_queries = x[self.input_object + "_embed"].shape[1]
             device = x[self.input_object + "_embed"].device
-            return {self.output_object + "_phi_diff": torch.zeros(batch_size, num_queries, device=device)}
+            return {
+                self.output_object + "_phi_diff": torch.zeros(
+                    batch_size, num_queries, device=device
+                )
+            }
+
+        # Validate tensor shapes and dimensions
+        if query_phi.dim() == 1:
+            # If query_phi is 1D, reshape to 2D [batch_size, num_queries]
+            # Assume it's a flattened tensor that needs to be reshaped
+            batch_size = x[self.input_object + "_embed"].shape[0]
+            num_queries = x[self.input_object + "_embed"].shape[1]
+            if query_phi.shape[0] == batch_size * num_queries:
+                query_phi = query_phi.reshape(batch_size, num_queries)
+            else:
+                # If it doesn't match expected size, expand to match batch size
+                query_phi = query_phi.unsqueeze(0).expand(batch_size, -1)
+        elif query_phi.dim() != 2:
+            raise ValueError(
+                f"query_phi should be 1D or 2D tensor, got shape {query_phi.shape}"
+            )
+
+        if hit_phi.dim() == 1:
+            # If hit_phi is 1D, reshape to 2D [batch_size, num_hits]
+            batch_size = x[self.input_object + "_embed"].shape[0]
+            num_hits = x[self.input_hit + "_embed"].shape[1]
+            if hit_phi.shape[0] == batch_size * num_hits:
+                hit_phi = hit_phi.reshape(batch_size, num_hits)
+            else:
+                # If it doesn't match expected size, expand to match batch size
+                hit_phi = hit_phi.unsqueeze(0).expand(batch_size, -1)
+        elif hit_phi.dim() != 2:
+            raise ValueError(
+                f"hit_phi should be 1D or 2D tensor, got shape {hit_phi.shape}"
+            )
+
+        if attention_mask.dim() != 3:
+            raise ValueError(
+                f"attention_mask should be 3D tensor, got shape {attention_mask.shape}"
+            )
+
+        # Additional validation after reshaping
+        if query_phi.shape[0] != hit_phi.shape[0]:
+            raise ValueError(
+                f"Batch size mismatch after reshaping: query_phi {query_phi.shape}, hit_phi {hit_phi.shape}"
+            )
+
+        if attention_mask.shape[0] != query_phi.shape[0]:
+            raise ValueError(
+                f"Batch size mismatch: attention_mask {attention_mask.shape}, query_phi {query_phi.shape}"
+            )
+
+        if attention_mask.shape[1] != query_phi.shape[1]:
+            raise ValueError(
+                f"Query dimension mismatch: attention_mask {attention_mask.shape}, query_phi {query_phi.shape}"
+            )
+
+        if attention_mask.shape[2] != hit_phi.shape[1]:
+            raise ValueError(
+                f"Hit dimension mismatch: attention_mask {attention_mask.shape}, hit_phi {hit_phi.shape}"
+            )
 
         # Compute average hit phi for each query based on attention mask
         hit_phi_expanded = hit_phi.unsqueeze(1).expand(-1, attention_mask.shape[1], -1)
-        
-        # Compute weighted average of hit phi values for each query
-        epsilon = 1e-8
-        masked_hit_phi = hit_phi_expanded * attention_mask.int()
-        sum_weights = attention_mask.int().sum(dim=-1, keepdim=True) + epsilon
-        avg_hit_phi = masked_hit_phi.sum(dim=-1) / sum_weights.squeeze(-1)
-        
-        # Compute angular difference (handling wrap-around at ±π)
-        phi_diff = query_phi - avg_hit_phi
-        # Handle angular wrap-around: ensure difference is in [-π, π]
-        phi_diff = torch.atan2(torch.sin(phi_diff), torch.cos(phi_diff))
-        
+
+        # Compute weighted average of hit phi values for each query using appropriate strategy
+        if self.use_circular_average:
+            # Use circular averaging for better handling of angular values
+            if self.alignment_strategy == "mean":
+                avg_hit_phi = self.compute_circular_average(
+                    hit_phi_expanded, attention_mask.int()
+                )
+            elif self.alignment_strategy == "median":
+                avg_hit_phi = self.compute_circular_median(
+                    hit_phi_expanded, attention_mask.int()
+                )
+            elif self.alignment_strategy == "weighted_mean":
+                # Use attention weights directly if available
+                attention_weights = x.get(f"{self.input_hit}_attention_weights")
+                if attention_weights is not None:
+                    avg_hit_phi = self.compute_circular_average(
+                        hit_phi_expanded, attention_weights
+                    )
+                else:
+                    avg_hit_phi = self.compute_circular_average(
+                        hit_phi_expanded, attention_mask.int()
+                    )
+            else:
+                raise ValueError(
+                    f"Unknown alignment strategy: {self.alignment_strategy}"
+                )
+        else:
+            # Fall back to simple arithmetic averaging (original behavior)
+            epsilon = 1e-8
+            masked_hit_phi = hit_phi_expanded * attention_mask.int()
+            sum_weights = attention_mask.int().sum(dim=-1, keepdim=True) + epsilon
+            avg_hit_phi = masked_hit_phi.sum(dim=-1) / sum_weights.squeeze(-1)
+
+        # Compute angular difference using utility function
+        phi_diff = self.compute_angular_difference(query_phi, avg_hit_phi)
+
         return {self.output_object + "_phi_diff": phi_diff}
-    
+
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         """Return the angular difference predictions."""
-        return {self.output_object + "_phi_diff": outputs[self.output_object + "_phi_diff"].detach()}
-    
-    def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        return {
+            self.output_object + "_phi_diff": outputs[
+                self.output_object + "_phi_diff"
+            ].detach()
+        }
+
+    def cost(
+        self, outputs: dict[str, Tensor], targets: dict[str, Tensor]
+    ) -> dict[str, Tensor]:
         """Compute cost for matching."""
         output = outputs[self.output_object + "_phi_diff"].detach().to(torch.float32)
-        
+
         # For cost computation, we use the absolute angular difference
         # Since we want to minimize the difference, we use the absolute value as cost
         costs = {}
         for cost_fn, cost_weight in self.costs.items():
             if cost_fn == "phi_diff_abs":
                 costs[cost_fn] = cost_weight * torch.abs(output)
+            elif cost_fn == "phi_diff_squared":
+                costs[cost_fn] = cost_weight * (output**2)
             else:
                 # Default to MSE cost
-                costs[cost_fn] = cost_weight * (output ** 2)
-        
+                costs[cost_fn] = cost_weight * (output**2)
+
         return costs
-    
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        """Compute MSE loss for angular difference."""
+
+    def loss(
+        self, outputs: dict[str, Tensor], targets: dict[str, Tensor]
+    ) -> dict[str, Tensor]:
+        """Compute loss for angular difference."""
         losses = {}
         output = outputs[self.output_object + "_phi_diff"]
-        
+
         # For loss computation, we target zero angular difference
         # This encourages queries to align with the average phi of their attended hits
         target = torch.zeros_like(output)
-        
+
         # Only compute loss for valid objects
         object_valid = targets[self.target_object + "_valid"]
         output = output[object_valid]
         target = target[object_valid]
-        
-        # Compute MSE loss
+
+        # Compute loss based on specified loss function
         for loss_fn, loss_weight in self.losses.items():
             if loss_fn == "phi_diff_mse":
-                losses[loss_fn] = loss_weight * torch.nn.functional.mse_loss(output, target)
+                losses[loss_fn] = loss_weight * torch.nn.functional.mse_loss(
+                    output, target
+                )
+            elif loss_fn == "phi_diff_abs":
+                losses[loss_fn] = loss_weight * torch.nn.functional.l1_loss(
+                    output, target
+                )
+            elif loss_fn == "phi_diff_huber":
+                losses[loss_fn] = loss_weight * torch.nn.functional.smooth_l1_loss(
+                    output, target
+                )
+            elif loss_fn == "phi_diff_cosine":
+                # Cosine loss for angular alignment (1 - cos(diff))
+                losses[loss_fn] = loss_weight * (1 - torch.cos(output)).mean()
+            elif loss_fn == "phi_diff_circular":
+                # Circular loss that penalizes large angular differences more heavily
+                # Uses 1 - cos(diff) which is 0 when diff=0 and 2 when diff=π
+                losses[loss_fn] = loss_weight * (1 - torch.cos(output)).mean()
+            elif loss_fn == "phi_diff_huber_circular":
+                # Combination of Huber and circular loss
+                huber_loss = torch.nn.functional.smooth_l1_loss(output, target)
+                circular_loss = (1 - torch.cos(output)).mean()
+                losses[loss_fn] = loss_weight * (0.5 * huber_loss + 0.5 * circular_loss)
             else:
                 # Default to MSE
-                losses[loss_fn] = loss_weight * torch.nn.functional.mse_loss(output, target)
-        
+                losses[loss_fn] = loss_weight * torch.nn.functional.mse_loss(
+                    output, target
+                )
+
         return losses
+
+    def metrics(
+        self, preds: dict[str, Tensor], targets: dict[str, Tensor]
+    ) -> dict[str, Tensor]:
+        """Compute metrics for phi alignment performance."""
+        metrics = {}
+
+        # Get predictions and valid mask
+        phi_diff = preds[self.output_object + "_phi_diff"]
+        object_valid = targets[self.target_object + "_valid"]
+
+        if object_valid.sum() > 0:
+            valid_phi_diff = phi_diff[object_valid]
+
+            # Mean absolute angular difference
+            metrics["phi_diff_mean_abs"] = torch.mean(torch.abs(valid_phi_diff))
+
+            # Root mean square angular difference
+            metrics["phi_diff_rms"] = torch.sqrt(torch.mean(valid_phi_diff**2))
+
+            # Standard deviation of angular difference
+            metrics["phi_diff_std"] = torch.std(valid_phi_diff)
+
+            # Maximum absolute angular difference
+            metrics["phi_diff_max_abs"] = torch.max(torch.abs(valid_phi_diff))
+
+            # Percentage of alignments within ±π/4 radians (45 degrees)
+            within_45deg = torch.abs(valid_phi_diff) <= torch.pi / 4
+            metrics["phi_diff_within_45deg_pct"] = (
+                torch.mean(within_45deg.float()) * 100
+            )
+
+            # Percentage of alignments within ±π/6 radians (30 degrees)
+            within_30deg = torch.abs(valid_phi_diff) <= torch.pi / 6
+            metrics["phi_diff_within_30deg_pct"] = (
+                torch.mean(within_30deg.float()) * 100
+            )
+        else:
+            # If no valid objects, set metrics to zero
+            metrics.update(
+                {
+                    "phi_diff_mean_abs": torch.tensor(0.0, device=phi_diff.device),
+                    "phi_diff_rms": torch.tensor(0.0, device=phi_diff.device),
+                    "phi_diff_std": torch.tensor(0.0, device=phi_diff.device),
+                    "phi_diff_max_abs": torch.tensor(0.0, device=phi_diff.device),
+                    "phi_diff_within_45deg_pct": torch.tensor(
+                        0.0, device=phi_diff.device
+                    ),
+                    "phi_diff_within_30deg_pct": torch.tensor(
+                        0.0, device=phi_diff.device
+                    ),
+                }
+            )
+        return metrics
