@@ -28,21 +28,15 @@ class MaskFormerDecoder(nn.Module):
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
-        Parameters
-        ----------
-        num_queries : int
-            The number of object-level queries.
-        decoder_layer_config : dict
-            Configuration dictionary used to initialize each MaskFormerDecoderLayer.
-        num_decoder_layers : int
-            The number of decoder layers to stack.
-        mask_attention : bool, optional
-            If True, attention masks will be used to control which input objects are attended to.
-        use_query_masks : bool, optional
-            If True, predicted query masks will be used to control which queries are valid.
-            May be useful when providing initial queries as inputs.
-        log_attn_mask : bool, optional
-            If True, log attention masks for debugging.
+        Args:
+            num_queries: The number of object-level queries.
+            decoder_layer_config: Configuration dictionary used to initialize each MaskFormerDecoderLayer.
+            num_decoder_layers: The number of decoder layers to stack.
+            mask_attention: If True, attention masks will be used to control which input objects are attended to.
+            use_query_masks: If True, predicted query masks will be used to control which queries are valid.
+            log_attn_mask: If True, log attention masks for debugging.
+            query_posenc: Optional module for query positional encoding.
+            preserve_posenc: If True, preserves positional encoding in embeddings.
         """
         super().__init__()
 
@@ -63,17 +57,12 @@ class MaskFormerDecoder(nn.Module):
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
 
-        Parameters
-        ----------
-        x : dict[str, Tensor]
-            Dictionary containing embeddings and masks.
-        input_names : list[str]
-            List of input names for constructing attention masks.
+        Args:
+            x: Dictionary containing embeddings and masks.
+            input_names: List of input names for constructing attention masks.
 
         Returns:
-        -------
-        dict[str, dict]
-            Outputs from each decoder layer and final outputs.
+            Tuple containing updated embeddings and outputs from each decoder layer and final outputs.
         """
         batch_size = x["query_embed"].shape[0]
         num_constituents = x["key_embed"].shape[-2]
@@ -181,6 +170,18 @@ class MaskFormerDecoderLayer(nn.Module):
         bidirectional_ca: bool = True,
         hybrid_norm: bool = False,
     ) -> None:
+        """Initialize a MaskFormer decoder layer.
+
+        Args:
+            dim: Embedding dimension.
+            norm: Normalization type.
+            depth: Layer depth index.
+            dense_kwargs: Optional arguments for Dense layers.
+            attn_kwargs: Optional arguments for Attention layers.
+            mask_attention: If True, enables mask attention.
+            bidirectional_ca: If True, enables bidirectional cross-attention.
+            hybrid_norm: If True, enables hybrid normalization.
+        """
         super().__init__()
 
         self.mask_attention = mask_attention
@@ -206,6 +207,18 @@ class MaskFormerDecoderLayer(nn.Module):
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(self, q: Tensor, kv: Tensor, attn_mask: Tensor | None = None, q_mask: Tensor | None = None, kv_mask: Tensor | None = None) -> Tensor:
+        """Forward pass for the decoder layer.
+
+        Args:
+            q: Query embeddings.
+            kv: Key/value embeddings.
+            attn_mask: Optional attention mask.
+            q_mask: Optional query mask.
+            kv_mask: Optional key/value mask.
+
+        Returns:
+            Tuple of updated query and key/value embeddings.
+        """
         if self.mask_attention:
             assert attn_mask is not None, "attn_mask must be provided for mask attention"
             attn_mask = attn_mask.detach()
@@ -233,7 +246,9 @@ class MaskFormerDecoderLayer(nn.Module):
 
     def set_backend(self, attn_type: str) -> None:
         """Set the backend for the attention layers.
-        This is useful for switching between different attention implementations.
+
+        Args:
+            attn_type: Attention implementation type to use.
         """
         self.q_ca.fn.set_backend(attn_type)
         self.q_sa.fn.set_backend(attn_type)
