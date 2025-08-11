@@ -6,7 +6,7 @@ try:
     from flash_attn_interface import flash_attn_func, flash_attn_varlen_func  # FA3 (from source)
 except ImportError:
     try:
-        from flash_attn import flash_attn_func, flash_attn_varlen_func # FA2 (from wheel)
+        from flash_attn import flash_attn_func, flash_attn_varlen_func  # FA2 (from wheel)
     except ImportError:
         flash_attn_func = None
         flash_attn_varlen_func = None
