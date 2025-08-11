@@ -2,6 +2,7 @@
 
 import pathlib
 
+import comet_ml  # noqa: F401
 from lightning.pytorch.cli import ArgsType
 
 from hepattn.experiments.clic.lightning_module import MPflow

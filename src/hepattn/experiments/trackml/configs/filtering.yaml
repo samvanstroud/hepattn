@@ -66,11 +66,10 @@ trainer:
   gradient_clip_val: 0.1
   enable_progress_bar: True
 
-  # Specify loggers here
   logger:
-    class_path: lightning.pytorch.loggers.CometLogger
+    class_path: hepattn.utils.loggers.MyCometLogger
     init_args:
-      project_name: trackml_filtering
+      project: trackml_filtering
 
   callbacks:
     - class_path: hepattn.callbacks.Compile

@@ -12,18 +12,8 @@ repos:
       - id: yamllint
         args: ["-d", "{extends: relaxed, rules: {line-length: disable}}"]
 
-  - repo: local
-    hooks:
-      - id: format-yaml
-        name: ruamel-yaml
-        entry: python src/hepattn/utils/fix_yaml.py
-        language: system
-        types: [yaml]
-
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
     hooks:
       - id: trailing-whitespace
-        types: [yaml]
       - id: end-of-file-fixer
-        types: [yaml]
