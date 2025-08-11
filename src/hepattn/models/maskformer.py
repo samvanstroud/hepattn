@@ -4,6 +4,7 @@ from typing import Dict, Any
 
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectHitMaskTask
+from hepattn.utils.sorting import Sorting
 
 N_STEPS_LOG_ATTN_MASK = 1000
 
@@ -22,6 +23,7 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
         log_task_attn_mask: bool = False,
+        sort_before_encoder: bool = False,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object inference with attention-based decoding and optional encoder blocks.
@@ -66,6 +68,7 @@ class MaskFormer(nn.Module):
         self.raw_variables = raw_variables or []
         self.log_task_attn_mask = log_task_attn_mask
         self.log_step = 0
+        self.sort_before_encoder = sort_before_encoder
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
         self.log_step += 1
@@ -81,11 +84,6 @@ class MaskFormer(nn.Module):
             # If the raw variable is present in the inputs, add it directly to the output
             if raw_var in inputs:
                 x[raw_var] = inputs[raw_var]
-
-        # Store input positional encodings if we need to preserve them for the decoder
-        if self.decoder.preserve_posenc:
-            assert all(input_net.posenc is not None for input_net in self.input_nets)
-            x["key_posenc"] = torch.concatenate([input_net.posenc(inputs) for input_net in self.input_nets], dim=-2)
 
         # Embed the input objects
         for input_net in self.input_nets:
@@ -118,10 +116,19 @@ class MaskFormer(nn.Module):
                 [inputs[input_name + "_" + self.input_sort_field] for input_name in input_names], dim=-1
             )
 
+        # Dedicated sorting step before encoder
+        sorting = Sorting(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
+        if self.sort_before_encoder and self.input_sort_field is not None:
+            x = sorting.sort_inputs(x)
+
         # Pass merged input hits through the encoder
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
-            x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x.get(f"key_{self.input_sort_field}"), kv_mask=x.get("key_valid"))
+            # Disable encoder's internal sorting if we're using pre-encoder sorting
+            if self.sort_before_encoder:
+                x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=None, kv_mask=x.get("key_valid"))
+            else:
+                x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x.get(f"key_{self.input_sort_field}"), kv_mask=x.get("key_valid"))
 
         # Unmerge the updated features back into the separate input types
         # These are just views into the tensor that hold all the merged hits
@@ -155,6 +162,8 @@ class MaskFormer(nn.Module):
             if isinstance(task, ObjectHitMaskTask) and self.log_task_attn_mask:
                 attn_logits = outputs["final"][task.name][task.outputs[0]].detach()
                 self.output_attn_mask_logging(attn_logits, x)
+                
+        outputs = sorting.unsort_outputs(outputs)
         return outputs
 
     def output_attn_mask_logging(self, attn_logits, x, threshold=0.1):
@@ -244,7 +253,10 @@ class MaskFormer(nn.Module):
                 continue
 
             # Get the indicies that can permute the predictions to yield their optimal matching
-            pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
+            if self.matcher is not None:
+                pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
+            else:
+                continue
 
             for task in self.tasks:
                 # Tasks without a object dimension do not need permutation (constituent-level or sample-level)
@@ -259,7 +271,7 @@ class MaskFormer(nn.Module):
                     outputs[layer_name][task.name][output_name] = outputs[layer_name][task.name][output_name][batch_idxs, pred_idxs]
 
         # Compute the losses for each task in each block
-        losses = {}
+        losses: dict[str, dict[str, Any]] = {}
         for layer_name in outputs:
             losses[layer_name] = {}
             for task in self.tasks:
