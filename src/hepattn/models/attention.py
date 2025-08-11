@@ -1,10 +1,15 @@
 import torch
 import torch.nn.functional as F
 
+# resolve flash attention import
 try:
     from flash_attn_interface import flash_attn_func, flash_attn_varlen_func  # FA3 (from source)
 except ImportError:
-    from flash_attn import flash_attn_func, flash_attn_varlen_func
+    try:
+        from flash_attn import flash_attn_func, flash_attn_varlen_func # FA2 (from wheel)
+    except ImportError:
+        flash_attn_func = None
+        flash_attn_varlen_func = None
 
 from torch import BoolTensor, Size, Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention
