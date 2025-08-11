@@ -13,54 +13,6 @@ class Sorting:
         self.raw_variables = raw_variables or []
         self.input_nets = input_nets or nn.ModuleList()
 
-    # def sort_inputs(self, x: dict[str, Tensor], targets) -> dict[str, Tensor]:
-    #     if self.input_sort_field is not None:
-    #         sort_indices = self.get_sort_indices(x)
-    #         num_hits = self._get_num_hits(x)
-    #         x = self.sort_var_by_phi(x[self.input_sort_field], sort_indices["key"], num_hits)
-    #         x = self.sort_var_by_phi(x[self.input_sort_field], sort_indices["query"], num_hits)
-    #     return x
-    
-    # def sort_attn_mask_by_phi(self, attn_mask, key_sort_idx, query_sort_idx):
-    #     if len(key_sort_idx.shape) == 2:
-    #         key_sort_idx = key_sort_idx[0]
-    #     assert len(key_sort_idx.shape) == 1, "Key sort index must be 1D"
-    #     if len(query_sort_idx.shape) == 2:
-    #         query_sort_idx = query_sort_idx[0]
-    #     assert len(query_sort_idx.shape) == 1, "Query sort index must be 1D"
-
-    #     if attn_mask is not None:
-    #         attn_mask = attn_mask.index_select(2, key_sort_idx.to(attn_mask.device))
-    #         attn_mask = attn_mask.index_select(1, query_sort_idx.to(attn_mask.device))
-    #     return attn_mask
-
-    # def sort_var_by_phi(self, var, sort_idx, num_hits: int):
-    #     if len(sort_idx.shape) == 2:
-    #         sort_idx = sort_idx[0]
-    #     assert len(sort_idx.shape) == 1, "Sort index must be 1D"
-
-    #     if var is not None:
-    #         return self._sort_tensor_by_index(var, sort_idx, num_hits)
-    #     else:
-    #         return None
-
-    # def get_sort_indices(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-    #     sort_indices = {}
-    #     sort_indices["key"] = self.get_sort_idx(x.get("key_phi"))
-    #     sort_indices["query"] = self.get_sort_idx(x.get("query_phi"))
-    #     return sort_indices
-
-    # def get_sort_idx(self, phi: Tensor) -> Tensor:
-    #     if len(phi.shape) == 2:
-    #         phi = phi[0]
-    #     assert len(phi.shape) == 1, "Phi must be 1D"
-    #     return torch.argsort(phi)
-
-    # def get_unsort_idx(self, sort_idx: Tensor) -> Tensor:
-    #     if len(sort_idx.shape) == 2:
-    #         sort_idx = sort_idx[0]
-    #     assert len(sort_idx.shape) == 1, "Sort index must be 1D"
-    #     return torch.argsort(sort_idx, dim=0)
     
     def unsort_outputs(self, outputs: dict) -> dict:
         """Unsort outputs back to their original order.
