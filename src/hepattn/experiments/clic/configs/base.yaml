@@ -1,4 +1,4 @@
-name: clic_v2
+name: clic_v6
 seed_everything: 42
 
 data:
@@ -26,18 +26,18 @@ data:
   valid_path: /share/gpu1/syw24/dmitrii_clic/val_clic_fix.root
   test_path: /share/gpu1/syw24/dmitrii_clic/test_clic_fix.root
 
-  num_workers: 8
+  num_workers: 16
   num_train: -1
   num_test: -1
   num_val: 5000
 
-  batch_size: 128
+  batch_size: 512
   incidence_cutval: 0.01
 
   scale_dict_path: &scale_dict_path configs/clic_var_transform.yaml
 
 trainer:
-  max_epochs: 50
+  max_epochs: 200
   accelerator: gpu
   devices: 2
   precision: bf16-mixed
@@ -77,11 +77,11 @@ model:
   optimizer: Lion
 
   lrs_config:
-    initial: 1e-5
-    max: 4e-5
+    initial: 1e-6
+    max: 8e-5
     end: 1e-6
     pct_start: 0.05
-    weight_decay: 0.001
+    weight_decay: 1e-4
     skip_scheduler: false
 
   mtl: false
@@ -149,6 +149,7 @@ model:
           default_solver: scipy
           adaptive_solver: false
           parallel_solver: true
+          n_jobs: 16
 
       tasks:
         class_path: torch.nn.ModuleList
@@ -230,11 +231,13 @@ model:
                 input_object: query
                 output_object: pflow
                 target_object: particle
-                loss_weight: 2.0
-                cost_weight: 2.0
+                loss: l1
+                loss_weight: 10.0
+                cost_weight: 10.0
                 use_incidence: true
                 use_nodes: true
-                split_charge_neutral_loss: false
+                cost: new
+                mode: scale
                 scale_dict_path: *scale_dict_path
                 net:
                   class_path: hepattn.models.Dense
@@ -242,5 +245,5 @@ model:
                     input_size: 518
                     activation: torch.nn.SiLU
                     output_size: 5
-                    hidden_layers: [128, 128, 64, 32]
+                    hidden_layers: [512, 256, 128, 64, 32]
                 has_intermediate_loss: false
