@@ -79,7 +79,7 @@ class Sorting:
         outputs : dict
             Dictionary containing model outputs that need to be unsorted.
 
-        Returns
+        Returns:
         -------
         dict[str, dict[str, dict[str, Tensor]]]
             Outputs with tensors unsorted back to their original order.
@@ -117,7 +117,7 @@ class Sorting:
         key_unsort_idx : Tensor
             Unsorted indices for key dimension.
 
-        Returns
+        Returns:
         -------
         dict
             Task outputs with tensors unsorted.
