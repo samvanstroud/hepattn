@@ -87,7 +87,7 @@ class PlotParticleHelper:
                     ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
                     ax.set_xlabel(xlabel_dict[var])
                     ax.set_ylabel("Particles")
-                    ax.set_title(f"({cl_name})", y=1.1)
+                    ax.set_title(f"({cl_name})", y=1.0)
                     ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
                     if log_y:
                         ax.set_yscale("log")

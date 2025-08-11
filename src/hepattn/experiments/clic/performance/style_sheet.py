@@ -1,5 +1,5 @@
-FIG_W = 12
-FIG_H_1ROW = 4.5
+FIG_W = 10
+FIG_H_1ROW = 3
 FIG_DPI = 200
 
 
