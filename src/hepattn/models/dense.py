@@ -22,7 +22,8 @@ class Dense(nn.Module):
         Args:
             input_size: Input size.
             output_size: Output size. If not specified, this will be the same as the input size.
-            hidden_layers: Number of nodes per layer. If not specified, the network will have a single hidden layer with size `input_size * hidden_dim_scale`.
+            hidden_layers: Number of nodes per layer. If not specified, the network will have a single hidden layer with size
+                `input_size * hidden_dim_scale`.
             hidden_dim_scale: Scale factor for the hidden layer size.
             activation: Activation function for hidden layers.
             final_activation: Activation function for the output layer.

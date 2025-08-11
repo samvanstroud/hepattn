@@ -164,7 +164,8 @@ class Encoder(nn.Module):
             window_wrap: Whether to wrap the window.
             score_mod: Score modification function.
             value_residual: Add a residual connection from the initial layer values.
-            num_register_tokens: Number of register tokens to add at the beginning of the sequence. If None, no register tokens are added. Register tokens are removed from the output by default.
+            num_register_tokens: Number of register tokens to add at the beginning of the sequence. If None, no register tokens are added.
+                Register tokens are removed from the output by default.
             **layer_kwargs: Keyword arguments for EncoderLayer.
         """
         super().__init__()

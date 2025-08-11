@@ -82,7 +82,8 @@ class ObjectValidTask(Task):
             losses: Dict specifying which losses to use. Keys are loss function names and values are loss weights.
             costs: Dict specifying which costs to use. Keys are cost function names and values are cost weights.
             dim: Embedding dimension of the input objects.
-            null_weight: Weight applied to the null class in the loss. Useful if many instances of the target class are null, and we need to reweight to overcome class imbalance.
+            null_weight: Weight applied to the null class in the loss. Useful if many instances of the target class are null, and we need to reweight
+                to overcome class imbalance.
             mask_queries: Whether to mask queries.
             has_intermediate_loss: Whether the task has intermediate loss.
         """
@@ -829,6 +830,9 @@ class ObjectClassificationTask(Task):
             null_weight: Weight applied to the null class in the loss.
             mask_queries: Whether to mask queries.
             has_intermediate_loss: Whether the task has intermediate loss.
+
+        Raises:
+            ValueError: If the number of classes is not positive.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
 
