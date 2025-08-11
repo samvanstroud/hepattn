@@ -1,4 +1,4 @@
-name: clic_v3_morereg_l1
+name: clic_v6
 seed_everything: 42
 
 data:
@@ -77,11 +77,11 @@ model:
   optimizer: Lion
 
   lrs_config:
-    initial: 1e-5
-    max: 1e-4
+    initial: 1e-6
+    max: 8e-5
     end: 1e-6
     pct_start: 0.05
-    weight_decay: 0.001
+    weight_decay: 1e-4
     skip_scheduler: false
 
   mtl: false
@@ -236,7 +236,8 @@ model:
                 cost_weight: 10.0
                 use_incidence: true
                 use_nodes: true
-                split_charge_neutral_loss: false
+                cost: new
+                mode: scale
                 scale_dict_path: *scale_dict_path
                 net:
                   class_path: hepattn.models.Dense

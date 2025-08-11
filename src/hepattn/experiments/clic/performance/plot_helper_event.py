@@ -110,7 +110,7 @@ class PlotEventHelper:
                 res = self.perf.data[name]["jet_residuals"]
                 if var == "dR":
                     ax.hist(
-                        res[var],
+                        np.clip(res[var], bins[0], bins[-1]),
                         bins=bins,
                         label=self.labels[name],
                         **self.style_dict[name],
