@@ -38,8 +38,8 @@ dependencies = [
 ]
 
 [dependency-groups]
-clic = ["pathos", "vector", "fastjet", "atlas-ftag-tools", "energyflow"]
-tide = ["numba>=0.61.2"]
+clic = ["pathos", "vector", "fastjet", "atlas-ftag-tools", "energyflow"] # has problems on isambard
+tide = ["numba>=0.61.2"] # has problems on isambard
 
 [build-system]
 requires = ["scikit-build-core>=0.3.3", "pybind11"]

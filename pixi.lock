@@ -3071,8 +3071,8 @@ packages:
   timestamp: 1719579998295
 - pypi: ./
   name: hepattn
-  version: 0.1.0
-  sha256: 72fa6ee57339517c8449440e47fb96e57515a2b8603e0702ce11ed990f0cf60d
+  version: 0.2.0
+  sha256: 1c71a65bd796f147f080a22a0ef4cbff47ef8403fcfb36d0db3e6158752a8279
   requires_dist:
   - packaging
   - jupyter
