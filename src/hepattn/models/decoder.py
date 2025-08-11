@@ -32,6 +32,7 @@ class MaskFormerDecoder(nn.Module):
         sort_by_phi: bool = False,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
+
         Args:
             num_queries: The number of object-level queries.
             decoder_layer_config: Configuration dictionary used to initialize each MaskFormerDecoderLayer.
@@ -39,8 +40,12 @@ class MaskFormerDecoder(nn.Module):
             mask_attention: If True, attention masks will be used to control which input objects are attended to.
             use_query_masks: If True, predicted query masks will be used to control which queries are valid.
             log_attn_mask: If True, log attention masks for debugging.
+            key_posenc: Optional module for key positional encoding.
             query_posenc: Optional module for query positional encoding.
             preserve_posenc: If True, preserves positional encoding in embeddings.
+            posenc_analysis: If True, enables positional encoding analysis logging.
+            sort_by_phi: If True, sorts inputs by phi values for better attention performance.
+            sort_before_encoder: If True, sorts inputs before the encoder.
         """
         super().__init__()
 
