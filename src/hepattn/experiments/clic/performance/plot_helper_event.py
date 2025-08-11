@@ -225,14 +225,12 @@ class PlotEventHelper:
         if separate_figures:
             fig1, ax1 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI, constrained_layout=True)
             fig2, ax2 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI, constrained_layout=True)
-            fig3, ax3 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI, constrained_layout=True)
 
         else:
-            fig = plt.figure(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2 * 3), dpi=FIG_DPI, constrained_layout=True)
-            gs = fig.add_gridspec(3, 1, hspace=0.0)
+            fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW), dpi=FIG_DPI, constrained_layout=True)
+            gs = fig.add_gridspec(1, 2, hspace=0.0)
             ax1 = fig.add_subplot(gs[0])
             ax2 = fig.add_subplot(gs[1])
-            ax3 = fig.add_subplot(gs[2])
 
         if pt_bins is None:
             pt_bins = np.arange(0, 1000, 50)  # default
@@ -282,7 +280,6 @@ class PlotEventHelper:
 
             ax2.fill_between(pt_mids, y_iqrs - error_on_iqr(ns, y_iqrs), y_iqrs + error_on_iqr(ns, y_iqrs), color=color, alpha=0.3)
             ax2.plot(pt_mids, y_iqrs, label=self.labels[name], color=color, linestyle=linestyle, marker="o", markersize=2)
-            ax3.plot(pt_mids, y_iqrs / (y_medians + 1), label=self.labels[name], color=color, linestyle=linestyle, marker="o")
 
         v_name = "p_T"
         if use_energy:
@@ -290,11 +287,8 @@ class PlotEventHelper:
 
         ax1.set_ylabel(f"Jet $median \\left( \\left( {v_name}^{{reco}} - {v_name}^{{truth}} \\right) / {v_name}^{{truth}} \\right)$")
         ax2.set_ylabel(f"Jet $IQR \\left( \\left( {v_name}^{{reco}} - {v_name}^{{truth}} \\right) / {v_name}^{{truth}} \\right)$")
-        ax3.set_ylabel(
-            f"Jet $IQR \\left( {v_name}^{{reco}} / {v_name}^{{truth}} \\right) / median \\left( {v_name}^{{reco}} / {v_name}^{{truth}} \\right)$"
-        )
 
-        for ax in [ax1, ax2, ax3]:
+        for ax in [ax1, ax2]:
             ax.set_xlabel(f"Jet ${v_name}^{{truth}}$ [GeV]")
             ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
             ax.minorticks_on()
@@ -306,7 +300,7 @@ class PlotEventHelper:
         ax1.set_ylim(-0.05, 0.05)
 
         if separate_figures:
-            figs.extend((fig1, fig2, fig3))
+            figs.extend((fig1, fig2))
             return figs
 
         return fig
