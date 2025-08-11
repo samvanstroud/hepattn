@@ -3,16 +3,12 @@ import torch.nn.functional as F
 
 # resolve flash attention import
 try:
-    from flash_attn_interface import (  # FA3 (from source)
-        flash_attn_func,
-        flash_attn_varlen_func,
-    )
+    # FA3 (from source)
+    from flash_attn_interface import flash_attn_func, flash_attn_varlen_func
 except ImportError:
     try:
-        from flash_attn import (  # FA2 (from wheel)
-            flash_attn_func,
-            flash_attn_varlen_func,
-        )
+        # FA2 (from wheel)
+        from flash_attn import flash_attn_func, flash_attn_varlen_func
     except ImportError:
         flash_attn_func = None
         flash_attn_varlen_func = None
@@ -96,16 +92,12 @@ def merge_masks(
 
 def unpad_for_flash_varlen(x: Tensor, kv_mask: Tensor) -> tuple[Tensor, Tensor, dict]:
     """Unpad input for flash-varlen attention and return unpadded tensor and state."""
-    x_flat, indices, cu_seqlens, max_seqlen, _ = unpad_input(
-        x, kv_mask.int()
-    )  # x_flat is (total_valid_tokens, dim)
+    x_flat, indices, cu_seqlens, max_seqlen, _ = unpad_input(x, kv_mask.int())  # x_flat is (total_valid_tokens, dim)
     varlen_kwargs = {"cu_seqlens": cu_seqlens, "max_seqlen": max_seqlen}
     return x_flat.unsqueeze(0), indices, varlen_kwargs
 
 
-def repad_from_flash_varlen(
-    x: Tensor, batch_size: int, seq_len: int, indices: Tensor
-) -> Tensor:
+def repad_from_flash_varlen(x: Tensor, batch_size: int, seq_len: int, indices: Tensor) -> Tensor:
     """Repad output from flash-varlen attention."""
     # x is currently (1, total_valid_tokens, dim), flatten to (total_valid_tokens, dim) before repadding
     return pad_input(x.squeeze(0), indices, batch_size, seq_len)
@@ -176,9 +168,7 @@ class Attention(nn.Module):
         super().__init__()
         assert dim % num_heads == 0, "num_heads must divide dim."
         assert attn_type in ATTN_TYPES, f"Invalid attention type: {attn_type}"
-        assert window_size is None or attn_type in WINDOW_ATTN_TYPES, (
-            f"Window size can only be specified for {WINDOW_ATTN_TYPES}"
-        )
+        assert window_size is None or attn_type in WINDOW_ATTN_TYPES, f"Window size can only be specified for {WINDOW_ATTN_TYPES}"
 
         self.dim = dim
         self.bias = bias
@@ -195,9 +185,7 @@ class Attention(nn.Module):
         self.out_proj = nn.Linear(dim, dim, bias=bias)
 
         if self.value_residual and not self.is_first_layer:
-            self.value_residual_mix = nn.Sequential(
-                nn.Linear(dim, num_heads), nn.Sigmoid()
-            )
+            self.value_residual_mix = nn.Sequential(nn.Linear(dim, num_heads), nn.Sigmoid())
 
         if self.qkv_norm:
             self.q_norm = LayerNorm(dim)
@@ -205,9 +193,7 @@ class Attention(nn.Module):
             self.v_norm = LayerNorm(dim)
 
         self.reset_parameters()
-        self.set_backend(
-            attn_type, torch_compile=torch_compile, window_size=window_size
-        )
+        self.set_backend(attn_type, torch_compile=torch_compile, window_size=window_size)
 
     def reset_parameters(self):
         """Initialize the parameters."""
@@ -231,11 +217,7 @@ class Attention(nn.Module):
 
         if attn_type in FLASH_ATTN_TYPES:
             # TODO: Will need to change when supporting window with flex
-            self.window_size = (
-                (window_size // 2, window_size // 2)
-                if window_size is not None
-                else (-1, -1)
-            )
+            self.window_size = (window_size // 2, window_size // 2) if window_size is not None else (-1, -1)
         if torch_compile or attn_type == "flex":
             self.attn = torch.compile(self.attn, dynamic=True)
         return self.attn_type
@@ -251,9 +233,7 @@ class Attention(nn.Module):
             x = x.transpose(-3, -2)  # B H S Dh -> B S H Dh
         return x.flatten(-2)  # B S H Dh -> B S D
 
-    def _prepare_qkv(
-        self, q: Tensor, kv: Tensor | None = None, initial_values: dict | None = None
-    ) -> tuple[Tensor, Tensor, Tensor]:
+    def _prepare_qkv(self, q: Tensor, kv: Tensor | None = None, initial_values: dict | None = None) -> tuple[Tensor, Tensor, Tensor]:
         # Mix for value residual
         mix = None
         if self.value_residual and not self.is_first_layer:
@@ -269,9 +249,7 @@ class Attention(nn.Module):
         else:
             if kv is None:
                 kv = q
-            q, k, v = F._in_projection_packed(
-                q, kv, kv, self.in_proj_weight, self.in_proj_bias
-            )  # noqa: SLF001
+            q, k, v = F._in_projection_packed(q, kv, kv, self.in_proj_weight, self.in_proj_bias)  # noqa: SLF001
 
         # Normalize queries, keys, and values
         if self.qkv_norm:
@@ -390,9 +368,7 @@ class Attention(nn.Module):
         if self.attn_type == "flash-varlen":
             varlen_kwargs = kwargs.get("varlen_kwargs")
             if varlen_kwargs is None:
-                raise ValueError(
-                    "flash-varlen attention requires varlen_kwargs in kwargs"
-                )
+                raise ValueError("flash-varlen attention requires varlen_kwargs in kwargs")
             out = self._flash_varlen_attention(q, k, v, **varlen_kwargs)
             return self.out_proj(out)
 
@@ -403,9 +379,7 @@ class Attention(nn.Module):
 
         # Standard torch attention
         elif self.attn_type == "torch":
-            attn_mask = merge_masks(
-                q_mask, kv_mask, attn_mask, q_shape, kv_shape, q.device
-            )
+            attn_mask = merge_masks(q_mask, kv_mask, attn_mask, q_shape, kv_shape, q.device)
             # Have to expand the attention mask so that it is broadcasted over the head dimension
             if attn_mask is not None and attn_mask.dim() == 3:
                 attn_mask = attn_mask.unsqueeze(-3)

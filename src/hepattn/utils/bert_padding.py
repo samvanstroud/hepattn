@@ -36,9 +36,7 @@ class IndexFirstAxis(torch.autograd.Function):
         )
         # TD [2022-03-04] For some reason torch.scatter is a bit faster than indexing.
         # grad_input[indices] = grad_output
-        grad_input.scatter_(
-            0, repeat(indices, "z -> z d", d=grad_output.shape[1]), grad_output
-        )
+        grad_input.scatter_(0, repeat(indices, "z -> z d", d=grad_output.shape[1]), grad_output)
         return grad_input.reshape(ctx.first_axis_dim, *other_shape), None
 
 
@@ -51,9 +49,7 @@ class IndexPutFirstAxis(torch.autograd.Function):
         ctx.save_for_backward(indices)
         assert indices.ndim == 1
         assert values.ndim >= 2
-        output = torch.zeros(
-            first_axis_dim, *values.shape[1:], device=values.device, dtype=values.dtype
-        )
+        output = torch.zeros(first_axis_dim, *values.shape[1:], device=values.device, dtype=values.dtype)
         # TD [2022-03-04] For some reason torch.scatter is a bit faster than indexing.
         output[indices] = values
         # output.scatter_(0, repeat(indices, 'z -> z d', d=values.shape[1]), values)
@@ -115,9 +111,7 @@ def unpad_input(hidden_states, attention_mask, unused_mask=None):
         max_seqlen_in_batch: int
         seqused: (batch), returns the number of tokens selected in attention_mask + unused_mask.
     """
-    all_masks = (
-        (attention_mask + unused_mask) if unused_mask is not None else attention_mask
-    )
+    all_masks = (attention_mask + unused_mask) if unused_mask is not None else attention_mask
     seqlens_in_batch = all_masks.sum(dim=-1, dtype=torch.int32)
     used_seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
     indices = torch.nonzero(all_masks.flatten(), as_tuple=False).flatten()
@@ -190,12 +184,8 @@ def unpad_input_for_concatenated_sequences(hidden_states, attention_mask_in_leng
     """
     length = attention_mask_in_length.sum(dim=-1)
     seqlen = attention_mask_in_length.size(-1)
-    attention_mask_2d = torch.arange(
-        seqlen, device=length.device, dtype=length.dtype
-    ).expand(len(length), seqlen) < length.unsqueeze(1)
-    real_indices_idx = torch.nonzero(
-        attention_mask_in_length.flatten(), as_tuple=False
-    ).flatten()
+    attention_mask_2d = torch.arange(seqlen, device=length.device, dtype=length.dtype).expand(len(length), seqlen) < length.unsqueeze(1)
+    real_indices_idx = torch.nonzero(attention_mask_in_length.flatten(), as_tuple=False).flatten()
     seqlens_in_batch = attention_mask_in_length.flatten()[real_indices_idx]
     indices = torch.nonzero(attention_mask_2d.flatten(), as_tuple=False).flatten()
     max_seqlen_in_batch = seqlens_in_batch.max().item()
