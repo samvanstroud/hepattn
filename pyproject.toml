@@ -65,16 +65,15 @@ clic = { features = ["clic"] }
 tide = { features = ["tide"] }
 
 [tool.pixi.system-requirements]
-linux = "3.10.0"
 libc = "2.28"
 cuda = "12.3"
 
 [tool.pixi.dependencies]
-ninja = "*"
-git = "*"
-cuda = "12.3.*"
-git-lfs = ">=3.6.1,<4"
 gxx = "*"
+git = "*"
+git-lfs = ">=3.6.1,<4"
+ninja = "*"
+cuda = "12.3.*"
 
 [tool.pixi.tasks.test]
 cmd = "pytest -xsv"
