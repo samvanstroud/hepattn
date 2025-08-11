@@ -208,7 +208,7 @@ class Encoder(nn.Module):
         for layer in self.layers:
             self.attn_type = layer.attn.fn.set_backend(self.attn_type)
 
-    def forward(self, x: Tensor, x_sort_value: Tensor | None = None, **kwargs) -> Tensor:
+    def forward(self, x: Tensor, x_sort_value: Tensor | None = None, kv_mask: Tensor | None = None, **kwargs) -> Tensor:
         batch_size = x.shape[0]
         seq_len = x.shape[-2]
 
@@ -225,14 +225,13 @@ class Encoder(nn.Module):
             x = torch.cat([register_tokens, x], dim=1)
 
             # Allow registers to participate in attention if a mask is provided
-            if (kv_mask := kwargs.get("kv_mask")) is not None:
+            if kv_mask is not None:
                 register_mask = torch.full((1, self.num_register_tokens), True, device=kv_mask.device, dtype=kv_mask.dtype).expand(batch_size, -1)
-                kwargs["kv_mask"] = torch.cat([register_mask, kv_mask], dim=1)
+                kv_mask = torch.cat([register_mask, kv_mask], dim=1)
 
         # Handle flash-varlen attention unpadding at encoder level
         varlen_kwargs = None
-        if self.attn_type == "flash-varlen" and kwargs.get("kv_mask") is not None:
-            kv_mask = kwargs["kv_mask"]
+        if self.attn_type == "flash-varlen" and kv_mask is not None:
             x, indices, varlen_kwargs = unpad_for_flash_varlen(x, kv_mask)
             kwargs["varlen_kwargs"] = varlen_kwargs
         elif self.attn_type == "flash-varlen":
@@ -260,7 +259,7 @@ class Encoder(nn.Module):
         # Apply layers
         initial_values = {} if self.value_residual else None
         for layer in self.layers:
-            x = layer(x, attn_mask=attn_mask, score_mod=self.score_mod, initial_values=initial_values, **kwargs)
+            x = layer(x, attn_mask=attn_mask, score_mod=self.score_mod, initial_values=initial_values, kv_mask=kv_mask, **kwargs)
 
         # Remove wrapping for flash attention with sliding window
         if self.attn_type == "flash" and self.window_wrap:
@@ -274,8 +273,8 @@ class Encoder(nn.Module):
         # Remove register tokens
         if self.register_tokens is not None:
             x = x[:, self.num_register_tokens :]
-            if (kv_mask := kwargs.get("kv_mask")) is not None:
-                kwargs["kv_mask"] = kv_mask[:, self.num_register_tokens :]
+            if kv_mask is not None:
+                kv_mask = kv_mask[:, self.num_register_tokens :]
 
         # If we sorted the tokens, undo the sorting
         if x_sort_value is not None and x_sort_idx is not None:

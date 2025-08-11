@@ -3,7 +3,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models import DropPath, Encoder, EncoderLayer, LayerScale, Residual
-from hepattn.models.transformer import change_attn_backends
+from hepattn.models.encoder import change_attn_backends
 
 
 # Fixtures for common inputs

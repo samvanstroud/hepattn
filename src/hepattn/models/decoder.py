@@ -10,8 +10,8 @@ from torch import Tensor, nn
 
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
+from hepattn.models.encoder import Residual
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
-from hepattn.models.transformer import Residual
 
 
 class MaskFormerDecoder(nn.Module):
