@@ -14,11 +14,6 @@ dependencies = [
     "wheel",
     "numpy",
     "scipy",
-    "energyflow",
-    "pathos",
-    "vector",
-    "fastjet",
-    "atlas-ftag-tools",
     "pytest>=8.3.3,<9",
     "pytest-repeat",
     "ruff==0.12.4",
@@ -37,11 +32,14 @@ dependencies = [
     "h5py>=3.13.0",
     "particle>=0.25.3",
     "scikit-learn>=1.6.1,<2",
-    "numba>=0.61.2",
     "onnx>=1.18.0",
     "onnxruntime>=1.22.0",
     "einops>=0.8.1,<0.9",
 ]
+
+[dependency-groups]
+clic = ["pathos", "vector", "fastjet", "atlas-ftag-tools", "energyflow"]
+tide = ["numba>=0.61.2"]
 
 [build-system]
 requires = ["scikit-build-core>=0.3.3", "pybind11"]
@@ -61,6 +59,10 @@ torch = { version = "==2.7.1", index = "https://download.pytorch.org/whl/cu128"}
 [tool.pixi.pypi-options]
 no-build-isolation = ["flash-attn"]
 extra-index-urls = ["https://download.pytorch.org/whl/cu128"]
+
+[tool.pixi.environments]
+clic = { features = ["clic"] }
+tide = { features = ["tide"] }
 
 [tool.pixi.system-requirements]
 linux = "3.10.0"
