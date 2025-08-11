@@ -2,9 +2,9 @@ import torch
 import torch.nn.functional as F
 
 try:
-    from flash_attn import flash_attn_func, flash_attn_varlen_func
+    from flash_attn_interface import flash_attn_func, flash_attn_varlen_func  # FA3 (from source)
 except ImportError:
-    from flash_attn_interface import flash_attn_func, flash_attn_varlen_func
+    from flash_attn import flash_attn_func, flash_attn_varlen_func
 
 from torch import BoolTensor, Size, Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention

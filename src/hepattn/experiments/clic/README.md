@@ -37,7 +37,7 @@ jupyter notebook --no-browser --ip=0.0.0.0 --port 8888
 
 At UCL, files are available on `plus1` under `/unix/atlastracking/svanstroud/dmitrii_clic`, and also on `hypatia` under `/share/gpu1/syw24/dmitrii_clic`.
 
-On Isambard, you can ue
+On Isambard, you can use
 
 ```
 train_path: /projects/u5ar/data/clic/train_clic_fix.root
