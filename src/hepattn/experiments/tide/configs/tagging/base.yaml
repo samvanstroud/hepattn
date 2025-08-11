@@ -197,11 +197,10 @@ trainer:
   enable_progress_bar: True
   val_check_interval: 1000
 
-  # Specify loggers here
   logger:
-    class_path: lightning.pytorch.loggers.CometLogger
+    class_path: hepattn.utils.loggers.MyCometLogger
     init_args:
-      project_name: tide-tagging
+      project: tide-tagging
 
   # Specify any callback here
   callbacks:
