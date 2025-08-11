@@ -6,6 +6,7 @@ readme = "README.md"
 name = "hepattn"
 requires-python = "== 3.12"
 version = "0.1.0"
+
 dependencies = [
     "packaging",
     "jupyter",
@@ -23,11 +24,11 @@ dependencies = [
     "ruff==0.12.4",
     "pre-commit>=4.0.1,<5",
     "matplotlib==3.9.*",
-    "lightning==2.5.0.post0",
-    "comet-ml>=3.47.3,<4",
+    "lightning==2.5.2",
+    "comet-ml==3.50.0",
     "pandas>=2.2.3,<3",
     "pyarrow>=17.0.0",
-    "jsonargparse[signatures]>=4.34.0,<5",
+    "jsonargparse[signatures]==4.40.1",
     "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiTRUE-cp312-cp312-linux_x86_64.whl",
     "torchjd>=0.5.0",
     "lion-pytorch>=0.2.3,<0.3",
@@ -39,6 +40,7 @@ dependencies = [
     "numba>=0.61.2",
     "onnx>=1.18.0",
     "onnxruntime>=1.22.0",
+    "einops>=0.8.1,<0.9",
 ]
 
 [build-system]
@@ -49,31 +51,28 @@ build-backend = "scikit_build_core.build"
 wheel.packages = ["src/hepattn", "src/lap1015/src/lap1015"]
 
 [tool.pixi.project]
-channels = ["nvidia", "conda-forge", "nodefaults"]
-platforms = ["linux-64"]
-#platforms = ["linux-aarch64"]
+channels = ["conda-forge", "nvidia", "nodefaults"]
+platforms = ["linux-64"] # "linux-aarch64"
 
 [tool.pixi.pypi-dependencies]
 hepattn = { path = ".", editable = true }
-torch = { version = "==2.7.0", index = "https://download.pytorch.org/whl/test/cu126"}
+torch = { version = "==2.7.1", index = "https://download.pytorch.org/whl/cu128"}
 
 [tool.pixi.pypi-options]
 no-build-isolation = ["flash-attn"]
-extra-index-urls = ["https://download.pytorch.org/whl/test/cu126"]
+extra-index-urls = ["https://download.pytorch.org/whl/cu128"]
 
 [tool.pixi.system-requirements]
 linux = "3.10.0"
 libc = "2.28"
-cuda = "12.2"
+cuda = "12.3"
 
 [tool.pixi.dependencies]
-python = "3.12.*"
 ninja = "*"
 git = "*"
 cuda = "12.3.*"
-"ruamel.yaml" = ">=0.18.10,<0.19"
 git-lfs = ">=3.6.1,<4"
-gxx_linux-64 = "*"
+gxx = "*"
 
 [tool.pixi.tasks.test]
 cmd = "pytest -xsv"
@@ -89,7 +88,6 @@ preview = true
 
 [tool.ruff.lint]
 select = ["ALL"]
-
 ignore = ["G", "D100", "D101", "D102", "D103",  "D104", "D105", "D106", "D107", "D205", "ANN", "PLW", "FBT", "EM",  "PLR2004", "PT018", "COM812", "CPY001", "TRY003", "S101", "N812", "PLR0913", "PLR0917", "DOC201", "INP001", "PLR6301", "T201", "TD002", "TD003", "FIX002", "ARG002", "C901", "PLR0914", "PLR0912", "PLR0915", "PT011", "ERA001", "PGH004", "PLC0206", "S311", "PLR0911", "PLR6104", "S404", "S603", "B028"]
 
 [tool.ruff.lint.pydocstyle]
@@ -99,10 +97,5 @@ convention = "google"
 "*.ipynb" = ["E501"]
 
 [tool.pytest.ini_options]
-filterwarnings = [
-    "ignore:.*distutils Version classes are deprecated. Use packaging.version instead.*:DeprecationWarning",
-]
-markers = [
-    "gpu: mark test to run on GPU",
-    "requiresdata: mark test that requires data not present in the repository",
-]
+filterwarnings = ["ignore:.*distutils Version classes are deprecated. Use packaging.version instead.*:DeprecationWarning"]
+markers = ["gpu: mark test to run on GPU", "requiresdata: mark test that requires data not present in the repository"]

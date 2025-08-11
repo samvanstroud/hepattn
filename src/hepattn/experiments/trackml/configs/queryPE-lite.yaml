@@ -78,11 +78,10 @@ trainer:
   #    dirpath: ./profile_logs/
   #    filename: profile.json
 
-  # Specify loggers here
   logger:
-    class_path: lightning.pytorch.loggers.CometLogger
+    class_path: hepattn.utils.loggers.MyCometLogger
     init_args:
-      project_name: trackml_tracking
+      project: trackml_tracking
 
   callbacks:
     #- class_path: hepattn.callbacks.Compile

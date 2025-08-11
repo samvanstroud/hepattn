@@ -47,9 +47,9 @@ trainer:
   enable_progress_bar: True
 
   logger:
-    class_path: lightning.pytorch.loggers.CometLogger
+    class_path: hepattn.utils.loggers.MyCometLogger
     init_args:
-      project_name: hepattn-clic
+      project: hepattn-clic
 
   callbacks:
     - class_path: hepattn.callbacks.Compile

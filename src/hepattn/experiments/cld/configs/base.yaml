@@ -311,11 +311,10 @@ trainer:
   accumulate_grad_batches: 1
   enable_progress_bar: True
 
-  # Specify loggers here
   logger:
-    class_path: lightning.pytorch.loggers.CometLogger
+    class_path: hepattn.utils.loggers.MyCometLogger
     init_args:
-      project_name: cld
+      project: cld
 
   callbacks:
     - class_path: hepattn.callbacks.InferenceTimer
