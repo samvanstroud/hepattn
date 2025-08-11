@@ -38,6 +38,9 @@ def gaussian(x, amplitude, mean, stddev):
 
 
 def custom_hist_v1(ax, vals, label_length=-1, metrics="mean std iqr", f=None, **hist_kwargs):  # noqa: ARG001
+    bins = hist_kwargs["bins"]
+    vals = np.clip(vals, bins[0], bins[-1])
+
     if label_length != -1:
         hist_kwargs["label"] = hist_kwargs["label"].ljust(label_length)
 
@@ -53,6 +56,9 @@ def custom_hist_v1(ax, vals, label_length=-1, metrics="mean std iqr", f=None, **
 
 
 def custom_hist_v2(ax, vals, label_length=-1, metrics="mean std iqr", f=None, **hist_kwargs):  # noqa: ARG001
+    bins = hist_kwargs["bins"]
+    vals = np.clip(vals, bins[0], bins[-1])
+
     hist_kwargs["label"] += f"\n(M={np.nanmedian(vals):+.3f},".replace("+", " ")
     iqr = np.nanpercentile(vals, 75) - np.nanpercentile(vals, 25)
     hist_kwargs["label"] += f" IQR={iqr:.3f}"

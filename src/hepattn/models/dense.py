@@ -16,30 +16,19 @@ class Dense(nn.Module):
         bias: bool = True,
         norm_input: bool = False,
     ) -> None:
-        """A fully connected feed forward neural network, which can take
-        in additional contextual information.
+        """A fully connected feed forward neural network, which can take in additional contextual information.
 
-        Parameters
-        ----------
-        input_size : int
-            Input size
-        output_size : int
-            Output size. If not specified this will be the same as the input size.
-        hidden_layers : list, optional
-            Number of nodes per layer, if not specified, the network will have
-            a single hidden layer with size `input_size * hidden_dim_scale`.
-        hidden_dim_scale : int, optional
-            Scale factor for the hidden layer size.
-        activation : nn.Module
-            Activation function for hidden layers.
-        final_activation : nn.Module, optional
-            Activation function for the output layer.
-        dropout : float, optional
-            Apply dropout with the supplied probability.
-        bias : bool, optional
-            Whether to use bias in the linear layers.
-        norm_input : bool, optional
-            Whether to apply layer normalization to the input.
+        Args:
+            input_size: Input size.
+            output_size: Output size. If not specified, this will be the same as the input size.
+            hidden_layers: Number of nodes per layer. If not specified, the network will have a single hidden layer with size
+                `input_size * hidden_dim_scale`.
+            hidden_dim_scale: Scale factor for the hidden layer size.
+            activation: Activation function for hidden layers.
+            final_activation: Activation function for the output layer.
+            dropout: Apply dropout with the supplied probability.
+            bias: Whether to use bias in the linear layers.
+            norm_input: Whether to apply layer normalization to the input.
         """
         super().__init__()
 
