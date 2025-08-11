@@ -20,7 +20,7 @@ from .reader import (
 
 
 class NetworkType(Enum):
-    PANDORA = "pandora"
+    PANDORA = "Pandora"
     HGPFLOW = "hgpflow"
     HGPFLOW_PROXY = "hgpflow_proxy"
     HGPFLOW_TARGET = "hgpflow_target"
@@ -125,10 +125,10 @@ class Performance:
                         return_proxy=net_config.network_type == NetworkType.MPFLOW_PROXY,
                     )
         # HACK: add pandora dict to data and network configs  # noqa: FIX004
-        self.data["pandora"] = pandora_dict
+        self.data["Pandora"] = pandora_dict
         self.config.networks.append(
             NetworkConfig(
-                name="pandora",
+                name="Pandora",
                 path=config.truth_path,
                 network_type=NetworkType.PANDORA,
             )
