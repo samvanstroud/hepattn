@@ -1,5 +1,6 @@
 import torch
 from torch import Tensor, nn
+from typing import Dict, Any
 
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectHitMaskTask
@@ -100,7 +101,7 @@ class MaskFormer(nn.Module):
                 [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in input_names], dim=-1
             )
 
-        # Merge the input objects and he padding mask into a single set
+        # Merge the input objects and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in input_names], dim=-2)
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in input_names], dim=-1)
 
@@ -123,7 +124,7 @@ class MaskFormer(nn.Module):
             x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x.get(f"key_{self.input_sort_field}"), kv_mask=x.get("key_valid"))
 
         # Unmerge the updated features back into the separate input types
-        # These are just views into the tensor that old all the merged hits
+        # These are just views into the tensor that hold all the merged hits
         for input_name in input_names:
             x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
@@ -156,27 +157,21 @@ class MaskFormer(nn.Module):
                 self.output_attn_mask_logging(attn_logits, x)
         return outputs
 
-    def sort_attn_mask_im(self, attn_mask_im, x):
-        key_sort_value_ = x.get("key_phi")
-        key_sort_idx = torch.argsort(key_sort_value_, axis=-1)
-        attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
-        query_sort_value = x.get("query_phi")
-        query_sort_idx = torch.argsort(query_sort_value, axis=-1)
-        return attn_mask_im.index_select(0, query_sort_idx.to(attn_mask_im.device))
-
     def output_attn_mask_logging(self, attn_logits, x, threshold=0.1):
         if ((attn_logits is not None) and (self.log_step % N_STEPS_LOG_ATTN_MASK == 0)) or (not self.training):
             if not hasattr(self, "output_attn_masks_to_log"):
                 self.output_attn_masks_to_log = {}
             # sigmoid the attn mask to get the probability of the hit being attended to
             attn_mask_im = attn_logits[0].detach().cpu().clone().sigmoid()
-            attn_mask_im = self.sort_attn_mask_im(attn_mask_im, x)
             self.output_attn_masks_to_log["final"] = {
                 "mask": attn_mask_im >= threshold,
                 "probs": attn_mask_im,
                 "step": self.log_step,
                 "layer": "final",
             }
+            # store phi vals for sorting in callback
+            self.output_attn_masks_to_log["final"]["query_phi"] = x.get("query_phi")
+            self.output_attn_masks_to_log["final"]["key_phi"] = x.get("key_phi")
 
     def predict(self, outputs: dict) -> dict:
         """Takes the raw model outputs and produces a set of actual inferences / predictions.
@@ -187,7 +182,7 @@ class MaskFormer(nn.Module):
         outputs:
             The outputs produces the forward pass of the model.
         """
-        preds = {}
+        preds: Dict[str, Dict[str, Any]] = {}
 
         # Compute predictions for each task in each block
         for layer_name, layer_outputs in outputs.items():

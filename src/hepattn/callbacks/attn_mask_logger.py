@@ -101,6 +101,9 @@ class AttnMaskLogger(Callback):
                 mask = mask_info["mask"]
                 step = mask_info["step"]
                 layer = mask_info["layer"]
+                query_phi = mask_info.get("query_phi")
+                key_phi = mask_info.get("key_phi")
+                self.sort_mask_by_phi(mask, query_phi, key_phi)
                 self._log_attention_weights(pl_module, probs, step, layer, f"final_ca_weights_output{prefix_suffix}")
                 self._log_attention_mask(pl_module, mask, step, layer, f"final_ca_mask_output{prefix_suffix}")
                 
@@ -139,6 +142,15 @@ class AttnMaskLogger(Callback):
                     
             # Clear after logging
             delattr(model.decoder, "strided_masks_to_log")
+    
+    def sort_mask_by_phi(self, attn_mask_im, query_phi, key_phi):
+        if key_phi is not None:
+            key_sort_idx = torch.argsort(key_phi, axis=-1)
+            attn_mask_im = attn_mask_im.index_select(1, key_sort_idx[0].to(attn_mask_im.device))
+        if query_phi is not None:
+            query_sort_idx = torch.argsort(query_phi, axis=-1)
+            attn_mask_im = attn_mask_im.index_select(0, query_sort_idx.to(attn_mask_im.device))
+        return attn_mask_im
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.log_val:
