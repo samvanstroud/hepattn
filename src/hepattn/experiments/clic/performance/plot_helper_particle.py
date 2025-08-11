@@ -5,8 +5,8 @@ from .performance import Performance
 from .style_sheet import FIG_H_1ROW, FIG_W
 from .utils import custom_hist_v2
 
-FIG_DPI = 300
-
+FIG_H_1ROW = 4  # noqa: F811
+FIG_DPI = 200
 DEFAULT_QS_ALL = {"Charged": {"pt": 90, "eta": 80, "phi": 80}, "Neutral": {"pt": 90, "eta": 80, "phi": 80}}
 DEFAULT_QS_NEUTRALS = {"Neutral hadron": {"pt": 98, "eta": 75, "phi": 75}, "Photon": {"pt": 99, "eta": 90, "phi": 90}}
 
@@ -87,7 +87,7 @@ class PlotParticleHelper:
                     ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
                     ax.set_xlabel(xlabel_dict[var])
                     ax.set_ylabel("Particles")
-                    ax.set_title(f"({cl_name})", y=1.1)
+                    ax.set_title(f"({cl_name})", y=1.0)
                     ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
                     if log_y:
                         ax.set_yscale("log")

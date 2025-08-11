@@ -8,7 +8,7 @@ from .plot_helper_event import DEFAULT_PT_BINS, PlotEventHelper
 from .plot_helper_particle import DEFAULT_QS_ALL, DEFAULT_QS_NEUTRALS, PlotParticleHelper
 
 DEFAULT_FIG_KWARGS = {
-    "dpi": 300,
+    "dpi": 200,
     "bbox_inches": "tight",
 }
 
@@ -38,24 +38,24 @@ class PlotHelper(PlotEventHelper, PlotParticleHelper):
         fig_kwargs = DEFAULT_FIG_KWARGS.copy() if fig_kwargs is None else DEFAULT_FIG_KWARGS | fig_kwargs
         self.save_and_close(
             self.plot_evt_res(),
-            filename=self.plot_path / "event_response.png",
+            filename=self.plot_path / "event_response.pdf",
             fig_kwargs=fig_kwargs,
         )
         self.save_and_close(
             self.plot_jet_residuals(),
-            filename=self.plot_path / "jet_residuals.png",
+            filename=self.plot_path / "jet_residuals.pdf",
             fig_kwargs=fig_kwargs,
         )
         if pt_bins is None:
             pt_bins = DEFAULT_PT_BINS
         self.save_and_close(
             self.plot_jet_res_boxplot(bins=pt_bins),
-            filename=self.plot_path / "jet_residuals_boxplot.png",
+            filename=self.plot_path / "jet_residuals_boxplot.pdf",
             fig_kwargs=fig_kwargs,
         )
         self.save_and_close(
             self.plot_jet_response(pt_bins=pt_bins, use_energy=True),
-            filename=self.plot_path / "jet_response.png",
+            filename=self.plot_path / "jet_response.pdf",
             fig_kwargs=fig_kwargs,
         )
 
@@ -69,11 +69,11 @@ class PlotHelper(PlotEventHelper, PlotParticleHelper):
 
         self.save_and_close(
             self.plot_residuals(pt_relative=True, log_y=True, qs=qs_all),
-            filename=self.plot_path / "residuals_all.png",
+            filename=self.plot_path / "residuals_all.pdf",
             fig_kwargs=fig_kwargs,
         )
         self.save_and_close(
             self.plot_residuals_neutrals(pt_relative=True, log_y=True, qs=qs_neutrals),
-            filename=self.plot_path / "residuals_neutrals.png",
+            filename=self.plot_path / "residuals_neutrals.pdf",
             fig_kwargs=fig_kwargs,
         )

@@ -3,7 +3,7 @@
 ```shell
 cd hepattn
 apptainer shell --nv --bind /share/ pixi.sif
-pixi shell
+pixi shell -e clic
 cd hepattn/src/hepattn/experiments/clic/
 python main.py fit --config configs/base.yaml
 sbatch hepattn/src/hepattn/experiments/clic/submit_training_sam.sh
