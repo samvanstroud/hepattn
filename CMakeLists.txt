@@ -6,6 +6,11 @@ project(
   LANGUAGES CXX)
   
 SET(CMAKE_CXX_FLAGS "-Wall -O2 -Wfatal-errors -fstrict-aliasing -std=c++17 -fopenmp -flto -march=native")
+# Check if the architecture is x86_64 and append specific flags
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+    message(STATUS "x86_64 platform detected, adding SSE and 64-bit flags.")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -mfpmath=sse")
+endif()
 
 find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
 
