@@ -73,6 +73,7 @@ default = { features = ["gpu"] }
 cpu = { features = ["cpu"] }
 clic = { features = ["clic"] }
 tide = { features = ["tide"] }
+ci = { features = ["cpu", "clic", "tide"]}
 
 [tool.pixi.system-requirements]
 libc = "2.28"

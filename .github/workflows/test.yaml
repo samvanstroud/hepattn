@@ -14,7 +14,7 @@ jobs:
           pixi-version: v0.50.2
           cache: true
           locked: true
-          environments: cpu,tide
+          environments: ci
 
       # Step 3: Run tests
       - name: Test pixi
@@ -25,4 +25,4 @@ jobs:
           git lfs install
           git lfs pull
       - name: Run tests
-        run: pixi run -e tide -e cpu test-ci
+        run: pixi run -e tide -e ci test-ci
