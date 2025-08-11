@@ -12,9 +12,9 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.8.14
         with:
           pixi-version: v0.50.2
-          #cache: true
+          cache: true
           locked: true
-          environments: tide
+          environments: [cpu, tide]
 
       # Step 3: Run tests
       - name: Test pixi
@@ -25,4 +25,4 @@ jobs:
           git lfs install
           git lfs pull
       - name: Run tests
-        run: pixi run -e tide test-ci
+        run: pixi run -e tide -e cpu test-ci
