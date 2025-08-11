@@ -163,7 +163,8 @@ class MaskFormer(nn.Module):
                 attn_logits = outputs["final"][task.name][task.outputs[0]].detach()
                 self.output_attn_mask_logging(attn_logits, x)
                 
-        outputs = sorting.unsort_outputs(outputs)
+        if self.sort_before_encoder:
+            outputs = sorting.unsort_outputs(outputs)
         return outputs
 
     def output_attn_mask_logging(self, attn_logits, x, threshold=0.1):

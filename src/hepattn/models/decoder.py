@@ -56,6 +56,8 @@ class MaskFormerDecoder(nn.Module):
             If True, the positional encodings will be preserved.
         posenc_analysis : bool, optional
             If True, the positional encoding analysis will be performed.
+        sort_by_phi : bool, optional
+            If True, sort inputs by phi values for better attention performance.
         """
         super().__init__()
 
@@ -243,57 +245,6 @@ class MaskFormerDecoder(nn.Module):
             key_sort_idx = torch.argsort(torch.tensor(key_phi), axis=-1)
             key_posencs_sorted = key_posenc[key_sort_idx[0]]
             self.last_key_posenc_sorted = key_posencs_sorted
-
-    def sort_attn_mask_by_phi(self, attn_mask, key_sort_idx, query_sort_idx):
-        if len(key_sort_idx.shape) == 2:
-            key_sort_idx = key_sort_idx[0]
-        assert len(key_sort_idx.shape) == 1, "Key sort index must be 1D"
-        if len(query_sort_idx.shape) == 2:
-            query_sort_idx = query_sort_idx[0]
-        assert len(query_sort_idx.shape) == 1, "Query sort index must be 1D"
-
-        if attn_mask is not None:
-            attn_mask = attn_mask.index_select(2, key_sort_idx.to(attn_mask.device))
-            attn_mask = attn_mask.index_select(1, query_sort_idx.to(attn_mask.device))
-        return attn_mask
-
-    def sort_var_by_phi(self, var, sort_idx):
-        if len(sort_idx.shape) == 2:
-            sort_idx = sort_idx[0]
-        assert len(sort_idx.shape) == 1, "Sort index must be 1D"
-
-        if var is not None:
-            if len(var.shape) == 2:
-                var_sorted = var[0][sort_idx]
-                var_sorted = var_sorted.unsqueeze(0)  # Preserve batch dimension
-            elif len(var.shape) == 1:
-                var_sorted = var[sort_idx]
-            elif len(var.shape) == 3:
-                # For 3D tensors, sort along the middle dimension (dim=1)
-                var_sorted = var.index_select(1, sort_idx.to(var.device))
-            else:
-                raise ValueError(f"Variable {var} has invalid shape: {var.shape}")
-        else:
-            var_sorted = None
-        return var_sorted
-
-    def get_sort_indices(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        sort_indices = {}
-        sort_indices["key"] = self.get_sort_idx(x.get("key_phi"))
-        sort_indices["query"] = self.get_sort_idx(x.get("query_phi"))
-        return sort_indices
-
-    def get_sort_idx(self, phi: Tensor) -> Tensor:
-        if len(phi.shape) == 2:
-            phi = phi[0]
-        assert len(phi.shape) == 1, "Phi must be 1D"
-        return torch.argsort(phi)
-
-    def get_unsort_idx(self, sort_idx: Tensor) -> Tensor:
-        if len(sort_idx.shape) == 2:
-            sort_idx = sort_idx[0]
-        assert len(sort_idx.shape) == 1, "Sort index must be 1D"
-        return torch.argsort(sort_idx, dim=0)
 
 
 class MaskFormerDecoderLayer(nn.Module):

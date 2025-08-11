@@ -1,7 +1,6 @@
-from pathlib import Path
-
 import matplotlib.pyplot as plt
 import torch
+from pathlib import Path
 
 from hepattn.models.posenc import FourierPositionEncoder, PositionEncoder, pos_enc, pos_enc_symmetric
 from hepattn.utils.visualise_pes import (
@@ -77,10 +76,29 @@ def test_create_pos_enc_visualizations_basic():
 
     for alpha in [1, 2, 20, 100, 1000]:
         for base in [100, 50000, 100000]:
-            hit_posencoder = PositionEncoder(input_name="test_hit_input", fields=["phi"], sym_fields=["phi"], dim=dim, alpha=alpha, base=base)  
-            query_posencoder = PositionEncoder(input_name="test_query_input", fields=["phi"], sym_fields=["phi"], dim=dim, alpha=alpha, base=base)
+            hit_posencoder = PositionEncoder(
+                input_name="test_hit_input",
+                fields=["phi"],
+                sym_fields=["phi"],
+                dim=dim,
+                alpha=alpha,
+                base=base,
+            )
+            query_posencoder = PositionEncoder(
+                input_name="test_query_input",
+                fields=["phi"],
+                sym_fields=["phi"],
+                dim=dim,
+                alpha=alpha,
+                base=base,
+            )
             hit_posencs = hit_posencoder({"test_hit_input_phi": hit_phi})
             query_posencs = query_posencoder({"test_query_input_phi": query_phi})
             create_simple_pos_enc_visualization(hit_posencs, save_path=f"{out_dir}/hit_pe_alpha{alpha}_base{base}.jpeg")
             create_simple_pos_enc_visualization(query_posencs, save_path=f"{out_dir}/query_pe_alpha{alpha}_base{base}.jpeg")
-            create_similarity_matrix_visualization(hit_posencs, query_posencs, "Hit PE - Query PE Similarity",f"{out_dir}/dot_prod_alpha{alpha}_base{base}.jpeg")
+            create_similarity_matrix_visualization(
+                hit_posencs,
+                query_posencs,
+                "Hit PE - Query PE Similarity",
+                f"{out_dir}/dot_prod_alpha{alpha}_base{base}.jpeg",
+            )

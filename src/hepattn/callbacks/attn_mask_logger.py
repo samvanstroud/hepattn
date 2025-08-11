@@ -8,7 +8,7 @@ from matplotlib.colors import ListedColormap
 class AttnMaskLogger(Callback):
     def __init__(self, log_train: bool = False, log_val: bool = True, log_stats: bool = False):
         """Initialize the attention mask logger.
-        
+
         Args:
             log_train: Whether to log during training
             log_val: Whether to log during validation
@@ -89,7 +89,6 @@ class AttnMaskLogger(Callback):
 
     def _process_attention_masks(self, pl_module, is_validation=False):
         """Helper method to process and log attention masks from the model."""
-            
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
         prefix_suffix = "_val" if is_validation else ""
         prefix_base = "val" if is_validation else "train"
@@ -106,11 +105,11 @@ class AttnMaskLogger(Callback):
                 self.sort_mask_by_phi(mask, query_phi, key_phi)
                 self._log_attention_weights(pl_module, probs, step, layer, f"final_ca_weights_output{prefix_suffix}")
                 self._log_attention_mask(pl_module, mask, step, layer, f"final_ca_mask_output{prefix_suffix}")
-                
+
                 # Log stats if enabled
                 if self.log_stats:
                     self._log_attention_stats(pl_module, mask, step, layer, f"{prefix_base}_final")
-                    
+
             delattr(model, "output_attn_masks_to_log")
 
         # Log attention masks from the decoder
@@ -120,11 +119,11 @@ class AttnMaskLogger(Callback):
                 step = mask_info["step"]
                 layer = mask_info["layer"]
                 self._log_attention_mask(pl_module, mask, step, layer, f"local_ca_mask{prefix_suffix}")
-                
+
                 # Log stats if enabled
                 if self.log_stats:
                     self._log_attention_stats(pl_module, mask, step, layer, prefix_base)
-                    
+
             # Clear after logging
             delattr(model.decoder, "attn_masks_to_log")
 
@@ -135,14 +134,14 @@ class AttnMaskLogger(Callback):
                 step = mask_info["step"]
                 layer = mask_info["layer"]
                 self._log_attention_mask(pl_module, mask, step, layer, f"strided_ca_mask{prefix_suffix}")
-                
+
                 # Log stats if enabled
                 if self.log_stats:
                     self._log_attention_stats(pl_module, mask, step, layer, f"{prefix_base}_strided")
-                    
+
             # Clear after logging
             delattr(model.decoder, "strided_masks_to_log")
-    
+
     def sort_mask_by_phi(self, attn_mask_im, query_phi, key_phi):
         if key_phi is not None:
             key_sort_idx = torch.argsort(key_phi, axis=-1)
