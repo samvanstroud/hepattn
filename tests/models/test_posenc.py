@@ -1,6 +1,7 @@
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import torch
-from pathlib import Path
 
 from hepattn.models.posenc import FourierPositionEncoder, PositionEncoder, pos_enc, pos_enc_symmetric
 from hepattn.utils.visualise_pes import (

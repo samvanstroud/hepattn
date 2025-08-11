@@ -21,7 +21,7 @@ class Sorting:
         x : dict[str, Tensor]
             Dictionary containing embeddings and other data to be sorted.
 
-        Returns
+        Returns : dict[str, Tensor]
         -------
         dict[str, Tensor]
             Sort indices for key and query dimensions.
@@ -79,9 +79,9 @@ class Sorting:
         outputs : dict
             Dictionary containing model outputs that need to be unsorted.
 
-        Returns
+        Returns :
         -------
-        dict
+        dict[str, dict[str, dict[str, Tensor]]]
             Outputs with tensors unsorted back to their original order.
         """
         if not hasattr(self, "sort_indices") or self.sort_indices is None:
@@ -101,24 +101,66 @@ class Sorting:
                 if not isinstance(task_outputs, dict):
                     continue
 
-                for output_name, output_tensor in task_outputs.items():
-                    if not isinstance(output_tensor, torch.Tensor):
-                        continue
-
-                    # Determine which unsort index to use based on tensor shape
-                    # This is a simplified approach - you may need to adjust based on your specific needs
-                    if key_unsort_idx is not None and len(output_tensor.shape) >= 2:
-                        # Try to unsort along the dimension that matches key_unsort_idx length
-                        for dim, size in enumerate(output_tensor.shape):
-                            if size == len(key_unsort_idx):
-                                outputs[layer_name][task_name][output_name] = output_tensor.index_select(
-                                    dim, key_unsort_idx.to(output_tensor.device)
-                                )
-                                break
-                        else:
-                            print(f"Warning: No dimension with size {len(key_unsort_idx)} found in tensor shape {output_tensor.shape}")
+                outputs[layer_name][task_name] = self._unsort_task_outputs(
+                    task_outputs, key_unsort_idx
+                )
 
         return outputs
+
+    def _unsort_task_outputs(self, task_outputs: dict, key_unsort_idx: Tensor) -> dict:
+        """Unsort outputs for a specific task.
+
+        Parameters
+        ----------
+        task_outputs : dict
+            Dictionary containing task outputs.
+        key_unsort_idx : Tensor
+            Unsorted indices for key dimension.
+
+        Returns
+        -------
+        dict
+            Task outputs with tensors unsorted.
+        """
+        unsorted_outputs = {}
+        
+        for output_name, output_tensor in task_outputs.items():
+            if not isinstance(output_tensor, torch.Tensor):
+                unsorted_outputs[output_name] = output_tensor
+                continue
+
+            unsorted_tensor = self._unsort_tensor_by_index(output_tensor, key_unsort_idx)
+            unsorted_outputs[output_name] = unsorted_tensor
+
+        return unsorted_outputs
+
+    def _unsort_tensor_by_index(self, tensor: Tensor, key_unsort_idx: Tensor) -> Tensor:
+        """Unsort a tensor using the provided unsort indices.
+
+        Parameters
+        ----------
+        tensor : Tensor
+            Tensor to unsort.
+        key_unsort_idx : Tensor
+            Unsorted indices for key dimension.
+
+        Returns
+        -------
+        Tensor
+            Unsorted tensor.
+        """
+        if key_unsort_idx is None or len(tensor.shape) < 2:
+            return tensor
+
+        # Try to unsort along the dimension that matches key_unsort_idx length
+        for dim, size in enumerate(tensor.shape):
+            if size == len(key_unsort_idx):
+                return tensor.index_select(
+                    dim, key_unsort_idx.to(tensor.device)
+                )
+
+        print(f"Warning: No dimension with size {len(key_unsort_idx)} found in tensor shape {tensor.shape}")
+        return tensor
 
     def _sort_tensor_by_index(self, tensor: Tensor, sort_idx: Tensor, num_hits: int) -> Tensor:
         """Sort a tensor along the dimension that has the same shape as key_embed[0].
