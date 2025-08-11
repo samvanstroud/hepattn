@@ -6,6 +6,19 @@ from matplotlib.colors import ListedColormap
 
 
 class AttnMaskLogger(Callback):
+    def __init__(self, log_train: bool = False, log_val: bool = True, log_stats: bool = False):
+        """Initialize the attention mask logger.
+        
+        Args:
+            log_train: Whether to log during training
+            log_val: Whether to log during validation
+            log_stats: Whether to log attention statistics in addition to masks
+        """
+        super().__init__()
+        self.log_train = log_train
+        self.log_val = log_val
+        self.log_stats = log_stats
+
     def _log_attention_mask(self, pl_module, mask, step, layer, prefix="local_ca_mask"):
         """Helper method to create and log attention mask figures."""
         fig, ax = plt.subplots(constrained_layout=True, dpi=300)
@@ -51,63 +64,6 @@ class AttnMaskLogger(Callback):
             logger.experiment.log_figure(figure_name=f"{prefix}_step{step}_layer{layer}", figure=fig, step=step)
         plt.close(fig)
 
-    def _process_attention_masks(self, pl_module, is_validation=False):
-        """Helper method to process and log attention masks from the model."""
-        model = pl_module.model if hasattr(pl_module, "model") else pl_module
-        prefix_suffix = "_val" if is_validation else ""
-
-        # Log final attention masks from the main model
-        if hasattr(model, "output_attn_masks_to_log"):
-            for mask_info in model.output_attn_masks_to_log.values():
-                probs = mask_info["probs"]
-                mask = mask_info["mask"]
-                step = mask_info["step"]
-                layer = mask_info["layer"]
-                self._log_attention_weights(pl_module, probs, step, layer, f"final_ca_weights_output{prefix_suffix}")
-                self._log_attention_mask(pl_module, mask, step, layer, f"final_ca_mask_output{prefix_suffix}")
-            delattr(model, "output_attn_masks_to_log")
-
-        # Log attention masks from the decoder
-        if hasattr(model, "decoder") and hasattr(model.decoder, "attn_masks_to_log"):
-            for mask_info in model.decoder.attn_masks_to_log.values():
-                mask = mask_info["mask"]
-                step = mask_info["step"]
-                layer = mask_info["layer"]
-                self._log_attention_mask(pl_module, mask, step, layer, f"local_ca_mask{prefix_suffix}")
-            # Clear after logging
-            delattr(model.decoder, "attn_masks_to_log")
-
-        # Log strided attention masks from the decoder
-        if hasattr(model, "decoder") and hasattr(model.decoder, "strided_masks_to_log"):
-            for mask_info in model.decoder.strided_masks_to_log.values():
-                mask = mask_info["mask"]
-                step = mask_info["step"]
-                layer = mask_info["layer"]
-                self._log_attention_mask(pl_module, mask, step, layer, f"strided_ca_mask{prefix_suffix}")
-            # Clear after logging
-            delattr(model.decoder, "strided_masks_to_log")
-
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        self._process_attention_masks(pl_module, is_validation=True)
-
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        self._process_attention_masks(pl_module, is_validation=False)
-
-
-class AttentionStatsLogger(Callback):
-    """Callback for logging basic attention statistics."""
-
-    def __init__(self, log_train: bool = False, log_val: bool = True):
-        """Initialize the attention stats logger.
-
-        Args:
-            log_train: Whether to log stats during training
-            log_val: Whether to log stats during validation
-        """
-        super().__init__()
-        self.log_train = log_train
-        self.log_val = log_val
-
     def _log_attention_stats(self, pl_module, mask, step, layer, prefix="val"):
         """Log basic attention mask statistics."""
         try:
@@ -127,45 +83,69 @@ class AttentionStatsLogger(Callback):
                     step=step,
                 )
             else:
-                print(f"[AttentionStatsLogger] Step {step} Layer {layer} - Avg hits per query: {avg_hits_per_query}")
+                print(f"[AttnMaskLogger] Step {step} Layer {layer} - Avg hits per query: {avg_hits_per_query}")
         except (ValueError, AttributeError, TypeError) as e:
-            print(f"[AttentionStatsLogger] Error logging stats: {e}")
+            print(f"[AttnMaskLogger] Error logging stats: {e}")
 
-    def _process_attention_stats(self, pl_module, is_validation=False):
-        """Helper method to process and log attention statistics from the model."""
+    def _process_attention_masks(self, pl_module, is_validation=False):
+        """Helper method to process and log attention masks from the model."""
+            
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
+        prefix_suffix = "_val" if is_validation else ""
         prefix_base = "val" if is_validation else "train"
 
-        # Check for final attention masks from the main model
+        # Log final attention masks from the main model
         if hasattr(model, "output_attn_masks_to_log"):
             for mask_info in model.output_attn_masks_to_log.values():
-                step = mask_info["step"]
+                probs = mask_info["probs"]
                 mask = mask_info["mask"]
+                step = mask_info["step"]
                 layer = mask_info["layer"]
-                self._log_attention_stats(pl_module, mask, step, layer, f"{prefix_base}_final")
+                self._log_attention_weights(pl_module, probs, step, layer, f"final_ca_weights_output{prefix_suffix}")
+                self._log_attention_mask(pl_module, mask, step, layer, f"final_ca_mask_output{prefix_suffix}")
+                
+                # Log stats if enabled
+                if self.log_stats:
+                    self._log_attention_stats(pl_module, mask, step, layer, f"{prefix_base}_final")
+                    
+            delattr(model, "output_attn_masks_to_log")
 
-        # Check for attention masks from the decoder
+        # Log attention masks from the decoder
         if hasattr(model, "decoder") and hasattr(model.decoder, "attn_masks_to_log"):
             for mask_info in model.decoder.attn_masks_to_log.values():
-                step = mask_info["step"]
                 mask = mask_info["mask"]
+                step = mask_info["step"]
                 layer = mask_info["layer"]
-                self._log_attention_stats(pl_module, mask, step, layer, prefix_base)
+                self._log_attention_mask(pl_module, mask, step, layer, f"local_ca_mask{prefix_suffix}")
+                
+                # Log stats if enabled
+                if self.log_stats:
+                    self._log_attention_stats(pl_module, mask, step, layer, prefix_base)
+                    
+            # Clear after logging
+            delattr(model.decoder, "attn_masks_to_log")
 
-        # Check for strided attention masks from the decoder
+        # Log strided attention masks from the decoder
         if hasattr(model, "decoder") and hasattr(model.decoder, "strided_masks_to_log"):
             for mask_info in model.decoder.strided_masks_to_log.values():
-                step = mask_info["step"]
                 mask = mask_info["mask"]
+                step = mask_info["step"]
                 layer = mask_info["layer"]
-                self._log_attention_stats(pl_module, mask, step, layer, f"{prefix_base}_strided")
+                self._log_attention_mask(pl_module, mask, step, layer, f"strided_ca_mask{prefix_suffix}")
+                
+                # Log stats if enabled
+                if self.log_stats:
+                    self._log_attention_stats(pl_module, mask, step, layer, f"{prefix_base}_strided")
+                    
+            # Clear after logging
+            delattr(model.decoder, "strided_masks_to_log")
+
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+        if not self.log_val:
+            return
+        self._process_attention_masks(pl_module, is_validation=True)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if not self.log_train:
             return
-        self._process_attention_stats(pl_module, is_validation=False)
-
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if not self.log_val:
-            return
-        self._process_attention_stats(pl_module, is_validation=True)
+        self._process_attention_masks(pl_module, is_validation=False)
