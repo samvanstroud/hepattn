@@ -144,11 +144,12 @@ class Sorting:
         key_unsort_idx : Tensor
             Unsorted indices for key dimension.
 
-        Returns:
+        Returns
         -------
         Tensor
             Unsorted tensor.
-        Raises:
+
+        Raises
         ------
         ValueError
             If tensor has unsupported shape for unsorting.
@@ -178,12 +179,12 @@ class Sorting:
         num_hits : int
             Number of hits.
 
-        Returns:
+        Returns
         -------
         Tensor
             Sorted tensor.
 
-        Raises:
+        Raises
         ------
         ValueError
             If tensor has unsupported shape for sorting.
@@ -219,12 +220,12 @@ class Sorting:
         x : dict[str, Tensor]
             Dictionary containing the key_embed tensor.
 
-        Returns:
+        Returns
         -------
         int
             Number of hits from key_embed tensor.
 
-        Raises:
+        Raises
         ------
         ValueError
             If key_embed is not found in x.
