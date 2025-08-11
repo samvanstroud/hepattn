@@ -1084,16 +1084,11 @@ class IncidenceBasedRegressionTask(RegressionTask):
         mode: str = "offset",
         cost: str = "old",
     ):
-        """Regression task that uses incidence information to predict regression targets.
+        """Construct proxy particles from predicted incidence matrix, and then correct the proxies using a regression.
 
-        Parameters
-        ----------
-        targets : list
-            List of target names
-        add_momentum : bool
-            Whether to add scalar momentum to the predictions, computed from the px, py, pz predictions
-        loss : RegressionLossType, optional
-            Type of loss function to use, by default "smooth_l1".
+        Raises:
+            ValueError: If the mode is not 'offset' or 'scale'.
+            ValueError: If the cost mode is not 'old' or 'new'.
         """
         super().__init__(
             name=name,
