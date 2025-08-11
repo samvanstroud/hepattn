@@ -5,7 +5,7 @@ from .performance import Performance
 from .style_sheet import FIG_H_1ROW, FIG_W
 from .utils import custom_hist_v2
 
-FIG_H_1ROW = 4
+FIG_H_1ROW = 4  # noqa: F811
 FIG_DPI = 200
 DEFAULT_QS_ALL = {"Charged": {"pt": 90, "eta": 80, "phi": 80}, "Neutral": {"pt": 90, "eta": 80, "phi": 80}}
 DEFAULT_QS_NEUTRALS = {"Neutral hadron": {"pt": 98, "eta": 75, "phi": 75}, "Photon": {"pt": 99, "eta": 90, "phi": 90}}
