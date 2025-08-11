@@ -24,4 +24,4 @@ jobs:
           git lfs install
           git lfs pull
       - name: Run tests
-        run: pixi run test-ci
+        run: pixi run -e tide test-ci
