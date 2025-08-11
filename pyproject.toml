@@ -37,7 +37,6 @@ dependencies = [
 ]
 
 [dependency-groups]
-gpu = []
 clic = ["pathos", "vector", "fastjet", "atlas-ftag-tools", "energyflow"] # has problems on isambard
 tide = ["numba>=0.61.2"] # has problems on isambard
 fa2 = ["flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiTRUE-cp312-cp312-linux_x86_64.whl",]
@@ -69,6 +68,7 @@ torch = { version = "==2.7.1", index = "https://download.pytorch.org/whl/cpu" }
 
 [tool.pixi.environments]
 default = { features = ["gpu", "fa2"] }
+isambard = { features = ["gpu"] }
 cpu = { features = ["cpu"] }
 clic = { features = ["clic"] }
 tide = { features = ["tide"] }

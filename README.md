@@ -54,6 +54,10 @@ You can then install the project with locked dependencies:
 pixi install --locked
 ```
 
+**📝 Note**: The `default` environment targets GPU machines and installs FA2.
+See the [pyproject.toml](pyproject.toml) or [setup/isambard.md](setup/isambard.md)
+for more information.
+
 ## 🌟 Activating the Environment
 
 To run the installed environment, use:

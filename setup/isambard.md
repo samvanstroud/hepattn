@@ -29,7 +29,7 @@ git checkout isambard
 Install dependencies using `pixi`:
 
 ```bash
-pixi install
+pixi install -e isambard
 ```
 
 For some reason, when (re)activing the environment, you may see an error.
@@ -45,9 +45,8 @@ rm -r /home/u5ar/svanstroud.u5ar/.cache/rattler/cache/uv-cache/archive-v0/
 - [FlashAttention 3 Beta Release](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#flashattention-3-beta-release)
 - **Note:** Building FA3 can take up to 1 hour and must be done on a compute node.
 
-### Install FA3
-
 ```bash
+pixi shell -e isambard
 cd ..
 git clone https://github.com/Dao-AILab/flash-attention.git
 cd flash-attention/hopper/
