@@ -42,12 +42,14 @@ gpu = []
 clic = ["pathos", "vector", "fastjet", "atlas-ftag-tools", "energyflow"] # has problems on isambard
 tide = ["numba>=0.61.2"] # has problems on isambard
 
+
 [build-system]
 requires = ["scikit-build-core>=0.3.3", "pybind11"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
 wheel.packages = ["src/hepattn", "src/lap1015/src/lap1015"]
+
 
 [tool.pixi.project]
 channels = ["conda-forge", "nvidia", "nodefaults"]
@@ -80,14 +82,15 @@ cuda = "12.3"
 gxx = "*"
 git = "*"
 git-lfs = ">=3.6.1,<4"
-ninja = "*"
 cuda = "12.3.*"
+ninja = "*"
 
 [tool.pixi.tasks.test]
 cmd = "pytest -xsv"
 
 [tool.pixi.tasks.test-ci]
 cmd = "pytest -xsv -m 'not gpu and not requiresdata'"
+
 
 [tool.ruff]
 src = ["src"]
@@ -104,6 +107,7 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = ["E501"]
+
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:.*distutils Version classes are deprecated. Use packaging.version instead.*:DeprecationWarning"]
