@@ -32,11 +32,11 @@ class PlotEventHelper:
         figs = []
         for v_i, var in enumerate(evt_vars):
             if separate_figures:
-                fig, ax = plt.subplots(figsize=(FIG_W / 3, FIG_H_1ROW), dpi=FIG_DPI)
+                fig, ax = plt.subplots(figsize=(FIG_W / 3, FIG_H_1ROW), dpi=FIG_DPI, constrained_layout=True)
             else:
                 if v_i == 0:
-                    fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW * 2), dpi=FIG_DPI)
-                    gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+                    fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW * 2), dpi=FIG_DPI, constrained_layout=True)
+                    gs = fig.add_gridspec(2, 2, hspace=0.0, wspace=0.0)
                 ax = fig.add_subplot(gs[v_i])
             comb = np.hstack([self.perf.data[name][var + "_res"] for name in self.perf.network_names])
             match var:
@@ -89,11 +89,11 @@ class PlotEventHelper:
         figs = []
         for v_i, var in enumerate(jet_vars):
             if separate_figures:
-                fig, ax = plt.subplots(figsize=(FIG_W / 3, FIG_H_1ROW), dpi=FIG_DPI)
+                fig, ax = plt.subplots(figsize=(FIG_W / 3, FIG_H_1ROW), dpi=FIG_DPI, constrained_layout=True)
             else:
                 if v_i == 0:
-                    fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW * 2), dpi=FIG_DPI)
-                    gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+                    fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW * 2), dpi=FIG_DPI, constrained_layout=True)
+                    gs = fig.add_gridspec(2, 2, hspace=0.0, wspace=0.0)
                 ax = fig.add_subplot(gs[v_i])
 
             comb = np.hstack([self.perf.data[name]["jet_residuals"][var] for name in self.perf.network_names])
@@ -142,7 +142,7 @@ class PlotEventHelper:
         return figs if separate_figures else fig
 
     def plot_jet_res_boxplot(self, var="pt", bins=None):
-        fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW), dpi=FIG_DPI)
+        fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW), dpi=FIG_DPI, constrained_layout=True)
         ax = fig.add_subplot(111)
         if bins is None:
             bins = np.arange(0, 1000, 50)  # default
@@ -223,13 +223,13 @@ class PlotEventHelper:
 
         figs = []
         if separate_figures:
-            fig1, ax1 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI)
-            fig2, ax2 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI)
-            fig3, ax3 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI)
+            fig1, ax1 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI, constrained_layout=True)
+            fig2, ax2 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI, constrained_layout=True)
+            fig3, ax3 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI, constrained_layout=True)
 
         else:
-            fig = plt.figure(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2 * 3), dpi=FIG_DPI)
-            gs = fig.add_gridspec(3, 1, hspace=0.3)
+            fig = plt.figure(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2 * 3), dpi=FIG_DPI, constrained_layout=True)
+            gs = fig.add_gridspec(3, 1, hspace=0.0)
             ax1 = fig.add_subplot(gs[0])
             ax2 = fig.add_subplot(gs[1])
             ax3 = fig.add_subplot(gs[2])
