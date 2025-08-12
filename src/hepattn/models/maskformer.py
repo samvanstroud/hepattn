@@ -71,7 +71,7 @@ class MaskFormer(nn.Module):
         self.log_step = 0
         self.sort_before_encoder = sort_before_encoder
 
-    def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
         self.log_step += 1
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
@@ -118,9 +118,9 @@ class MaskFormer(nn.Module):
             )
 
         # Dedicated sorting step before encoder
-        sorting = Sorter(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
+        self.sorting = Sorter(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
         if self.sort_before_encoder and self.input_sort_field is not None:
-            x = sorting.sort_inputs(x)
+            x = self.sorting.sort_inputs(x)
 
         # Pass merged input hits through the encoder
         if self.encoder is not None:
@@ -163,10 +163,7 @@ class MaskFormer(nn.Module):
             if isinstance(task, ObjectHitMaskTask) and self.log_task_attn_mask:
                 attn_logits = outputs["final"][task.name][task.outputs[0]].detach()
                 self.output_attn_mask_logging(attn_logits, x)
-
-        if self.sort_before_encoder:   
-            outputs = sorting.unsort_outputs(outputs)
-        return outputs
+        return outputs, self.sorting.sort_indices
 
     def output_attn_mask_logging(self, attn_logits, x, threshold=0.1):
         if ((attn_logits is not None) and (self.log_step % N_STEPS_LOG_ATTN_MASK == 0)) or (not self.training):
@@ -206,7 +203,7 @@ class MaskFormer(nn.Module):
 
         return preds
 
-    def loss(self, outputs: dict, targets: dict) -> dict:
+    def loss(self, outputs: dict, targets: dict, sort_indices: dict[str, Tensor]) -> tuple[dict, dict]:
         """Computes the loss between the forward pass of the model and the data / targets.
         It first computes the cost / loss between each of the predicted and true tracks in each ROI
         and then uses the Hungarian algorihtm to perform an optimal bipartite matching. The model
@@ -219,9 +216,12 @@ class MaskFormer(nn.Module):
             The outputs produces the forward pass of the model.
         targets:
             The data containing the targets.
+        sort_indices:
+            The indices used to sort the inputs.
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
+        targets = self.sorting.sort_targets(targets, sort_indices)
         batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
             layer_costs = None
@@ -281,4 +281,4 @@ class MaskFormer(nn.Module):
                     continue
                 losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
-        return losses
+        return losses, targets

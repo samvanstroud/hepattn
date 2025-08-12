@@ -29,7 +29,7 @@ class Sorter:
         self.sort_indices = {}
 
         # Get key_embed shape for reference in sorting
-        num_hits = self._get_num_hits(x)
+        self.num_hits = self._get_num_hits(x)
 
         # Sort key embeddings and related data by the sort field
         if f"key_{self.input_sort_field}" not in x:
@@ -41,131 +41,46 @@ class Sorter:
         if len(key_sort_idx.shape) == 2:
             key_sort_idx = key_sort_idx[0]
         assert len(key_sort_idx.shape) == 1, "Sort index must be 1D"
-        assert key_sort_idx.shape[0] == num_hits, f"Key sort index shape {key_sort_idx.shape} does not match num_hits {num_hits}"
+        assert key_sort_idx.shape[0] == self.num_hits, f"Key sort index shape {key_sort_idx.shape} does not match num_hits {self.num_hits}"
         self.sort_indices["key"] = key_sort_idx
 
         # TODO: sort key_phi (key_{input_sort_field})
-        x[f"key_{self.input_sort_field}"] = self._sort_tensor_by_index(x[f"key_{self.input_sort_field}"], key_sort_idx, num_hits)
+        x[f"key_{self.input_sort_field}"] = self._sort_tensor_by_index(x[f"key_{self.input_sort_field}"], key_sort_idx, self.num_hits)
 
         for input_name in [input_net.input_name for input_net in self.input_nets]:
             if input_name + "_embed" in x:
-                x[input_name + "_embed"] = self._sort_tensor_by_index(x[input_name + "_embed"], key_sort_idx, num_hits)
+                x[input_name + "_embed"] = self._sort_tensor_by_index(x[input_name + "_embed"], key_sort_idx, self.num_hits)
             if input_name + "_valid" in x:
-                x[input_name + "_valid"] = self._sort_tensor_by_index(x[input_name + "_valid"], key_sort_idx, num_hits)
+                x[input_name + "_valid"] = self._sort_tensor_by_index(x[input_name + "_valid"], key_sort_idx, self.num_hits)
             if f"key_is_{input_name}" in x:
-                x[f"key_is_{input_name}"] = self._sort_tensor_by_index(x[f"key_is_{input_name}"], key_sort_idx, num_hits)
+                x[f"key_is_{input_name}"] = self._sort_tensor_by_index(x[f"key_is_{input_name}"], key_sort_idx, self.num_hits)
 
         # Sort key embeddings
-        x["key_embed"] = self._sort_tensor_by_index(x["key_embed"], key_sort_idx, num_hits)
+        x["key_embed"] = self._sort_tensor_by_index(x["key_embed"], key_sort_idx, self.num_hits)
 
         # Sort key validity mask
         if x["key_valid"] is not None:
-            x["key_valid"] = self._sort_tensor_by_index(x["key_valid"], key_sort_idx, num_hits)
+            x["key_valid"] = self._sort_tensor_by_index(x["key_valid"], key_sort_idx, self.num_hits)
 
         # Sort raw variables if they have the right shape
         for raw_var in self.raw_variables:
             if raw_var in x and x[raw_var].shape[-1] == x["key_embed"].shape[-2]:
-                x[raw_var] = self._sort_tensor_by_index(x[raw_var], key_sort_idx, num_hits)
+                x[raw_var] = self._sort_tensor_by_index(x[raw_var], key_sort_idx, self.num_hits)
             else:
                 print(f"Warning: Raw variable {raw_var} has invalid shape: {x[raw_var].shape}")
 
         return x
-
-    def unsort_outputs(self, outputs: dict) -> dict:
-        """Unsort outputs back to their original order.
-
-        Parameters
-        ----------
-        outputs : dict
-            Dictionary containing model outputs that need to be unsorted.
-
-        Returns:
-        -------
-        dict[str, dict[str, dict[str, Tensor]]]
-            Outputs with tensors unsorted back to their original order.
+    
+    def sort_targets(self, targets: dict, sort_indices: dict[str, Tensor]) -> dict:
+        """Sort targets to align with sorted outputs.
         """
-        if not hasattr(self, "sort_indices") or self.sort_indices is None:
-            print("Warning: No sort indices found")
-            return outputs
 
-        # Get unsort indices
-        key_unsort_idx = torch.argsort(self.sort_indices.get("key"), dim=0)
+        # TODO: check that this sorts all the targets correctly
+        for key, value in targets.items():  
+            targets[key] = self._sort_tensor_by_index(value, sort_indices["key"], self.num_hits)
 
-        # Unsort outputs for each layer and task
-        for layer_name, layer_outputs in outputs.items():
-            if not isinstance(layer_outputs, dict):
-                print(f"Warning: Layer {layer_name} is not a dictionary")
-                continue
+        return targets
 
-            for task_name, task_outputs in layer_outputs.items():
-                if not isinstance(task_outputs, dict):
-                    continue
-
-                outputs[layer_name][task_name] = self._unsort_task_outputs(
-                    task_outputs, key_unsort_idx
-                )
-
-        return outputs
-
-    def _unsort_task_outputs(self, task_outputs: dict, key_unsort_idx: Tensor) -> dict:
-        """Unsort outputs for a specific task.
-
-        Parameters
-        ----------
-        task_outputs : dict
-            Dictionary containing task outputs.
-        key_unsort_idx : Tensor
-            Unsorted indices for key dimension.
-
-        Returns:
-        -------
-        dict
-            Task outputs with tensors unsorted.
-        """
-        unsorted_outputs = {}
-
-        for output_name, output_tensor in task_outputs.items():
-            if not isinstance(output_tensor, torch.Tensor):
-                unsorted_outputs[output_name] = output_tensor
-                continue
-
-            unsorted_tensor = self._unsort_tensor_by_index(output_tensor, key_unsort_idx)
-            unsorted_outputs[output_name] = unsorted_tensor
-
-        return unsorted_outputs
-
-    def _unsort_tensor_by_index(self, tensor: Tensor, key_unsort_idx: Tensor) -> Tensor:
-        """Unsort a tensor using the provided unsort indices.
-
-        Parameters
-        ----------
-        tensor : Tensor
-            Tensor to unsort.
-        key_unsort_idx : Tensor
-            Unsorted indices for key dimension.
-
-        Returns
-        -------
-        Tensor
-            Unsorted tensor.
-
-        Raises
-        ------
-        ValueError
-            If tensor has unsupported shape for unsorting.
-        """
-        if key_unsort_idx is None or len(tensor.shape) < 2:
-            return tensor
-
-        # Try to unsort along the dimension that matches key_unsort_idx length
-        for dim, size in enumerate(tensor.shape):
-            if size == len(key_unsort_idx):
-                return tensor.index_select(
-                    dim, key_unsort_idx.to(tensor.device)
-                )
-
-        print(f"Warning: No dimension with size {len(key_unsort_idx)} found in tensor shape {tensor.shape}")
-        return tensor
 
     def _sort_tensor_by_index(self, tensor: Tensor, sort_idx: Tensor, num_hits: int) -> Tensor:
         """Sort a tensor along the dimension that has the same shape as key_embed[0].
