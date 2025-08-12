@@ -8,7 +8,7 @@ class Sorter:
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
         input_nets: nn.ModuleList | None = None,
-    ):
+    ) -> None:
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
         self.input_nets = input_nets or nn.ModuleList()
@@ -91,8 +91,7 @@ class Sorter:
         num_hits : int
             Number of hits.
 
-        Returns
-        -------
+        Returns:
         Tensor
             Sorted tensor.
         """
@@ -118,12 +117,10 @@ class Sorter:
             Dictionary containing the key_embed tensor.
 
         Returns:
-        -------
         int
             Number of hits from key_embed tensor.
 
-        Raises
-        ------
+        Raises:
         ValueError
             If key_embed is not found in x.
         """
