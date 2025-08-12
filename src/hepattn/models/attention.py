@@ -1,56 +1,45 @@
 import torch
 import torch.nn.functional as F
-from flash_attn import flash_attn_func, flash_attn_varlen_func
-from flash_attn.bert_padding import pad_input, unpad_input
+
+# resolve flash attention import
+try:
+    # FA3 (from source)
+    from flash_attn_interface import flash_attn_func, flash_attn_varlen_func
+except ImportError:
+    try:
+        # FA2 (from wheel)
+        from flash_attn import flash_attn_func, flash_attn_varlen_func
+    except ImportError:
+        flash_attn_func = None
+        flash_attn_varlen_func = None
+
 from torch import BoolTensor, Size, Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention
 from torch.nn.functional import scaled_dot_product_attention
 
 from hepattn.models.norm import LayerNorm
+from hepattn.utils.bert_padding import pad_input, unpad_input
 
-ATTN_TYPES = {
-    "torch": scaled_dot_product_attention,
-    "flex": flex_attention,
-    "flash": flash_attn_func,
-    "flash-varlen": flash_attn_varlen_func,
-}
+ATTN_TYPES = {"torch": scaled_dot_product_attention, "flex": flex_attention, "flash": flash_attn_func, "flash-varlen": flash_attn_varlen_func}
 
 # Which attentiom types support varlen / kv padding
-VARLEN_ATTN_TYPES = [
-    "torch",
-    "flash-varlen",
-]
+VARLEN_ATTN_TYPES = ["torch", "flash-varlen"]
 
 # Which attention types support attention masking
-ATTN_MASK_ATTN_TYPES = [
-    "torch",
-]
+ATTN_MASK_ATTN_TYPES = ["torch"]
 
 # Which attention types support attention biasing
-ATTN_BIAS_ATTN_TYPES = [
-    "torch",
-]
+ATTN_BIAS_ATTN_TYPES = ["torch"]
 
 # Which attention types support windowed attention
-WINDOW_ATTN_TYPES = [
-    "flash",
-    "flash-varlen",
-]
+WINDOW_ATTN_TYPES = ["flash", "flash-varlen"]
 
 # For now basically just defines which attention types expect (B, S, H, Dh) instead of (B, H, S, Dh)
-FLASH_ATTN_TYPES = [
-    "flash",
-    "flash-varlen",
-]
+FLASH_ATTN_TYPES = ["flash", "flash-varlen"]
 
 
 def merge_masks(
-    q_mask: BoolTensor | None,
-    kv_mask: BoolTensor | None,
-    attn_mask: BoolTensor | None,
-    q_shape: Size,
-    k_shape: Size,
-    device: torch.device,
+    q_mask: BoolTensor | None, kv_mask: BoolTensor | None, attn_mask: BoolTensor | None, q_shape: Size, k_shape: Size, device: torch.device
 ) -> BoolTensor:
     """Create a full attention mask which incoporates the padding information.
     Modified from https://gitlab.cern.ch/atlas-flavor-tagging-tools/algorithms/salt/-/blob/main/salt/models/attention.py?ref_type=heads
@@ -87,12 +76,7 @@ def repad_from_flash_varlen(x: Tensor, batch_size: int, seq_len: int, indices: T
     return pad_input(x.squeeze(0), indices, batch_size, seq_len)
 
 
-def projection_packed(
-    q: Tensor,
-    kv: Tensor | None,
-    weight: Tensor,
-    bias: Tensor | None = None,
-) -> tuple[Tensor, Tensor, Tensor]:
+def projection_packed(q: Tensor, kv: Tensor | None, weight: Tensor, bias: Tensor | None = None) -> tuple[Tensor, Tensor, Tensor]:
     """Efficient input projection for MHA when using a single linear layer.
 
     Essentially the same as torch.nn.functional._in_projection_packed.
@@ -250,14 +234,7 @@ class Attention(nn.Module):
 
         return q, k, v
 
-    def _flash_varlen_attention(
-        self,
-        q: Tensor,
-        k: Tensor,
-        v: Tensor,
-        cu_seqlens: Tensor,
-        max_seqlen: int,
-    ) -> Tensor:
+    def _flash_varlen_attention(self, q: Tensor, k: Tensor, v: Tensor, cu_seqlens: Tensor, max_seqlen: int) -> Tensor:
         # Assume unpadding has been handled by the caller, so inputs are (1, total_valid_tokens, dim)
         # Flatten for flash attention which expects (total_valid_tokens, num_heads, head_dim)
         q_flat, k_flat, v_flat = q.squeeze(0), k.squeeze(0), v.squeeze(0)

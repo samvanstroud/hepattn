@@ -1,19 +1,22 @@
-name: Build
+name: Test
 on: [push, pull_request]
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       # Step 1: Check out the repository
       - name: Checkout repository
         uses: actions/checkout@v4
+
       # Step 2: Set up Pixi
       - name: Setup Pixi
-        uses: prefix-dev/setup-pixi@v0.8.3
+        uses: prefix-dev/setup-pixi@v0.8.14
         with:
-          pixi-version: v0.48.1
+          pixi-version: v0.50.2
           cache: true
           locked: true
+          environments: ci
+
       # Step 3: Run tests
       - name: Test pixi
         run: |
@@ -23,4 +26,4 @@ jobs:
           git lfs install
           git lfs pull
       - name: Run tests
-        run: pixi run test-ci
+        run: pixi run -e ci test-ci

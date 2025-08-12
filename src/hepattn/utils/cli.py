@@ -48,11 +48,7 @@ def get_best_epoch(config_path: Path) -> Path:
 
 class CLI(LightningCLI):
     def add_arguments_to_parser(self, parser) -> None:
-        parser.add_argument(
-            "--name",
-            default="hepattn",
-            help="Name for this training run.",
-        )
+        parser.add_argument("--name", default="hepattn", help="Name for this training run.")
 
         parser.add_argument(
             "--matmul_precision",
@@ -62,9 +58,8 @@ class CLI(LightningCLI):
             help="Precision setting for float32 matrix multiplications.",
         )
 
-        parser.link_arguments("name", "trainer.logger.init_args.experiment_name")
         parser.link_arguments("name", "model.name")
-        parser.link_arguments("trainer.default_root_dir", "trainer.logger.init_args.save_dir")
+        parser.link_arguments("name", "trainer.logger.init_args.name")
 
     def before_instantiate_classes(self) -> None:
         sc = self.config[self.subcommand]
@@ -88,7 +83,7 @@ class CLI(LightningCLI):
             log_dir_timestamp = str(Path(log_dir / dirname).resolve())
             sc["trainer.default_root_dir"] = log_dir_timestamp
             if sc[log]:
-                sc[f"{log}.init_args.save_dir"] = log_dir_timestamp
+                sc[f"{log}.init_args.offline_directory"] = log_dir_timestamp
 
         if self.subcommand == "test":
             # Modify callbacks when testing

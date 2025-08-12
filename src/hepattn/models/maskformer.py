@@ -1,6 +1,7 @@
+from typing import Any
+
 import torch
 from torch import Tensor, nn
-from typing import Dict, Any
 
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectHitMaskTask
@@ -192,7 +193,7 @@ class MaskFormer(nn.Module):
         outputs:
             The outputs produces the forward pass of the model.
         """
-        preds: Dict[str, Dict[str, Any]] = {}
+        preds: dict[str, dict[str, Any]] = {}
 
         # Compute predictions for each task in each block
         for layer_name, layer_outputs in outputs.items():

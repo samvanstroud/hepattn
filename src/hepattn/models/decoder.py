@@ -33,29 +33,19 @@ class MaskFormerDecoder(nn.Module):
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
-        Parameters
-        ----------
-        num_queries : int
-            The number of object-level queries.
-        decoder_layer_config : dict
-            Configuration dictionary used to initialize each MaskFormerDecoderLayer.
-        num_decoder_layers : int
-            The number of decoder layers to stack.
-        mask_attention : bool, optional
-            If True, attention masks will be used to control which input objects are attended to.
-        use_query_masks : bool, optional
-            If True, predicted query masks will be used to control which queries are valid.
-            May be useful when providing initial queries as inputs.
-        log_attn_mask : bool, optional
-            If True, log attention masks for debugging.
-        key_posenc : nn.Module | None, optional
-            The positional encoding module for the key embeddings.
-        query_posenc : nn.Module | None, optional
-            The positional encoding module for the query embeddings.
-        preserve_posenc : bool, optional
-            If True, the positional encodings will be preserved.
-        posenc_analysis : bool, optional
-            If True, the positional encoding analysis will be performed.
+        Args:
+            num_queries: The number of object-level queries.
+            decoder_layer_config: Configuration dictionary used to initialize each MaskFormerDecoderLayer.
+            num_decoder_layers: The number of decoder layers to stack.
+            mask_attention: If True, attention masks will be used to control which input objects are attended to.
+            use_query_masks: If True, predicted query masks will be used to control which queries are valid.
+            log_attn_mask: If True, log attention masks for debugging.
+            key_posenc: Optional module for key positional encoding.
+            query_posenc: Optional module for query positional encoding.
+            preserve_posenc: If True, preserves positional encoding in embeddings.
+            posenc_analysis: If True, enables positional encoding analysis logging.
+            sort_by_phi: If True, sorts inputs by phi values for better attention performance.
+            sort_before_encoder: If True, sorts inputs before the encoder.
         """
         super().__init__()
 
@@ -79,17 +69,12 @@ class MaskFormerDecoder(nn.Module):
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
 
-        Parameters
-        ----------
-        x : dict[str, Tensor]
-            Dictionary containing embeddings and masks.
-        input_names : list[str]
-            List of input names for constructing attention masks.
+        Args:
+            x: Dictionary containing embeddings and masks.
+            input_names: List of input names for constructing attention masks.
 
         Returns:
-        -------
-        dict[str, dict]
-            Outputs from each decoder layer and final outputs.
+            Tuple containing updated embeddings and outputs from each decoder layer and final outputs.
         """
         batch_size = x["query_embed"].shape[0]
         num_constituents = x["key_embed"].shape[-2]
@@ -244,57 +229,6 @@ class MaskFormerDecoder(nn.Module):
             key_posencs_sorted = key_posenc[key_sort_idx[0]]
             self.last_key_posenc_sorted = key_posencs_sorted
 
-    def sort_attn_mask_by_phi(self, attn_mask, key_sort_idx, query_sort_idx):
-        if len(key_sort_idx.shape) == 2:
-            key_sort_idx = key_sort_idx[0]
-        assert len(key_sort_idx.shape) == 1, "Key sort index must be 1D"
-        if len(query_sort_idx.shape) == 2:
-            query_sort_idx = query_sort_idx[0]
-        assert len(query_sort_idx.shape) == 1, "Query sort index must be 1D"
-
-        if attn_mask is not None:
-            attn_mask = attn_mask.index_select(2, key_sort_idx.to(attn_mask.device))
-            attn_mask = attn_mask.index_select(1, query_sort_idx.to(attn_mask.device))
-        return attn_mask
-
-    def sort_var_by_phi(self, var, sort_idx):
-        if len(sort_idx.shape) == 2:
-            sort_idx = sort_idx[0]
-        assert len(sort_idx.shape) == 1, "Sort index must be 1D"
-
-        if var is not None:
-            if len(var.shape) == 2:
-                var_sorted = var[0][sort_idx]
-                var_sorted = var_sorted.unsqueeze(0)  # Preserve batch dimension
-            elif len(var.shape) == 1:
-                var_sorted = var[sort_idx]
-            elif len(var.shape) == 3:
-                # For 3D tensors, sort along the middle dimension (dim=1)
-                var_sorted = var.index_select(1, sort_idx.to(var.device))
-            else:
-                raise ValueError(f"Variable {var} has invalid shape: {var.shape}")
-        else:
-            var_sorted = None
-        return var_sorted
-
-    def get_sort_indices(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        sort_indices = {}
-        sort_indices["key"] = self.get_sort_idx(x.get("key_phi"))
-        sort_indices["query"] = self.get_sort_idx(x.get("query_phi"))
-        return sort_indices
-
-    def get_sort_idx(self, phi: Tensor) -> Tensor:
-        if len(phi.shape) == 2:
-            phi = phi[0]
-        assert len(phi.shape) == 1, "Phi must be 1D"
-        return torch.argsort(phi)
-
-    def get_unsort_idx(self, sort_idx: Tensor) -> Tensor:
-        if len(sort_idx.shape) == 2:
-            sort_idx = sort_idx[0]
-        assert len(sort_idx.shape) == 1, "Sort index must be 1D"
-        return torch.argsort(sort_idx, dim=0)
-
 
 class MaskFormerDecoderLayer(nn.Module):
     def __init__(
@@ -308,6 +242,18 @@ class MaskFormerDecoderLayer(nn.Module):
         bidirectional_ca: bool = True,
         hybrid_norm: bool = False,
     ) -> None:
+        """Initialize a MaskFormer decoder layer.
+
+        Args:
+            dim: Embedding dimension.
+            norm: Normalization type.
+            depth: Layer depth index.
+            dense_kwargs: Optional arguments for Dense layers.
+            attn_kwargs: Optional arguments for Attention layers.
+            mask_attention: If True, enables mask attention.
+            bidirectional_ca: If True, enables bidirectional cross-attention.
+            hybrid_norm: If True, enables hybrid normalization.
+        """
         super().__init__()
 
         self.mask_attention = mask_attention
@@ -333,6 +279,18 @@ class MaskFormerDecoderLayer(nn.Module):
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(self, q: Tensor, kv: Tensor, attn_mask: Tensor | None = None, q_mask: Tensor | None = None, kv_mask: Tensor | None = None) -> Tensor:
+        """Forward pass for the decoder layer.
+
+        Args:
+            q: Query embeddings.
+            kv: Key/value embeddings.
+            attn_mask: Optional attention mask.
+            q_mask: Optional query mask.
+            kv_mask: Optional key/value mask.
+
+        Returns:
+            Tuple of updated query and key/value embeddings.
+        """
         if self.mask_attention:
             assert attn_mask is not None, "attn_mask must be provided for mask attention"
             attn_mask = attn_mask.detach()
@@ -360,7 +318,9 @@ class MaskFormerDecoderLayer(nn.Module):
 
     def set_backend(self, attn_type: str) -> None:
         """Set the backend for the attention layers.
-        This is useful for switching between different attention implementations.
+
+        Args:
+            attn_type: Attention implementation type to use.
         """
         self.q_ca.fn.set_backend(attn_type)
         self.q_sa.fn.set_backend(attn_type)
