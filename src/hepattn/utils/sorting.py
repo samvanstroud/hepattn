@@ -70,17 +70,14 @@ class Sorter:
                 print(f"Warning: Raw variable {raw_var} has invalid shape: {x[raw_var].shape}")
 
         return x
-    
-    def sort_targets(self, targets: dict, sort_indices: dict[str, Tensor]) -> dict:
-        """Sort targets to align with sorted outputs.
-        """
 
+    def sort_targets(self, targets: dict, sort_indices: dict[str, Tensor]) -> dict:
+        """Sort targets to align with sorted outputs."""
         # TODO: check that this sorts all the targets correctly
-        for key, value in targets.items():  
+        for key, value in targets.items():
             targets[key] = self._sort_tensor_by_index(value, sort_indices["key"], self.num_hits)
 
         return targets
-
 
     def _sort_tensor_by_index(self, tensor: Tensor, sort_idx: Tensor, num_hits: int) -> Tensor:
         """Sort a tensor along the dimension that has the same shape as key_embed[0].
@@ -115,8 +112,7 @@ class Sorter:
 
         if sort_dim is not None:
             return tensor.index_select(sort_dim, sort_idx.to(tensor.device))
-        else:
-            return tensor
+        return tensor
 
     def _get_num_hits(self, x: dict[str, Tensor]) -> int:
         """Get the shape of key_embed tensor for reference in sorting.

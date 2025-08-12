@@ -10,8 +10,8 @@ from hepattn.models.posenc import (
     pos_enc_symmetric,
 )
 from hepattn.utils.visualise_pes import (
-    create_simple_pos_enc_visualization,
     create_similarity_matrix_visualization,
+    create_simple_pos_enc_visualization,
 )
 
 
