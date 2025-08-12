@@ -95,11 +95,6 @@ class Sorter:
         -------
         Tensor
             Sorted tensor.
-
-        Raises
-        ------
-        ValueError
-            If tensor has unsupported shape for sorting.
         """
         if tensor is None:
             return None
@@ -122,7 +117,7 @@ class Sorter:
         x : dict[str, Tensor]
             Dictionary containing the key_embed tensor.
 
-        Returns
+        Returns:
         -------
         int
             Number of hits from key_embed tensor.

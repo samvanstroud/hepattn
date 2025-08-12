@@ -410,6 +410,7 @@ class RegressionTask(Task):
             metrics[field + "_abs_norm_res"] = torch.mean(abs_err / target.abs() + 1e-8)
         return metrics
 
+
 class GaussianRegressionTask(Task):
     def __init__(
         self,
