@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 
-class Sorting:
+class Sorter:
     def __init__(self, input_sort_field: str | None = None,
                  raw_variables: list[str] | None = None,
                  input_nets: nn.ModuleList | None = None
@@ -146,17 +146,7 @@ class Sorting:
         if sort_dim is not None:
             return tensor.index_select(sort_dim, sort_idx.to(tensor.device))
         else:
-            # Fall back to original logic if no matching dimension found
-            print(f"Warning: No dimension with size {num_hits} found in tensor shape {tensor.shape}")
-            # Fallback to original logic for backward compatibility
-            if len(tensor.shape) == 1:
-                return tensor[sort_idx]
-            elif len(tensor.shape) == 2:
-                return tensor[0][sort_idx].unsqueeze(0)  # Preserve batch dimension
-            elif len(tensor.shape) == 3:
-                return tensor.index_select(1, sort_idx.to(tensor.device))
-            else:
-                raise ValueError(f"Tensor has unsupported shape for sorting: {tensor.shape}")
+            return tensor
 
     def _get_num_hits(self, x: dict[str, Tensor]) -> int:
         """Get the shape of key_embed tensor for reference in sorting.

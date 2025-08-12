@@ -1,4 +1,4 @@
-from hepattn.callbacks.attn_mask_logger import AttentionStatsLogger, AttnMaskLogger
+from hepattn.callbacks.attn_mask_logger import AttnMaskLogger
 from hepattn.callbacks.checkpoint import Checkpoint
 from hepattn.callbacks.compile import Compile
 from hepattn.callbacks.gradient_logger import GradientLoggerCallback
@@ -10,7 +10,6 @@ from hepattn.callbacks.throughput_monitor import MyThroughputMonitor
 from hepattn.callbacks.weight_logger import WeightLoggerCallback
 
 __all__ = [
-    "AttentionStatsLogger",
     "AttnMaskLogger",
     "Checkpoint",
     "Compile",

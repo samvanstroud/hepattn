@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectHitMaskTask
-from hepattn.utils.sorting import Sorting
+from hepattn.utils.sorting import Sorter
 
 N_STEPS_LOG_ATTN_MASK = 1000
 
@@ -23,7 +23,7 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
         log_task_attn_mask: bool = False,
-        sort_before_encoder: bool = False,
+        sort_before_encoder: bool = True,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object inference with attention-based decoding and optional encoder blocks.
@@ -117,7 +117,7 @@ class MaskFormer(nn.Module):
             )
 
         # Dedicated sorting step before encoder
-        sorting = Sorting(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
+        sorting = Sorter(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
         if self.sort_before_encoder and self.input_sort_field is not None:
             x = sorting.sort_inputs(x)
 
@@ -162,8 +162,9 @@ class MaskFormer(nn.Module):
             if isinstance(task, ObjectHitMaskTask) and self.log_task_attn_mask:
                 attn_logits = outputs["final"][task.name][task.outputs[0]].detach()
                 self.output_attn_mask_logging(attn_logits, x)
-                
-        outputs = sorting.unsort_outputs(outputs)
+
+        if self.sort_before_encoder:   
+            outputs = sorting.unsort_outputs(outputs)
         return outputs
 
     def output_attn_mask_logging(self, attn_logits, x, threshold=0.1):

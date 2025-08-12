@@ -28,9 +28,10 @@ class Task(nn.Module, ABC):
     that can be trained as part of a multi-task learning setup.
     """
 
-    def __init__(self):
+    def __init__(self, has_intermediate_loss: bool = False, permute_loss: bool = True):
         super().__init__()
-        self.has_intermediate_loss = False
+        self.has_intermediate_loss = has_intermediate_loss
+        self.permute_loss = permute_loss
 
     @abstractmethod
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -95,7 +96,7 @@ class ObjectValidTask(Task):
         self.dim = dim
         self.null_weight = null_weight
         self.mask_queries = mask_queries
-        self.permute_loss = True
+        # self.has_intermediate_loss = True
 
         # Internal
         self.inputs = [input_object + "_embed"]
@@ -166,6 +167,7 @@ class HitFilterTask(Task):
         self.threshold = threshold
         self.loss_fn = loss_fn
         self.mask_keys = mask_keys
+        # self.has_intermediate_loss = True
 
         # Internal
         self.hit_names = [f"{hit_name}_embed"]
@@ -262,7 +264,8 @@ class ObjectHitMaskTask(Task):
         self.logit_scale = logit_scale
         self.pred_threshold = pred_threshold
         self.has_intermediate_loss = mask_attn
-        self.permute_loss = True
+        # self.permute_loss = True
+        # self.has_intermediate_loss = True
 
         self.output_object_hit = output_object + "_" + input_hit
         self.target_object_hit = target_object + "_" + input_hit
@@ -277,7 +280,7 @@ class ObjectHitMaskTask(Task):
         x_hit = self.hit_net(x[self.input_hit + "_embed"])
 
         # Object-hit probability is the dot product between the hit and object embedding
-        object_hit_logit = torch.einsum("bnc,bmc->bnm", x_object, x_hit)
+        object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", x_object, x_hit)
 
         # Zero out entries for any hit slots that are not valid
         object_hit_logit[~x[self.input_hit + "_valid"].unsqueeze(-2).expand_as(object_hit_logit)] = torch.finfo(object_hit_logit.dtype).min
@@ -296,18 +299,20 @@ class ObjectHitMaskTask(Task):
 
         return {self.input_hit: attn_mask}
 
-    def predict(self, outputs, threshold=0.5):
+    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Object-hit pairs that have a predicted probability above the threshold are predicted as being associated to one-another
-        return {self.output_object_hit + "_valid": outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= threshold}
+        return {self.output_object_hit + "_valid": outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= self.pred_threshold}
 
-    def cost(self, outputs, targets):
+    def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         output = outputs[self.output_object_hit + "_logit"].detach().to(torch.float32)
-        target = targets[self.target_object_hit + "_" + self.target_field].to(torch.float32)
+        target = targets[self.target_object_hit + "_" + self.target_field].detach().to(output.dtype)
+
+        hit_pad = targets[self.input_hit + "_valid"]
 
         costs = {}
         # sample_weight = target + self.null_weight * (1 - target)
         for cost_fn, cost_weight in self.costs.items():
-            costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target)
+            costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target, input_pad_mask=hit_pad)
         return costs
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -335,6 +340,8 @@ class RegressionTask(Task):
         fields: list[str],
         loss_weight: float,
         cost_weight: float,
+        loss: RegressionLossType = "smooth_l1",
+
     ):
         """Base class for regression tasks.
 
@@ -356,22 +363,25 @@ class RegressionTask(Task):
         self.fields = fields
         self.loss_weight = loss_weight
         self.cost_weight = cost_weight
+        self.loss_fn_name = loss
+        self.loss_fn = REGRESSION_LOSS_FNS[loss]
         self.k = len(fields)
         # For standard regression number of DoFs is just the number of targets
         self.ndofs = self.k
-        self.permute_loss = True
+        # self.permute_loss = True
+        # self.has_intermediate_loss = True
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # For a standard regression task, the raw network output is the final prediction
         latent = self.latent(x)
         return {self.output_object + "_regr": latent}
 
-    def predict(self, outputs):
-        # Split the regression vectior into the separate fields
+    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
+        # Split the regression vector into the separate fields
         latent = outputs[self.output_object + "_regr"]
         return {self.output_object + "_" + field: latent[..., i] for i, field in enumerate(self.fields)}
 
-    def loss(self, outputs, targets):
+    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1)
         output = outputs[self.output_object + "_regr"]
 
@@ -381,29 +391,24 @@ class RegressionTask(Task):
         output = output[mask]
 
         # Compute the loss
-        loss = torch.nn.functional.smooth_l1_loss(output, target, reduction="none")
+        loss = self.loss_fn(output, target, reduction="none")
 
         # Average over all the objects
         loss = torch.mean(loss, dim=-1)
 
         # Compute the regression loss only for valid objects
-        return {"smooth_l1": self.loss_weight * loss.mean()}
+        return {self.loss_fn_name: self.loss_weight * loss.mean()}
 
-    def metrics(self, preds, targets):
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         metrics = {}
         for field in self.fields:
-            # Get the target and prediction only for valid targets
+            # note these might be scaled features
             pred = preds[self.output_object + "_" + field][targets[self.target_object + "_valid"]]
             target = targets[self.target_object + "_" + field][targets[self.target_object + "_valid"]]
-            # Get the error between the prediction and target for this field
-            err = pred - target
-            # Compute the RMSE and log it
-            metrics[field + "_rmse"] = torch.sqrt(torch.mean(torch.square(err)))
-            # Compute the relative error / resolution and log it
-            metrics[field + "_mean_rel_err"] = torch.mean(err / target)
-            metrics[field + "_std_rel_err"] = torch.std(err / target)
+            abs_err = (pred - target).abs()
+            metrics[field + "_abs_res"] = torch.mean(abs_err)
+            metrics[field + "_abs_norm_res"] = torch.mean(abs_err / target.abs() + 1e-8)
         return metrics
-
 
 class GaussianRegressionTask(Task):
     def __init__(
@@ -438,6 +443,7 @@ class GaussianRegressionTask(Task):
         # For multivaraite gaussian case we have extra DoFs from the variance and covariance terms
         self.ndofs = self.k + int(self.k * (self.k + 1) / 2)
         self.likelihood_norm = self.k * 0.5 * math.log(2 * math.pi)
+        # self.has_intermediate_loss = True
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         latent = self.latent(x)
@@ -547,6 +553,7 @@ class ObjectGaussianRegressionTask(GaussianRegressionTask):
 
         self.dim = dim
         self.net = Dense(self.dim, self.ndofs)
+        # self.has_intermediate_loss = True
 
     def latent(self, x: dict[str, Tensor]) -> Tensor:
         return self.net(x[self.input_object + "_embed"])
@@ -589,6 +596,8 @@ class ObjectRegressionTask(RegressionTask):
         loss_weight: float,
         cost_weight: float,
         dim: int,
+        loss: RegressionLossType = "smooth_l1",
+
     ):
         """Regression task for objects.
 
@@ -611,6 +620,7 @@ class ObjectRegressionTask(RegressionTask):
 
         self.dim = dim
         self.net = Dense(self.dim, self.ndofs)
+        # self.has_intermediate_loss = True
 
     def latent(self, x: dict[str, Tensor]) -> Tensor:
         return self.net(x[self.input_object + "_embed"])
@@ -621,14 +631,14 @@ class ObjectRegressionTask(RegressionTask):
         num_objects = output.shape[1]
         # Index from the front so it works for both object and mask regression
         # The expand is not necessary but stops a broadcasting warning from smooth_l1_loss
-        costs = torch.nn.functional.smooth_l1_loss(
+        costs = self.loss_fn(
             output.unsqueeze(2).expand(-1, -1, num_objects, -1),
             target.unsqueeze(1).expand(-1, num_objects, -1, -1),
             reduction="none",
         )
         # Average over the regression fields dimension
         costs = costs.mean(-1)
-        return {"regr_smooth_l1": self.cost_weight * costs}
+        return {f"regr_{self.loss_fn_name}": self.cost_weight * costs}
 
 
 class ObjectHitRegressionTask(RegressionTask):
