@@ -95,12 +95,12 @@ class AttnMaskLogger(Callback):
         """Process attention logits from ObjectHitMaskTask outputs and convert to masks."""
         prefix_suffix = "_val" if is_validation else ""
         prefix_base = "val" if is_validation else "train"
-        
+
         # Check if we should log based on step frequency
         # For validation, log every time. For training, log every N steps
         if not is_validation and step % self.log_every_n_steps != 0:
             return
-            
+
         # Process final outputs
         if "final" in outputs:
             for task_name, task_outputs in outputs["final"].items():
@@ -110,17 +110,11 @@ class AttnMaskLogger(Callback):
                         # Convert logits to probabilities and binary mask
                         attn_probs = output_value[0].detach().cpu().clone().sigmoid()
                         attn_mask = attn_probs >= self.threshold
-                        
+
                         # Log the attention weights and mask
-                        self._log_attention_weights(
-                            pl_module, attn_probs, step, "final", 
-                            f"final_ca_weights_{task_name}{prefix_suffix}"
-                        )
-                        self._log_attention_mask(
-                            pl_module, attn_mask, step, "final", 
-                            f"final_ca_mask_{task_name}{prefix_suffix}"
-                        )
-                        
+                        self._log_attention_weights(pl_module, attn_probs, step, "final", f"final_ca_weights_{task_name}{prefix_suffix}")
+                        self._log_attention_mask(pl_module, attn_mask, step, "final", f"final_ca_mask_{task_name}{prefix_suffix}")
+
                         # Log stats if enabled
                         if self.log_stats:
                             self._log_attention_stats(pl_module, attn_mask, step, "final", f"{prefix_base}_final_{task_name}")
@@ -130,7 +124,7 @@ class AttnMaskLogger(Callback):
         model = pl_module.model if hasattr(pl_module, "model") else pl_module
         prefix_suffix = "_val" if is_validation else ""
         prefix_base = "val" if is_validation else "train"
-        
+
         # Get current step from trainer
         step = pl_module.global_step if hasattr(pl_module, "global_step") else 0
 

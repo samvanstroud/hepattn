@@ -175,6 +175,7 @@ class MaskFormerDecoder(nn.Module):
                     "layer": layer_index,
                 }
 
+
 class MaskFormerDecoderLayer(nn.Module):
     def __init__(
         self,

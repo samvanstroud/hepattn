@@ -4,7 +4,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoder
-from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectHitMaskTask
+from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.sorting import Sorter
 
 
