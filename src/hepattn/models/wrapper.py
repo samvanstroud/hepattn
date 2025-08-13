@@ -79,9 +79,13 @@ class ModelWrapper(LightningModule):
         inputs, targets = batch
 
         # Get the model outputs
-        outputs, sort_indices = self.model(inputs)
+        outputs = self.model(inputs)
+        
+        # Store outputs temporarily for callbacks to access
+        self.last_outputs = outputs
+        
         # Compute and log losses
-        losses, targets = self.model.loss(outputs, targets, sort_indices)
+        losses, targets = self.model.loss(outputs, targets)
         total_loss = self.log_losses(losses, "train")
 
         # Get the predictions from the model
@@ -100,10 +104,13 @@ class ModelWrapper(LightningModule):
         inputs, targets = batch
 
         # Get the raw model outputs
-        outputs, sort_indices = self.model(inputs)
+        outputs = self.model(inputs)
+        
+        # Store outputs temporarily for callbacks to access
+        self.last_outputs = outputs
 
         # Compute and log losses
-        losses, targets = self.model.loss(outputs, targets, sort_indices)
+        losses, targets = self.model.loss(outputs, targets)
         total_loss = self.log_losses(losses, "val")
 
         # Get the predictions from the model
@@ -114,10 +121,10 @@ class ModelWrapper(LightningModule):
 
     def test_step(self, batch):
         inputs, targets = batch
-        outputs, sort_indices = self.model(inputs)
+        outputs = self.model(inputs)
 
         # Calculate loss to also run matching
-        losses, targets = self.model.loss(outputs, targets, sort_indices)
+        losses, targets = self.model.loss(outputs, targets)
 
         # Get the predictions from the model
         preds = self.model.predict(outputs)

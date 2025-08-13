@@ -28,7 +28,6 @@ class MaskFormerDecoder(nn.Module):
         key_posenc: nn.Module | None = None,
         query_posenc: nn.Module | None = None,
         preserve_posenc: bool = False,
-        posenc_analysis: bool = False,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -42,7 +41,6 @@ class MaskFormerDecoder(nn.Module):
             key_posenc: Optional module for key positional encoding.
             query_posenc: Optional module for query positional encoding.
             preserve_posenc: If True, preserves positional encoding in embeddings.
-            posenc_analysis: If True, enables positional encoding analysis logging.
         """
         super().__init__()
 
@@ -59,7 +57,6 @@ class MaskFormerDecoder(nn.Module):
         self.key_posenc = key_posenc
         self.query_posenc = query_posenc
         self.preserve_posenc = preserve_posenc
-        self.posenc_analysis = posenc_analysis
         self.log_step = 0
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
@@ -92,36 +89,36 @@ class MaskFormerDecoder(nn.Module):
             attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
 
-            if self.tasks is not None:
-                for task in self.tasks:
-                    if not task.has_intermediate_loss:
-                        continue
+            assert self.tasks is not None
+            for task in self.tasks:
+                if not task.has_intermediate_loss:
+                    continue
 
-                    # Get the outputs of the task given the current embeddings
-                    task_outputs = task(x)
+                # Get the outputs of the task given the current embeddings
+                task_outputs = task(x)
 
-                    # Update x with task outputs for downstream use
-                    if isinstance(task, IncidenceRegressionTask):
-                        x["incidence"] = task_outputs[task.outputs[0]].detach()
-                    if isinstance(task, ObjectClassificationTask):
-                        x["class_probs"] = task_outputs[task.outputs[0]].detach()
+                # Update x with task outputs for downstream use
+                if isinstance(task, IncidenceRegressionTask):
+                    x["incidence"] = task_outputs[task.outputs[0]].detach()
+                if isinstance(task, ObjectClassificationTask):
+                    x["class_probs"] = task_outputs[task.outputs[0]].detach()
 
-                    outputs[f"layer_{layer_index}"][task.name] = task_outputs
+                outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
-                    # Collect attention masks from tasks
-                    task_attn_masks = task.attn_mask(task_outputs)
-                    for input_name, attn_mask in task_attn_masks.items():
-                        if input_name in attn_masks:
-                            attn_masks[input_name] |= attn_mask
-                        else:
-                            attn_masks[input_name] = attn_mask
+                # Collect attention masks from tasks
+                task_attn_masks = task.attn_mask(task_outputs)
+                for input_name, attn_mask in task_attn_masks.items():
+                    if input_name in attn_masks:
+                        attn_masks[input_name] |= attn_mask
+                    else:
+                        attn_masks[input_name] = attn_mask
 
-                    # Collect query masks
-                    if self.use_query_masks:
-                        task_query_mask = task.query_mask(task_outputs)
-                        if task_query_mask is not None:
-                            query_mask = task_query_mask if query_mask is None else query_mask | task_query_mask
-                            x["query_mask"] = query_mask
+                # Collect query masks
+                if self.use_query_masks:
+                    task_query_mask = task.query_mask(task_outputs)
+                    if task_query_mask is not None:
+                        query_mask = task_query_mask if query_mask is None else query_mask | task_query_mask
+                        x["query_mask"] = query_mask
 
             # Construct the full attention mask for MaskAttention decoder
             attn_mask = None
@@ -164,8 +161,6 @@ class MaskFormerDecoder(nn.Module):
             query_posenc = self.query_posenc(x)
         if self.key_posenc is not None:
             key_posenc = self.key_posenc(x)
-        if (self.query_posenc is not None) and (self.key_posenc is not None) and (self.posenc_analysis):
-            self.posenc_analysis_logging(x, query_posenc, key_posenc)
         return query_posenc, key_posenc
 
     def attn_mask_logging(self, attn_mask, layer_index):
@@ -179,17 +174,6 @@ class MaskFormerDecoder(nn.Module):
                     "step": self.log_step,
                     "layer": layer_index,
                 }
-
-    def posenc_analysis_logging(self, x, query_posenc, key_posenc):
-        if query_posenc is not None:
-            self.last_query_posenc = query_posenc.detach().cpu().numpy()
-            self.last_query_phi = x["query_phi"].detach().cpu().numpy()
-        if key_posenc is not None:
-            key_phi = x["key_phi"].detach().cpu().numpy()
-            self.last_key_phi = key_phi
-            key_posenc = key_posenc[0].cpu()
-            self.last_key_posenc = key_posenc.numpy()
-
 
 class MaskFormerDecoderLayer(nn.Module):
     def __init__(

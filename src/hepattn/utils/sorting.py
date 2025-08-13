@@ -2,13 +2,14 @@ import torch
 from torch import Tensor, nn
 
 
-class Sorter:
+class Sorter(nn.Module):
     def __init__(
         self,
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
         input_nets: nn.ModuleList | None = None,
     ) -> None:
+        super().__init__()
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
         self.input_nets = input_nets or nn.ModuleList()
@@ -29,7 +30,7 @@ class Sorter:
         self.sort_indices = {}
 
         # Get key_embed shape for reference in sorting
-        self.num_hits = self._get_num_hits(x)
+        self.num_hits = x["key_embed"].shape[-2]
         assert self.num_hits > 0, "key embed not found in x"
 
         # Sort key embeddings and related data by the sort field
@@ -94,8 +95,6 @@ class Sorter:
         Tensor
             Sorted tensor.
         """
-        if tensor is None:
-            return None
         sort_dim = None
         # If num hits is provided, find the dimension with matching size
         for dim, size in enumerate(tensor.shape):
@@ -104,22 +103,5 @@ class Sorter:
                 break
 
         if sort_dim is not None:
-            return tensor.index_select(sort_dim, sort_idx.to(tensor.device))
+            return tensor.index_select(sort_dim, sort_idx)
         return tensor
-
-    def _get_num_hits(self, x: dict[str, Tensor]) -> int:
-        """Get the shape of key_embed tensor for reference in sorting.
-
-        Parameters
-        ----------
-        x : dict[str, Tensor]
-            Dictionary containing the key_embed tensor.
-
-        Returns:
-        int
-            Number of hits from key_embed tensor.
-        """
-        if "key_embed" in x:
-            return x["key_embed"].shape[-2]
-        print(f"Key embed not found in x: {x.keys()}")
-        return 0

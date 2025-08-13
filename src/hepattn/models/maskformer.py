@@ -7,8 +7,6 @@ from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectHitMaskTask
 from hepattn.utils.sorting import Sorter
 
-N_STEPS_LOG_ATTN_MASK = 1000
-
 
 class MaskFormer(nn.Module):
     def __init__(
@@ -23,7 +21,6 @@ class MaskFormer(nn.Module):
         matcher: nn.Module | None = None,
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
-        log_task_attn_mask: bool = False,
         sort_before_encoder: bool = True,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
@@ -67,12 +64,10 @@ class MaskFormer(nn.Module):
         self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
-        self.log_task_attn_mask = log_task_attn_mask
-        self.log_step = 0
         self.sort_before_encoder = sort_before_encoder
+        self.sorting = Sorter(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
-        self.log_step += 1
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
 
@@ -118,7 +113,6 @@ class MaskFormer(nn.Module):
             )
 
         # Dedicated sorting step before encoder
-        self.sorting = Sorter(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
         if self.sort_before_encoder and self.input_sort_field is not None:
             x = self.sorting.sort_inputs(x)
 
@@ -142,13 +136,14 @@ class MaskFormer(nn.Module):
 
         # Pass through decoder layers
         x, outputs = self.decoder(x, input_names)
+        outputs["sort_indices"] = self.sorting.sort_indices
 
         # Do any pooling if desired
         if self.pooling is not None:
             x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
             x[f"{self.pooling.output_name}_embed"] = x_pooled
 
-        # Get the final outputs - we don't need to compute attention masks or update things here
+        # Get the final outputs
         outputs["final"] = {}
         for task in self.tasks:
             outputs["final"][task.name] = task(x)
@@ -160,26 +155,7 @@ class MaskFormer(nn.Module):
             if isinstance(task, ObjectClassificationTask):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
-            if isinstance(task, ObjectHitMaskTask) and self.log_task_attn_mask:
-                attn_logits = outputs["final"][task.name][task.outputs[0]].detach()
-                self.output_attn_mask_logging(attn_logits, x)
-        return outputs, self.sorting.sort_indices
-
-    def output_attn_mask_logging(self, attn_logits, x, threshold=0.1):
-        if ((attn_logits is not None) and (self.log_step % N_STEPS_LOG_ATTN_MASK == 0)) or (not self.training):
-            if not hasattr(self, "output_attn_masks_to_log"):
-                self.output_attn_masks_to_log = {}
-            # sigmoid the attn mask to get the probability of the hit being attended to
-            attn_mask_im = attn_logits[0].detach().cpu().clone().sigmoid()
-            self.output_attn_masks_to_log["final"] = {
-                "mask": attn_mask_im >= threshold,
-                "probs": attn_mask_im,
-                "step": self.log_step,
-                "layer": "final",
-            }
-            # store phi vals for sorting in callback
-            self.output_attn_masks_to_log["final"]["query_phi"] = x.get("query_phi")
-            self.output_attn_masks_to_log["final"]["key_phi"] = x.get("key_phi")
+        return outputs
 
     def predict(self, outputs: dict) -> dict:
         """Takes the raw model outputs and produces a set of actual inferences / predictions.
@@ -203,7 +179,7 @@ class MaskFormer(nn.Module):
 
         return preds
 
-    def loss(self, outputs: dict, targets: dict, sort_indices: dict[str, Tensor]) -> tuple[dict, dict]:
+    def loss(self, outputs: dict, targets: dict) -> tuple[dict, dict]:
         """Computes the loss between the forward pass of the model and the data / targets.
         It first computes the cost / loss between each of the predicted and true tracks in each ROI
         and then uses the Hungarian algorihtm to perform an optimal bipartite matching. The model
@@ -221,7 +197,7 @@ class MaskFormer(nn.Module):
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
-        targets = self.sorting.sort_targets(targets, sort_indices)
+        targets = self.sorting.sort_targets(targets, outputs["sort_indices"])
         batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
             layer_costs = None
@@ -255,10 +231,7 @@ class MaskFormer(nn.Module):
                 continue
 
             # Get the indicies that can permute the predictions to yield their optimal matching
-            if self.matcher is not None:
-                pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
-            else:
-                continue
+            pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
 
             for task in self.tasks:
                 # Tasks without a object dimension do not need permutation (constituent-level or sample-level)
@@ -273,7 +246,7 @@ class MaskFormer(nn.Module):
                     outputs[layer_name][task.name][output_name] = outputs[layer_name][task.name][output_name][batch_idxs, pred_idxs]
 
         # Compute the losses for each task in each block
-        losses: dict[str, dict[str, Any]] = {}
+        losses: dict[str, dict[str, Tensor]] = {}
         for layer_name in outputs:
             losses[layer_name] = {}
             for task in self.tasks:
