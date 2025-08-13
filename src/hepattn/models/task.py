@@ -28,7 +28,7 @@ class Task(nn.Module, ABC):
     that can be trained as part of a multi-task learning setup.
     """
 
-    def __init__(self, has_intermediate_loss: bool = False, permute_loss: bool = True):
+    def __init__(self, has_intermediate_loss: bool, permute_loss: bool = True):
         super().__init__()
         self.has_intermediate_loss = has_intermediate_loss
         self.permute_loss = permute_loss
@@ -70,6 +70,7 @@ class ObjectValidTask(Task):
         dim: int,
         null_weight: float = 1.0,
         mask_queries: bool = False,
+        has_intermediate_loss: bool = True,
     ):
         """Task used for classifying whether object candidates/seeds should be taken as reconstructed/predicted objects or not.
 
@@ -84,8 +85,9 @@ class ObjectValidTask(Task):
             null_weight: Weight applied to the null class in the loss. Useful if many instances of the target class are null, and we need to reweight
                 to overcome class imbalance.
             mask_queries: Whether to mask queries.
+            has_intermediate_loss: Whether the task has intermediate loss.
         """
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss)
 
         self.name = name
         self.input_object = input_object
@@ -96,7 +98,6 @@ class ObjectValidTask(Task):
         self.dim = dim
         self.null_weight = null_weight
         self.mask_queries = mask_queries
-        # self.has_intermediate_loss = True
 
         # Internal
         self.inputs = [input_object + "_embed"]
@@ -146,6 +147,7 @@ class HitFilterTask(Task):
         threshold: float = 0.1,
         mask_keys: bool = False,
         loss_fn: Literal["bce", "focal", "both"] = "bce",
+        has_intermediate_loss: bool = True,
     ):
         """Task used for classifying whether hits belong to reconstructable objects or not.
 
@@ -157,8 +159,9 @@ class HitFilterTask(Task):
             threshold: Threshold for classification.
             mask_keys: Whether to mask keys.
             loss_fn: Loss function to use.
+            has_intermediate_loss: Whether the task has intermediate loss.
         """
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss, permute_loss=False)
 
         self.name = name
         self.hit_name = hit_name
@@ -167,7 +170,6 @@ class HitFilterTask(Task):
         self.threshold = threshold
         self.loss_fn = loss_fn
         self.mask_keys = mask_keys
-        # self.has_intermediate_loss = True
 
         # Internal
         self.hit_names = [f"{hit_name}_embed"]
@@ -229,6 +231,7 @@ class ObjectHitMaskTask(Task):
         target_field: str = "valid",
         logit_scale: float = 1.0,
         pred_threshold: float = 0.5,
+        has_intermediate_loss: bool = True,
     ):
         """Task for predicting associations between objects and hits.
 
@@ -246,8 +249,9 @@ class ObjectHitMaskTask(Task):
             target_field: Target field name.
             logit_scale: Scale for logits.
             pred_threshold: Prediction threshold.
+            has_intermediate_loss: Whether the task has intermediate loss.
         """
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss)
 
         self.name = name
         self.input_hit = input_hit
@@ -264,8 +268,6 @@ class ObjectHitMaskTask(Task):
         self.logit_scale = logit_scale
         self.pred_threshold = pred_threshold
         self.has_intermediate_loss = mask_attn
-        # self.permute_loss = True
-        # self.has_intermediate_loss = True
 
         self.output_object_hit = output_object + "_" + input_hit
         self.target_object_hit = target_object + "_" + input_hit
@@ -341,7 +343,7 @@ class RegressionTask(Task):
         loss_weight: float,
         cost_weight: float,
         loss: RegressionLossType = "smooth_l1",
-
+        has_intermediate_loss: bool = True,
     ):
         """Base class for regression tasks.
 
@@ -355,7 +357,7 @@ class RegressionTask(Task):
             loss: Type of loss function to use.
             has_intermediate_loss: Whether the task has intermediate loss.
         """
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss)
 
         self.name = name
         self.output_object = output_object
@@ -368,8 +370,6 @@ class RegressionTask(Task):
         self.k = len(fields)
         # For standard regression number of DoFs is just the number of targets
         self.ndofs = self.k
-        # self.permute_loss = True
-        # self.has_intermediate_loss = True
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # For a standard regression task, the raw network output is the final prediction
@@ -419,6 +419,7 @@ class GaussianRegressionTask(Task):
         fields: list[str],
         loss_weight: float,
         cost_weight: float,
+        has_intermediate_loss: bool = True,
     ):
         """Regression task with Gaussian output distribution.
 
@@ -431,7 +432,7 @@ class GaussianRegressionTask(Task):
             cost_weight: Weight for the cost function.
             has_intermediate_loss: Whether the task has intermediate loss.
         """
-        super().__init__()
+        super().__init__(has_intermediate_loss=has_intermediate_loss)
 
         self.name = name
         self.output_object = output_object
@@ -443,7 +444,6 @@ class GaussianRegressionTask(Task):
         # For multivaraite gaussian case we have extra DoFs from the variance and covariance terms
         self.ndofs = self.k + int(self.k * (self.k + 1) / 2)
         self.likelihood_norm = self.k * 0.5 * math.log(2 * math.pi)
-        # self.has_intermediate_loss = True
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         latent = self.latent(x)
@@ -553,7 +553,6 @@ class ObjectGaussianRegressionTask(GaussianRegressionTask):
 
         self.dim = dim
         self.net = Dense(self.dim, self.ndofs)
-        # self.has_intermediate_loss = True
 
     def latent(self, x: dict[str, Tensor]) -> Tensor:
         return self.net(x[self.input_object + "_embed"])
@@ -597,7 +596,7 @@ class ObjectRegressionTask(RegressionTask):
         cost_weight: float,
         dim: int,
         loss: RegressionLossType = "smooth_l1",
-
+        has_intermediate_loss: bool = True,
     ):
         """Regression task for objects.
 
@@ -611,8 +610,9 @@ class ObjectRegressionTask(RegressionTask):
             cost_weight: Weight for the cost function.
             dim: Embedding dimension.
             loss: Type of loss function to use.
+            has_intermediate_loss: Whether the task has intermediate loss.
         """
-        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight)
+        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, loss=loss, has_intermediate_loss=has_intermediate_loss)
 
         self.input_object = input_object
         self.inputs = [input_object + "_embed"]
@@ -620,7 +620,6 @@ class ObjectRegressionTask(RegressionTask):
 
         self.dim = dim
         self.net = Dense(self.dim, self.ndofs)
-        # self.has_intermediate_loss = True
 
     def latent(self, x: dict[str, Tensor]) -> Tensor:
         return self.net(x[self.input_object + "_embed"])

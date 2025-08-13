@@ -221,6 +221,7 @@ model:
                   object_bce: 1.0
                 dim: *dim
                 null_weight: 1.0
+                has_intermediate_loss: false
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: track_hit_valid
@@ -238,6 +239,7 @@ model:
                   mask_focal: 50.0
                 dim: *dim
                 null_weight: 1.0
+                has_intermediate_loss: false
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
