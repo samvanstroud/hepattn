@@ -45,7 +45,6 @@ class Sorter:
         assert key_sort_idx.shape[0] == self.num_hits, f"Key sort index shape {key_sort_idx.shape} does not match num_hits {self.num_hits}"
         self.sort_indices["key"] = key_sort_idx
 
-        # TODO: sort key_phi (key_{input_sort_field})
         x[f"key_{self.input_sort_field}"] = self._sort_tensor_by_index(x[f"key_{self.input_sort_field}"], key_sort_idx, self.num_hits)
 
         for input_name in [input_net.input_name for input_net in self.input_nets]:
@@ -74,7 +73,6 @@ class Sorter:
 
     def sort_targets(self, targets: dict, sort_indices: dict[str, Tensor]) -> dict:
         """Sort targets to align with sorted outputs."""
-        # TODO: check that this sorts all the targets correctly
         for key, value in targets.items():
             targets[key] = self._sort_tensor_by_index(value, sort_indices["key"], self.num_hits)
 
