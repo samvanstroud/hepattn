@@ -120,7 +120,6 @@ class Sorter:
         int
             Number of hits from key_embed tensor.
 
-        Raises:
         ValueError
             If key_embed is not found in x.
         """
