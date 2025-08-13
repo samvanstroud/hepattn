@@ -70,7 +70,7 @@ def test_pos_enc_random():
 
 
 def test_create_pos_enc_visualizations_basic():
-    """Test the comprehoding visualization function with basic data."""
+    """Test the comprehensive visualization function with basic data."""
     # Create test data
     num_hits = 1000
     num_queries = 1000
