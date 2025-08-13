@@ -7,11 +7,14 @@ from functools import partial
 
 import torch
 from torch import Tensor, nn
-
+from torch.nn.attention.flex_attention import create_block_mask
+from hepattn.flex.sliding_window import sliding_window_mask_strided, sliding_window_mask_strided_wrapped
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.models.transformer import Residual
+
+create_block_mask = torch.compile(create_block_mask, dynamic=True)
 
 N_STEPS_LOG_ATTN_MASK = 1000
 
@@ -29,6 +32,9 @@ class MaskFormerDecoder(nn.Module):
         query_posenc: nn.Module | None = None,
         preserve_posenc: bool = False,
         posenc_analysis: bool = False,
+        local_strided_attn: bool = False,
+        window_size: int = 512,
+        window_wrap: bool = True,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -61,6 +67,12 @@ class MaskFormerDecoder(nn.Module):
         self.preserve_posenc = preserve_posenc
         self.posenc_analysis = posenc_analysis
         self.log_step = 0
+        self.local_strided_attn = local_strided_attn
+        self.window_size = window_size
+        self.window_wrap = window_wrap
+        assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
+        if self.local_strided_attn:
+            assert self.attn_type in ["torch", "flex"], f"Invalid attention type when use_decoder_mask is True: {self.attn_type}, must be 'torch' or 'flex'"
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -74,12 +86,19 @@ class MaskFormerDecoder(nn.Module):
         """
         batch_size = x["query_embed"].shape[0]
         num_constituents = x["key_embed"].shape[-2]
+        self.device = x["query_embed"].device
         self.log_step += 1
 
         if (self.key_posenc is not None) or (self.query_posenc is not None):
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
         if not self.preserve_posenc:
             x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
+
+        if self.local_strided_attn:
+            decoder_mask = self.create_local_strided_window_mask(
+                x["query_embed"],
+                x["key_embed"],
+            )
 
         outputs: dict[str, dict] = {}
 
@@ -126,13 +145,15 @@ class MaskFormerDecoder(nn.Module):
             # Construct the full attention mask for MaskAttention decoder
             attn_mask = None
             if attn_masks and self.mask_attention:
-                attn_mask = torch.full((batch_size, self.num_queries, num_constituents), True, device=x["key_embed"].device)
+                attn_mask = torch.full((batch_size, self.num_queries, num_constituents), True, device=self.device)
                 for input_name, task_attn_mask in attn_masks.items():
                     attn_mask[..., x[f"key_is_{input_name}"]] = task_attn_mask
+                # Log attention mask if requested
+                if self.log_attn_mask:
+                    self.attn_mask_logging(attn_mask, layer_index)
 
-            # Log attention mask if requested
-            if self.log_attn_mask:
-                self.attn_mask_logging(attn_mask, layer_index)
+            elif self.local_strided_attn:
+                attn_mask = decoder_mask
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
@@ -149,6 +170,58 @@ class MaskFormerDecoder(nn.Module):
 
         return x, outputs
 
+        
+    def create_local_strided_window_mask(self,
+                                         query_embed: Tensor,
+                                         key_embed: Tensor,
+                                         ):
+        if self.attn_type == "torch":
+            decoder_mask = auto_local_ca_mask(
+                    query_embed,
+                    key_embed,
+                    self.window_size,
+                    wrap=self.window_wrap,
+                )
+        elif self.attn_type == "flex":
+            # Calculate stride based on the ratio of key length to query length
+            q_len = query_embed.shape[-2]
+            kv_len = key_embed.shape[-2]
+            stride = kv_len / q_len
+            # Make stride a tensor on the right device (no .item())
+            if torch.is_tensor(stride):
+                stride = stride.to(device=self.device)
+            else:
+                # pick a float dtype already in use if any; else default dtype
+                # Fix for TorchDynamo: avoid generator expression in next()
+                base_float = torch.get_default_dtype()
+                if torch.is_floating_point(query_embed):
+                    base_float = query_embed.dtype
+                stride = torch.tensor(stride, device=self.device, dtype=base_float)
+            # Create the mask_mod function based on whether wrapping is enabled
+            if self.window_wrap:
+                # For wrapping, we need the sequence length (kv_len) as a tensor
+                mask_mod = sliding_window_mask_strided_wrapped(
+                    self.window_size,
+                    stride=torch.tensor([1], device=self.device),
+                    kv_len=torch.tensor([1], device=self.device)
+                )
+            else:
+                mask_mod = sliding_window_mask_strided(
+                    self.window_size, stride=stride
+                )
+            # Create the block mask
+            decoder_mask = create_block_mask(
+                mask_mod,
+                B=None,
+                H=None,
+                Q_LEN=q_len,
+                KV_LEN=kv_len,
+                device=self.device,
+            )
+        else:
+            decoder_mask = None
+        return decoder_mask
+
     def add_positional_encodings(self, x: dict):
         if self.query_posenc is not None:
             x["query_embed"] = x["query_embed"] + x["query_posenc"]
@@ -160,7 +233,7 @@ class MaskFormerDecoder(nn.Module):
         query_posenc = None
         key_posenc = None
         if self.query_posenc is not None:
-            x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+            x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=self.device) / self.num_queries - 0.5)
             query_posenc = self.query_posenc(x)
         if self.key_posenc is not None:
             key_posenc = self.key_posenc(x)
