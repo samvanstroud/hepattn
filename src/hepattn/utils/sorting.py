@@ -30,6 +30,7 @@ class Sorter:
 
         # Get key_embed shape for reference in sorting
         self.num_hits = self._get_num_hits(x)
+        assert self.num_hits > 0, "key embed not found in x"
 
         # Sort key embeddings and related data by the sort field
         if f"key_{self.input_sort_field}" not in x:
@@ -119,10 +120,8 @@ class Sorter:
         Returns:
         int
             Number of hits from key_embed tensor.
-
-        ValueError
-            If key_embed is not found in x.
         """
         if "key_embed" in x:
             return x["key_embed"].shape[-2]
-        raise ValueError(f"Key embed not found in x: {x.keys()}")
+        print(f"Key embed not found in x: {x.keys()}")
+        return 0
