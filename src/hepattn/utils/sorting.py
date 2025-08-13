@@ -8,7 +8,7 @@ class Sorter:
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
         input_nets: nn.ModuleList | None = None,
-    ):
+    ) -> None:
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
         self.input_nets = input_nets or nn.ModuleList()
@@ -70,17 +70,14 @@ class Sorter:
                 print(f"Warning: Raw variable {raw_var} has invalid shape: {x[raw_var].shape}")
 
         return x
-    
-    def sort_targets(self, targets: dict, sort_indices: dict[str, Tensor]) -> dict:
-        """Sort targets to align with sorted outputs.
-        """
 
+    def sort_targets(self, targets: dict, sort_indices: dict[str, Tensor]) -> dict:
+        """Sort targets to align with sorted outputs."""
         # TODO: check that this sorts all the targets correctly
-        for key, value in targets.items():  
+        for key, value in targets.items():
             targets[key] = self._sort_tensor_by_index(value, sort_indices["key"], self.num_hits)
 
         return targets
-
 
     def _sort_tensor_by_index(self, tensor: Tensor, sort_idx: Tensor, num_hits: int) -> Tensor:
         """Sort a tensor along the dimension that has the same shape as key_embed[0].
@@ -94,15 +91,9 @@ class Sorter:
         num_hits : int
             Number of hits.
 
-        Returns
-        -------
+        Returns:
         Tensor
             Sorted tensor.
-
-        Raises
-        ------
-        ValueError
-            If tensor has unsupported shape for sorting.
         """
         if tensor is None:
             return None
@@ -115,8 +106,7 @@ class Sorter:
 
         if sort_dim is not None:
             return tensor.index_select(sort_dim, sort_idx.to(tensor.device))
-        else:
-            return tensor
+        return tensor
 
     def _get_num_hits(self, x: dict[str, Tensor]) -> int:
         """Get the shape of key_embed tensor for reference in sorting.
@@ -126,13 +116,11 @@ class Sorter:
         x : dict[str, Tensor]
             Dictionary containing the key_embed tensor.
 
-        Returns
-        -------
+        Returns:
         int
             Number of hits from key_embed tensor.
 
-        Raises
-        ------
+        Raises:
         ValueError
             If key_embed is not found in x.
         """

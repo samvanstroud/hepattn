@@ -29,7 +29,6 @@ class MaskFormerDecoder(nn.Module):
         query_posenc: nn.Module | None = None,
         preserve_posenc: bool = False,
         posenc_analysis: bool = False,
-        sort_by_phi: bool = False,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -44,8 +43,6 @@ class MaskFormerDecoder(nn.Module):
             query_posenc: Optional module for query positional encoding.
             preserve_posenc: If True, preserves positional encoding in embeddings.
             posenc_analysis: If True, enables positional encoding analysis logging.
-            sort_by_phi: If True, sorts inputs by phi values for better attention performance.
-            sort_before_encoder: If True, sorts inputs before the encoder.
         """
         super().__init__()
 
@@ -64,7 +61,6 @@ class MaskFormerDecoder(nn.Module):
         self.preserve_posenc = preserve_posenc
         self.posenc_analysis = posenc_analysis
         self.log_step = 0
-        self.sort_by_phi = sort_by_phi
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -84,10 +80,6 @@ class MaskFormerDecoder(nn.Module):
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
         if not self.preserve_posenc:
             x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
-
-        if self.sort_by_phi:
-            assert "key_phi" in x and "query_phi" in x, "key_phi and query_phi must be in x for sorting"
-            sort_indices = self.get_sort_indices(x)
 
         outputs: dict[str, dict] = {}
 
@@ -138,23 +130,6 @@ class MaskFormerDecoder(nn.Module):
                 for input_name, task_attn_mask in attn_masks.items():
                     attn_mask[..., x[f"key_is_{input_name}"]] = task_attn_mask
 
-            # do sorting
-            # TODO: would like to move this outside of layers for loop but slightly more complicated in terms of what to undo when
-            # - would need to sort and unsort more vars and easy to make errors or miss something? could change?
-            # TODO: would also be nice if we sorted before the encoder and then unsorted after producing decoder layer?
-            if self.sort_by_phi:
-                attn_mask = self.sort_attn_mask_by_phi(
-                    attn_mask, sort_indices["key"], sort_indices["query"]
-                )
-                # can't use sorted embeds from earlier because we update embeddings in between
-                for input_key, sort_key in zip(
-                    ["query_embed", "key_embed", "query_mask", "key_valid"],
-                    ["query", "key", "query", "key"],
-                    strict=True,
-                ):
-                    if input_key in x:
-                        x[input_key] = self.sort_var_by_phi(x[input_key], sort_indices[sort_key])
-
             # Log attention mask if requested
             if self.log_attn_mask:
                 self.attn_mask_logging(attn_mask, layer_index)
@@ -168,17 +143,6 @@ class MaskFormerDecoder(nn.Module):
                 kv_mask=x.get("key_valid"),
             )
 
-            if self.sort_by_phi:
-                # only need to unsort embeds because these are the only ones that are passed on
-                # - if pass on other sorted vars would need to change this
-                for input_key, sort_key in zip(
-                    ["query_embed", "key_embed"],
-                    ["query", "key"],
-                    strict=True,
-                ):
-                    x[input_key] = self.sort_var_by_phi(
-                        x[input_key], self.get_unsort_idx(sort_indices[sort_key])
-                    )
             # Unmerge the updated features back into separate input types for intermediate tasks
             for input_name in input_names:
                 x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
@@ -225,9 +189,6 @@ class MaskFormerDecoder(nn.Module):
             self.last_key_phi = key_phi
             key_posenc = key_posenc[0].cpu()
             self.last_key_posenc = key_posenc.numpy()
-            key_sort_idx = torch.argsort(torch.tensor(key_phi), axis=-1)
-            key_posencs_sorted = key_posenc[key_sort_idx[0]]
-            self.last_key_posenc_sorted = key_posencs_sorted
 
 
 class MaskFormerDecoderLayer(nn.Module):
