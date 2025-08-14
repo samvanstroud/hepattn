@@ -118,6 +118,7 @@ markers = ["gpu: mark test to run on GPU", "requiresdata: mark test that require
 source = ["src"]
 omit = [
     "*/lap1015/*",
+    "*/experiments/*",
     "*.ipynb"
 ]
 
