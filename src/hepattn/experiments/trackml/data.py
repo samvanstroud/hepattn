@@ -99,12 +99,11 @@ class TrackMLDataset(Dataset):
         return int(self.num_events)
 
     def __getitem__(self, idx):
-        inputs = {}
-        targets = {}
-
-        # Return dummy data if flag is set
         if self.dummy_data:
             return self._generate_dummy_data(idx)
+
+        inputs = {}
+        targets = {}
 
         # Load the event
         hits, particles = self.load_event(idx)
