@@ -201,7 +201,7 @@ model:
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: track_hit_valid
-                input_hit: hit
+                input_constituent: hit
                 input_object: query
                 output_object: track
                 target_object: particle

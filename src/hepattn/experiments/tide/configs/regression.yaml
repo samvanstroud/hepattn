@@ -21,7 +21,7 @@ model:
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: pred_pix_assignment
-                input_hit: pix
+                input_constituent: pix
                 input_object: query
                 output_object: pred
                 target_object: sudo
@@ -35,7 +35,7 @@ model:
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: pred_sct_assignment
-                input_hit: sct
+                input_constituent: sct
                 input_object: query
                 output_object: pred
                 target_object: sudo
@@ -64,7 +64,7 @@ model:
             - class_path: hepattn.models.task.ObjectHitRegressionTask
               init_args:
                 name: pred_pix_regression
-                input_hit: pix
+                input_constituent: pix
                 input_object: query
                 output_object: pred_pix
                 target_object: sudo_pix

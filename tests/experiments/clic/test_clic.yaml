@@ -171,7 +171,7 @@ model:
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: mask
-                input_hit: node
+                input_constituent: node
                 input_object: query
                 output_object: pflow
                 target_object: particle
@@ -190,7 +190,7 @@ model:
             - class_path: hepattn.models.task.IncidenceRegressionTask
               init_args:
                 name: incidence
-                input_hit: node
+                input_constituent: node
                 input_object: query
                 output_object: pflow
                 target_object: particle
@@ -217,7 +217,7 @@ model:
               init_args:
                 name: regression
                 fields: ["e", "pt", "eta", "sinphi", "cosphi"]
-                input_hit: node
+                input_constituent: node
                 input_object: query
                 output_object: pflow
                 target_object: particle

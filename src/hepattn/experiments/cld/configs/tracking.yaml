@@ -459,7 +459,7 @@ model:
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: flow_vtxd_assignment
-                input_hit: vtxd
+                input_constituent: vtxd
                 input_object: query
                 output_object: flow
                 target_object: particle
@@ -477,7 +477,7 @@ model:
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: flow_trkr_assignment
-                input_hit: trkr
+                input_constituent: trkr
                 input_object: query
                 output_object: flow
                 target_object: particle
