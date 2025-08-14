@@ -10,11 +10,11 @@ class InputNet(nn.Module):
         through a dense layer followed by an optional positional encoding module.
 
         Args:
-            input_name: The name of the feature or object to be embedded (e.g., 'pix' for pixel
-                clusters).
+            input_name: The name of the constituent type to be embedded (e.g., 'hit' for detector
+                hits, 'pix' for pixel clusters).
             net: Module used to perform the feature embedding.
-            fields: List of fields belonging to the feature to be embedded. For example,
-                [x, y, z] with input_name 'pix' results in 'pix_x', 'pix_y', and 'pix_z' being
+            fields: List of fields belonging to the constituent to be embedded. For example,
+                [x, y, z] with input_name 'hit' results in 'hit_x', 'hit_y', and 'hit_z' being
                 concatenated to form the feature vector.
             posenc: Optional module used for positional encoding.
             input_dtype: If specified, input embedding and positional encoding are performed in

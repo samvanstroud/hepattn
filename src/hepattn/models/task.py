@@ -149,11 +149,11 @@ class HitFilterTask(Task):
         loss_fn: Literal["bce", "focal", "both"] = "bce",
         has_intermediate_loss: bool = True,
     ):
-        """Task used for classifying whether hits belong to reconstructable objects or not.
+        """Task used for classifying whether constituents belong to reconstructable objects or not.
 
         Args:
             name: Name of the task.
-            input_object: Name of the hit object type.
+            input_object: Name of the constituent type.
             target_field: Name of the target field to predict.
             dim: Embedding dimension.
             threshold: Threshold for classification.
@@ -234,7 +234,7 @@ class ObjectHitMaskTask(Task):
 
         Args:
             name: Name of the task.
-            input_hit: Name of the input hit object.
+            input_hit: Name of the input constituent type (traditionally hits in tracking).
             input_object: Name of the input object.
             output_object: Name of the output object.
             target_object: Name of the target object.
@@ -653,11 +653,11 @@ class ObjectHitRegressionTask(RegressionTask):
         loss: RegressionLossType = "smooth_l1",
         has_intermediate_loss: bool = True,
     ):
-        """Regression task for object-hit associations.
+        """Regression task for object-constituent associations.
 
         Args:
             name: Name of the task.
-            input_hit: Name of the input hit object.
+            input_hit: Name of the input constituent type (e.g. hits in tracking).
             input_object: Name of the input object.
             output_object: Name of the output object.
             target_object: Name of the target object.

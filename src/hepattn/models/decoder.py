@@ -32,7 +32,7 @@ class MaskFormerDecoder(nn.Module):
             num_queries: The number of object-level queries.
             decoder_layer_config: Configuration dictionary used to initialize each MaskFormerDecoderLayer.
             num_decoder_layers: The number of decoder layers to stack.
-            mask_attention: If True, attention masks will be used to control which input objects are attended to.
+            mask_attention: If True, attention masks will be used to control which input constituents are attended to.
             use_query_masks: If True, predicted query masks will be used to control which queries are valid.
             log_attn_mask: If True, log attention masks for debugging.
             query_posenc: Optional module for query positional encoding.
@@ -228,12 +228,12 @@ class MaskFormerDecoderLayer(nn.Module):
         else:
             attn_mask = None
 
-        # Update query/object embeddings with the key/hit embeddings
+        # Update query/object embeddings with the key/constituent embeddings
         q = self.q_ca(q, kv=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         q = self.q_sa(q, q_mask=q_mask)
         q = self.q_dense(q)
 
-        # Update key/hit embeddings with the query/object embeddings
+        # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
             if attn_mask is not None:
                 # Index from the back so we are batch shape agnostic
