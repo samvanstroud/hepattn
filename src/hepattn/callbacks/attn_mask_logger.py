@@ -11,7 +11,6 @@ class AttnMaskLogger(Callback):
         log_train: bool = False,
         log_val: bool = True,
         log_stats: bool = False,
-        threshold: float = 0.1,
         log_every_n_steps: int = 1000,
     ):
         """Initialize the attention mask logger.
@@ -20,14 +19,12 @@ class AttnMaskLogger(Callback):
             log_train: Whether to log during training
             log_val: Whether to log during validation
             log_stats: Whether to log attention statistics in addition to masks
-            threshold: Threshold for converting attention logits to binary masks
             log_every_n_steps: How often to log attention masks (every N steps)
         """
         super().__init__()
         self.log_train = log_train
         self.log_val = log_val
         self.log_stats = log_stats
-        self.threshold = threshold
         self.log_every_n_steps = log_every_n_steps
 
     def _log_attention_mask(self, pl_module, mask, step, layer, prefix="local_ca_mask"):
@@ -47,29 +44,6 @@ class AttnMaskLogger(Callback):
         ax.set_xlabel("Hits (→ increasing φ)")
         ax.set_ylabel("Queries (→ increasing φ)")
         # Log directly to Comet
-        logger = getattr(pl_module, "logger", None)
-        if logger is not None and hasattr(logger, "experiment"):
-            logger.experiment.log_figure(figure_name=f"{prefix}_step{step}_layer{layer}", figure=fig, step=step)
-        plt.close(fig)
-
-    def _log_attention_logits(self, pl_module, weights, step, layer, prefix="local_ca_weights"):
-        """Helper method to create and log attention weights figures."""
-        fig, ax = plt.subplots(constrained_layout=True, dpi=300)
-        # Ensure weights is a numpy float array
-        if isinstance(weights, torch.Tensor):
-            weights_np = weights.detach().cpu().float().numpy()
-        elif isinstance(weights, np.ndarray):
-            weights_np = weights.astype(float)
-        else:
-            weights_np = np.array(weights, dtype=float)
-        im = ax.imshow(weights_np, aspect="auto", cmap="viridis", interpolation="nearest")
-        # Flip y-axis so lowest phi is at the bottom
-        ax.invert_yaxis()
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label("Attention Weights", rotation=270, labelpad=15)
-        # Add arrows to axis labels to indicate phi direction
-        ax.set_xlabel("Hits (→ increasing φ)")
-        ax.set_ylabel("Queries (→ increasing φ)")
         logger = getattr(pl_module, "logger", None)
         if logger is not None and hasattr(logger, "experiment"):
             logger.experiment.log_figure(figure_name=f"{prefix}_step{step}_layer{layer}", figure=fig, step=step)
@@ -124,22 +98,6 @@ class AttnMaskLogger(Callback):
                     # Log stats if enabled
                     if self.log_stats:
                         self._log_attention_stats(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
-
-            # Process final outputs
-            if (layer_name == "final") and ("track_hit_valid" in outputs["final"]) and ("track_hit_logit" in outputs["final"]["track_hit_valid"]):
-                output_value = outputs["final"]["track_hit_valid"]["track_hit_logit"]
-                if isinstance(output_value, torch.Tensor):
-                    # Convert logits to probabilities and binary mask
-                    attn_probs = output_value[0].detach().cpu().clone().sigmoid()
-                    attn_mask = attn_probs >= self.threshold
-
-                # Log the attention weights and mask
-                self._log_attention_logits(pl_module, attn_probs, step, "final", f"final_ca_weights_track_hit_logit_{prefix_suffix}")
-                self._log_attention_mask(pl_module, attn_mask, step, "final", f"final_ca_mask_track_hit_logit_{prefix_suffix}")
-
-                # Log stats if enabled
-                if self.log_stats:
-                    self._log_attention_stats(pl_module, attn_mask, step, "final", f"final_ca_mask_track_hit_logit_{prefix_suffix}")
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.log_val:
