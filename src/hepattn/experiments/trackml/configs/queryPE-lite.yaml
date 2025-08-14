@@ -122,6 +122,7 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       input_sort_field: phi
+      sort_before_encoder: true
       dim: &dim 256
       input_nets:
         class_path: torch.nn.ModuleList

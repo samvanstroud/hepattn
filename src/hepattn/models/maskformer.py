@@ -21,7 +21,7 @@ class MaskFormer(nn.Module):
         matcher: nn.Module | None = None,
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
-        sort_before_encoder: bool = True,
+        sort_before_encoder: bool = False,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object inference with attention-based decoding and optional encoder blocks.

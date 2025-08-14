@@ -78,6 +78,7 @@ trainer:
   callbacks:
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
+    - class_path: hepattn.callbacks.AttnMaskLogger
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
@@ -112,6 +113,7 @@ model:
     init_args:
       dim: &dim 32
       input_sort_field: phi
+      sort_before_encoder: true
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
