@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 from lightning import LightningDataModule
+from lightning.pytorch.utilities.rank_zero import rank_zero_info
 from torch.utils.data import DataLoader, Dataset
 
 
@@ -39,7 +40,7 @@ class TrackMLDataset(Dataset):
 
         # If using dummy data, skip file-based initialization
         if self.dummy_data:
-            # Simple dummy setup
+            rank_zero_info("Generating dummy data...")
             self.dirpath = Path(dirpath) if dirpath else Path()
             self.hit_eval_path = None
             self.inputs = inputs
@@ -47,8 +48,6 @@ class TrackMLDataset(Dataset):
             self.num_events = max(num_events, 1) if num_events > 0 else 10
             self.event_names = [f"dummy_event_{i:06d}" for i in range(self.num_events)]
             self.sample_ids = list(range(self.num_events))
-
-            # Set dummy parameters
             self.hit_volume_ids = hit_volume_ids
             self.particle_min_pt = particle_min_pt
             self.particle_max_abs_eta = particle_max_abs_eta
@@ -83,7 +82,7 @@ class TrackMLDataset(Dataset):
 
         # Setup hit eval file if specified
         if self.hit_eval_path:
-            print(f"Using hit eval dataset {self.hit_eval_path}")
+            rank_zero_info(f"Using hit eval dataset {self.hit_eval_path}")
 
         # Hit level cuts
         self.hit_volume_ids = hit_volume_ids
@@ -330,9 +329,9 @@ class TrackMLDataModule(LightningDataModule):
             )
 
         # Only print train/val dataset details when actually training
-        if stage == "fit" and self.trainer.is_global_zero:
-            print(f"Created training dataset with {len(self.train_dataset):,} events")
-            print(f"Created validation dataset with {len(self.val_dataset):,} events")
+        if stage == "fit":
+            rank_zero_info(f"Created training dataset with {len(self.train_dataset):,} events")
+            rank_zero_info(f"Created validation dataset with {len(self.val_dataset):,} events")
 
         if stage == "test":
             assert self.test_dir is not None, "No test file specified, see --data.test_dir"
@@ -343,7 +342,7 @@ class TrackMLDataModule(LightningDataModule):
                 hit_eval_path=self.hit_eval_test,
                 **self.kwargs,
             )
-            print(f"Created test dataset with {len(self.test_dataset):,} events")
+            rank_zero_info(f"Created test dataset with {len(self.test_dataset):,} events")
 
     def get_dataloader(self, stage: str, dataset: TrackMLDataset, shuffle: bool):
         return DataLoader(
