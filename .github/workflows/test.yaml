@@ -20,10 +20,19 @@ jobs:
       # Step 3: Run tests
       - name: Test pixi
         run: |
-          pixi run python --version
+          pixi run -e ci python --version
       - name: Install Git LFS
         run: |
           git lfs install
           git lfs pull
       - name: Run tests
         run: pixi run -e ci test-ci
+
+      # Step 4: Upload coverage to Codecov
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+

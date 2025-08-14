@@ -16,6 +16,8 @@ dependencies = [
     "scipy",
     "pytest>=8.3.3,<9",
     "pytest-repeat",
+    "pytest-cov>=6.0.0,<7",
+    "coverage[toml]>=7.0.0,<8",
     "ruff==0.12.4",
     "pre-commit>=4.0.1,<5",
     "matplotlib==3.9.*",
@@ -86,10 +88,10 @@ cuda = "12.8.*"
 ninja = "*"
 
 [tool.pixi.tasks.test]
-cmd = "pytest -xsv"
+cmd = "pytest"
 
 [tool.pixi.tasks.test-ci]
-cmd = "pytest -xsv -m 'not gpu and not requiresdata'"
+cmd = "pytest -m 'not gpu and not requiresdata' --cov=src --cov-report=xml --cov-report=term-missing"
 
 
 [tool.ruff]
@@ -111,3 +113,17 @@ pydocstyle.convention = "google"
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:.*distutils Version classes are deprecated. Use packaging.version instead.*:DeprecationWarning"]
 markers = ["gpu: mark test to run on GPU", "requiresdata: mark test that requires data not present in the repository"]
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/lap1015/*",
+    "*/experiments/*",
+    "*.ipynb"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "raise AssertionError",
+    "raise NotImplementedError",
+]

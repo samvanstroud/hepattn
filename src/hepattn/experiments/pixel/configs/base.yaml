@@ -117,8 +117,6 @@ trainer:
     class_path: hepattn.utils.loggers.MyCometLogger
     init_args:
       project: pixel
-      # We are not using conda and log manually anyway
-      log_env_details: false
 
   # Specify any callback here
   callbacks:
