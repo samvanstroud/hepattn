@@ -110,7 +110,7 @@ model:
   model:
     class_path: hepattn.models.MaskFormer
     init_args:
-      dim: &dim 256
+      dim: &dim 32
       input_sort_field: phi
       input_nets:
         class_path: torch.nn.ModuleList
@@ -156,14 +156,14 @@ model:
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 10
+          num_layers: 2
           dim: *dim
           attn_type: torch
           hybrid_norm: true
           norm: RMSNorm
 
       decoder:
-        num_decoder_layers: 4
+        num_decoder_layers: 2
         num_queries: *num_objects
         mask_attention: true
         use_query_masks: false
