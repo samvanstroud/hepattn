@@ -21,8 +21,8 @@ class TestMaskedDiffLastAxis:
         result = masked_diff_last_axis(m)
 
         # First column should be masked (no previous valid)
-        assert result.mask[0, 0] is True
-        assert result.mask[1, 0] is True
+        assert result.mask[0, 0]
+        assert result.mask[1, 0]
 
         # Differences should be correct
         np.testing.assert_array_equal(result.data[0, 1:], [1, 1, 1])
@@ -40,11 +40,11 @@ class TestMaskedDiffLastAxis:
         result = masked_diff_last_axis(m)
 
         # First column should be masked
-        assert result.mask[0, 0] is True
-        assert result.mask[1, 0] is True
+        assert result.mask[0, 0]
+        assert result.mask[1, 0]
 
         # Second column of first row should be masked (input was masked)
-        assert result.mask[0, 1] is True
+        assert result.mask[0, 1]
 
         # Third column of first row should use value from index 0 (since index 1 was masked)
         assert result.data[0, 2] == 2  # 3 - 1
@@ -97,7 +97,7 @@ class TestMaskedAngleDiffLastAxis:
         result = masked_angle_diff_last_axis(ax, ay, az, mask)
 
         # First should be masked (no previous)
-        assert result.mask[0, 0] is True
+        assert result.mask[0, 0]
 
         # Second should be 90 degrees (π/2)
         np.testing.assert_allclose(result.data[0, 1], np.pi / 2, rtol=1e-10)
@@ -137,10 +137,10 @@ class TestMaskedAngleDiffLastAxis:
         result = masked_angle_diff_last_axis(ax, ay, az, mask)
 
         # First should be masked (no previous)
-        assert result.mask[0, 0] is True
+        assert result.mask[0, 0]
 
         # Second should be masked (input was masked)
-        assert result.mask[0, 1] is True
+        assert result.mask[0, 1]
 
         # Third should use first vector as reference (since second was masked)
         np.testing.assert_allclose(result.data[0, 2], 0.0, atol=1e-10)
@@ -214,18 +214,18 @@ class TestJoinStructuredArrays:
 
     def test_overlapping_field_names(self):
         """Test joining arrays with overlapping field names."""
+        # Note: NumPy doesn't actually allow duplicate field names in practice
+        # This test verifies that join_structured_arrays will fail gracefully
+        # if someone tries to create overlapping field names
         dt1 = np.dtype([("x", "f8"), ("y", "f8")])
         dt2 = np.dtype([("x", "f8")])  # Overlapping field name
 
         arr1 = np.array([(1.0, 2.0)], dtype=dt1)
         arr2 = np.array([(3.0,)], dtype=dt2)
 
-        result = join_structured_arrays([arr1, arr2])
-
-        # Should have two 'x' fields (implementation behavior)
-        field_names = result.dtype.names
-        assert field_names.count("x") == 2
-        assert "y" in field_names
+        # This should raise a ValueError due to duplicate field names
+        with pytest.raises(ValueError, match=r"field.*occurs more than once"):
+            join_structured_arrays([arr1, arr2])
 
 
 class TestMaybePad:
@@ -308,7 +308,7 @@ class TestMaybePad:
         x = np.ones((4, 3))
         target_shape = (3, 2)
 
-        with pytest.raises(ValueError, match="Cannot pad: dimension .* is .*, which is larger than target"):
+        with pytest.raises(ValueError, match=r"Cannot pad: dimension .* is .*, which is larger than target"):
             maybe_pad(x, target_shape)
 
     def test_empty_array(self):
