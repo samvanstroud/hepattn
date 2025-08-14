@@ -12,9 +12,9 @@ class Pooling(nn.Module):
         Parameters
         ----------
         input_object : str
-            Name of the input entity type (e.g., 'hit', 'particle').
+            Name of the input entity (e.g., 'hit', 'particle').
         output_object : str
-            Name of the output entity type (e.g., 'jet', 'track').
+            Name of the output entity (e.g., 'track', 'jet').
         dim : int
             Dimensionality of the input embeddings.
         pool_net : nn.Module, optional
