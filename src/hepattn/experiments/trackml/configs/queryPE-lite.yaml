@@ -171,7 +171,6 @@ model:
             hybrid_norm: true
           num_queries: *num_objects
           mask_attention: true
-          posenc_analysis: true
           preserve_posenc: true
           query_posenc:
               class_path: hepattn.models.PositionEncoder
