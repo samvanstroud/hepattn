@@ -81,9 +81,6 @@ class ModelWrapper(LightningModule):
         # Get the model outputs
         outputs = self.model(inputs)
 
-        # Store outputs temporarily for callbacks to access
-        self.last_outputs = outputs
-
         # Compute and log losses
         losses, targets = self.model.loss(outputs, targets)
         total_loss = self.log_losses(losses, "train")
@@ -105,9 +102,6 @@ class ModelWrapper(LightningModule):
 
         # Get the raw model outputs
         outputs = self.model(inputs)
-
-        # Store outputs temporarily for callbacks to access
-        self.last_outputs = outputs
 
         # Compute and log losses
         losses, targets = self.model.loss(outputs, targets)

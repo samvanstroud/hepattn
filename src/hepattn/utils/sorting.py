@@ -31,12 +31,6 @@ class Sorter(nn.Module):
 
         # Get key_embed shape for reference in sorting
         self.num_hits = x["key_embed"].shape[-2]
-        assert self.num_hits > 0, "key embed not found in x"
-
-        # Sort key embeddings and related data by the sort field
-        if f"key_{self.input_sort_field}" not in x:
-            print(f"Warning: Sort field {self.input_sort_field} not found in x")
-            return x
 
         key_sort_value = x[f"key_{self.input_sort_field}"]
         key_sort_idx = torch.argsort(key_sort_value, dim=-1)

@@ -64,7 +64,8 @@ class MaskFormer(nn.Module):
         self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
-        self.sort_before_encoder = sort_before_encoder
+        if sort_before_encoder:
+            assert self.input_sort_field is not None, "input_sort_field must be provided if sort_before_encoder is True"
         self.sorting = Sorter(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
@@ -113,18 +114,16 @@ class MaskFormer(nn.Module):
             )
 
         # Dedicated sorting step before encoder
-        if self.sort_before_encoder and self.input_sort_field is not None:
+        if self.sorting is not None:
             x = self.sorting.sort_inputs(x)
 
         # Pass merged input hits through the encoder
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
             # Disable encoder's internal sorting if we're using pre-encoder sorting
-            if self.sort_before_encoder:
-                x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=None, kv_mask=x.get("key_valid"))
-            else:
-                x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x.get(f"key_{self.input_sort_field}"), kv_mask=x.get("key_valid"))
-
+            # Disable encoder's internal sorting if we're using pre-encoder sorting
+            x_sort_value = None if self.sorting is not None else x.get(f"key_{self.input_sort_field}")
+            x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
         # Unmerge the updated features back into the separate input types
         # These are just views into the tensor that hold all the merged hits
         for input_name in input_names:
@@ -192,8 +191,6 @@ class MaskFormer(nn.Module):
             The outputs produces the forward pass of the model.
         targets:
             The data containing the targets.
-        sort_indices:
-            The indices used to sort the inputs.
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}

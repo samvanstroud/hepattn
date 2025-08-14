@@ -66,7 +66,6 @@ class TestMaskFormerDecoder:
         assert decoder.num_queries == NUM_QUERIES
         assert decoder.mask_attention is True
         assert decoder.use_query_masks is False
-        assert decoder.log_attn_mask is False
         assert len(decoder.decoder_layers) == NUM_LAYERS
         assert decoder.tasks is None
         assert decoder.query_posenc is None
@@ -85,12 +84,10 @@ class TestMaskFormerDecoder:
             num_decoder_layers=NUM_LAYERS,
             mask_attention=False,
             use_query_masks=True,
-            log_attn_mask=True,
         )
 
         assert decoder.mask_attention is False
         assert decoder.use_query_masks is True
-        assert decoder.log_attn_mask is True
 
     def test_forward_without_tasks(self, decoder_no_mask_attention, sample_decoder_data):
         """Test forward pass without any tasks defined."""

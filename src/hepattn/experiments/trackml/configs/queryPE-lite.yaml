@@ -123,7 +123,6 @@ model:
     init_args:
       input_sort_field: phi
       dim: &dim 256
-      log_task_attn_mask: true
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -171,7 +170,6 @@ model:
             hybrid_norm: true
           num_queries: *num_objects
           mask_attention: true
-          log_attn_mask: true
           posenc_analysis: true
           preserve_posenc: true
           query_posenc:
