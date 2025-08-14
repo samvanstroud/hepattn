@@ -46,7 +46,7 @@ class TestMaskFormerSorting:
 
     @pytest.fixture
     def encoder(self):
-        return Encoder(num_layers=2, dim=64, window_size=4, attn_type="torch")
+        return Encoder(num_layers=2, dim=64)
 
     @pytest.fixture
     def decoder(self):
