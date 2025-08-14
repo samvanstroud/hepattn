@@ -501,7 +501,7 @@ class CLICDataset(Dataset):
 
         # Create dummy labels
         labels = {
-            "particle_class": torch.randint(0, 6, (self.num_objects,), dtype=torch.long),
+            "particle_class": torch.randint(0, 5, (self.num_objects,), dtype=torch.long),
             "particle_valid": torch.zeros(self.num_objects, dtype=torch.bool),
             "node_valid": inputs["node_valid"].clone(),
             "particle_node_valid": torch.rand(self.num_objects, self.max_nodes) > 0.8,
