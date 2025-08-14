@@ -1,0 +1,14 @@
+{
+    "editor.stickyScroll.enabled": true,
+    "editor.formatOnSave": true,
+    "notebook.formatOnSave.enabled": true,
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports.ruff": "explicit"
+        },
+    },
+    "files.watcherExclude": {
+        "**/.git/**": true
+    }
+}
