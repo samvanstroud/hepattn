@@ -27,3 +27,13 @@ jobs:
           git lfs pull
       - name: Run tests
         run: pixi run -e ci test-ci
+
+      # Step 4: Upload coverage to Codecov
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: true
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
