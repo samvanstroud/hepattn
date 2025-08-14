@@ -86,10 +86,10 @@ cuda = "12.8.*"
 ninja = "*"
 
 [tool.pixi.tasks.test]
-cmd = "pytest -xsv"
+cmd = "pytest"
 
 [tool.pixi.tasks.test-ci]
-cmd = "pytest -xsv -m 'not gpu and not requiresdata'"
+cmd = "pytest -m 'not gpu and not requiresdata'"
 
 
 [tool.ruff]
