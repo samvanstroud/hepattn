@@ -117,7 +117,6 @@ markers = ["gpu: mark test to run on GPU", "requiresdata: mark test that require
 [tool.coverage.run]
 source = ["src"]
 omit = [
-    "*/tests/*",
     "*/lap1015/*",
     "*.ipynb"
 ]
