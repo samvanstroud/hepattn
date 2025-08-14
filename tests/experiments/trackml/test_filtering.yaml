@@ -2,6 +2,8 @@ seed_everything: 42
 name: filtering-test
 
 data:
+  dummy_data: true
+
   train_dir: dummy
   val_dir: dummy
   test_dir: dummy
@@ -56,6 +58,7 @@ data:
       - on_valid_particle
 
 trainer:
+  fast_dev_run: 2
   max_epochs: 20
   accelerator: cpu
   devices: 1
@@ -64,11 +67,7 @@ trainer:
   default_root_dir: logs
   gradient_clip_val: 0.1
   enable_progress_bar: True
-
-  logger:
-    class_path: hepattn.utils.loggers.MyCometLogger
-    init_args:
-      project: trackml_filtering
+  logger: false
 
   callbacks:
     - class_path: hepattn.callbacks.InferenceTimer

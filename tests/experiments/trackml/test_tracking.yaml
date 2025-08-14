@@ -2,6 +2,8 @@ seed_everything: 42
 name: tracking-test
 
 data:
+  dummy_data: true
+
   train_dir: dummy
   val_dir: dummy
   test_dir: dummy
@@ -62,7 +64,7 @@ data:
       - phi
 
 trainer:
-  # Training stuff here
+  fast_dev_run: 2
   max_epochs: 10
   accelerator: cpu
   devices: 1
@@ -71,11 +73,7 @@ trainer:
   default_root_dir: logs
   gradient_clip_val: 0.1
   enable_progress_bar: true
-
-  logger:
-    class_path: hepattn.utils.loggers.MyCometLogger
-    init_args:
-      project: trackml_tracking
+  logger: false
 
   callbacks:
     - class_path: hepattn.callbacks.InferenceTimer
