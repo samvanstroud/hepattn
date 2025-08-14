@@ -26,12 +26,35 @@ class TrackMLDataset(Dataset):
         particle_min_num_hits=3,
         event_max_num_particles=1000,
         hit_eval_path: str | None = None,
+        dummy_data: bool = False,
     ):
         super().__init__()
+
+        # Store dummy_data flag
+        self.dummy_data = dummy_data
 
         # Set the global random sampling seed
         self.sampling_seed = 42
         np.random.seed(self.sampling_seed)  # noqa: NPY002
+
+        # If using dummy data, skip file-based initialization
+        if self.dummy_data:
+            # Simple dummy setup
+            self.dirpath = Path(dirpath) if dirpath else Path()
+            self.hit_eval_path = None
+            self.inputs = inputs
+            self.targets = targets
+            self.num_events = max(num_events, 1) if num_events > 0 else 10
+            self.event_names = [f"dummy_event_{i:06d}" for i in range(self.num_events)]
+            self.sample_ids = list(range(self.num_events))
+
+            # Set dummy parameters
+            self.hit_volume_ids = hit_volume_ids
+            self.particle_min_pt = particle_min_pt
+            self.particle_max_abs_eta = particle_max_abs_eta
+            self.particle_min_num_hits = particle_min_num_hits
+            self.event_max_num_particles = event_max_num_particles
+            return
 
         # Get a list of event names
         event_names = [Path(file).stem.replace("-parts", "") for file in Path(dirpath).glob("event*-parts.parquet")]
@@ -79,6 +102,10 @@ class TrackMLDataset(Dataset):
     def __getitem__(self, idx):
         inputs = {}
         targets = {}
+
+        # Return dummy data if flag is set
+        if self.dummy_data:
+            return self._generate_dummy_data(idx)
 
         # Load the event
         hits, particles = self.load_event(idx)
@@ -196,6 +223,62 @@ class TrackMLDataset(Dataset):
         # assert hits["phi"].nunique() == len(hits), msg
 
         return hits, particles
+
+    def _generate_dummy_data(self, idx):
+        """Generate completely random dummy data for CI testing."""
+        inputs = {}
+        targets = {}
+
+        # Create random number generator
+        rng = np.random.default_rng(self.sampling_seed + idx)
+
+        # Generate random number of hits (between 10 and 100)
+        num_hits = rng.integers(10, 101)
+
+        # Generate random number of particles (up to event_max_num_particles)
+        num_particles = rng.integers(1, min(self.event_max_num_particles + 1, 101))
+
+        # Build the input hits with random data
+        for feature, fields in self.inputs.items():
+            inputs[f"{feature}_valid"] = torch.full((num_hits,), True).unsqueeze(0)
+            targets[f"{feature}_valid"] = inputs[f"{feature}_valid"]
+
+            for field in fields:
+                # Generate random normal data for all fields
+                data = rng.standard_normal(num_hits)
+                inputs[f"{feature}_{field}"] = torch.from_numpy(data).unsqueeze(0).to(torch.float32)
+
+        # Build the targets for whether a particle slot is used or not
+        targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
+        targets["particle_valid"][:num_particles] = True
+        targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
+
+        # Build dummy particle IDs
+        particle_ids = torch.arange(num_particles, dtype=torch.long)
+        particle_ids = torch.cat([particle_ids, -999 * torch.ones(self.event_max_num_particles - num_particles)])
+
+        # Assign random particle IDs to hits
+        hit_particle_ids = torch.randint(0, num_particles, (num_hits,))
+
+        # Create the mask targets
+        targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+
+        # Create the hit filter targets (random boolean)
+        targets["hit_on_valid_particle"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
+
+        # Add sample ID
+        targets["sample_id"] = torch.tensor([idx], dtype=torch.int32)
+
+        # Build the regression targets
+        if "particle" in self.targets:
+            for field in self.targets["particle"]:
+                # Generate random particle data
+                x = torch.full((self.event_max_num_particles,), torch.nan)
+                data = rng.standard_normal(num_particles)
+                x[:num_particles] = torch.from_numpy(data)
+                targets[f"particle_{field}"] = x.unsqueeze(0)
+
+        return inputs, targets
 
 
 class TrackMLDataModule(LightningDataModule):
