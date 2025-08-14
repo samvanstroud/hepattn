@@ -95,7 +95,7 @@ class ModelWrapper(LightningModule):
             self.mlt_opt(losses, outputs)
             return None
 
-        return total_loss
+        return {"loss": total_loss, **outputs}
 
     def validation_step(self, batch):
         inputs, targets = batch
@@ -111,7 +111,7 @@ class ModelWrapper(LightningModule):
         preds = self.model.predict(outputs)
         self.log_metrics(preds, targets, "val")
 
-        return total_loss
+        return {"loss": total_loss, **outputs}
 
     def test_step(self, batch):
         inputs, targets = batch
