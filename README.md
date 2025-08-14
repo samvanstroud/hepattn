@@ -107,9 +107,8 @@ See experiment directories for instructions on how to run experiments.
 To ensure clarity and consistency throughout this project, we use the following definitions:
 
 - **constituent** - input entities that go into the encoder/decoder, e.g. inner detector hits
-    - note that these are somtimes referred to as `input_object` in the code.
 - **object** - reconstructed outputs from the decoder, e.g. reconstructed charged particle tracks
-- **input** - generic term for any input to a module (could be constituents, objects, or other data)
+- **input** - (also `input_object`) generic term for any input to a module (could be constituents, objects, or other data)
 - **output** - generic term for any output from a module (could be objects, predictions, or intermediate representations)
 
 ## 🤝 Contributing
