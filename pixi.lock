@@ -7173,7 +7173,7 @@ packages:
 - pypi: ./
   name: hepattn
   version: 0.2.0
-  sha256: e33a05c08084b819abea8c569ceb0dac70e6fb557b8c25f52375687cafe4f6b3
+  sha256: 08ec10664c4cb0c5b1b2d0a843814f66b2efaa1a84a526908ffa03ffccfc8b73
   requires_dist:
   - packaging
   - jupyter
