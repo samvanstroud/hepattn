@@ -116,3 +116,7 @@ You can also set up pre-commit hooks to automatically run these checks before co
 ```shell
 pre-commit install
 ```
+
+## 📄 Citation
+
+If you use this software in your research, please cite it using the citation information available in the GitHub repository sidebar (generated from [`CITATION.cff`](CITATION.cff)).
