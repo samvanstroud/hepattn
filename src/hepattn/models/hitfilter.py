@@ -68,4 +68,4 @@ class HitFilter(nn.Module):
         losses = {"final": {}}
         for task in self.tasks:
             losses["final"][task.name] = task.loss(outputs["final"][task.name], targets)
-        return losses
+        return losses, targets

@@ -64,9 +64,10 @@ class MaskFormer(nn.Module):
         self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
+        self.sorting = None
         if sort_before_encoder:
             assert self.input_sort_field is not None, "input_sort_field must be provided if sort_before_encoder is True"
-        self.sorting = Sorter(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
+            self.sorting = Sorter(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
         # Atomic input names
