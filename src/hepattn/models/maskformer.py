@@ -135,8 +135,6 @@ class MaskFormer(nn.Module):
 
         # Pass through decoder layers
         x, outputs = self.decoder(x, input_names)
-        outputs["sort_indices"] = self.sorting.sort_indices
-
         # Do any pooling if desired
         if self.pooling is not None:
             x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
@@ -154,6 +152,7 @@ class MaskFormer(nn.Module):
             if isinstance(task, ObjectClassificationTask):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
+        outputs["final"]["sort_indices"] = self.sorting.sort_indices
         return outputs
 
     def predict(self, outputs: dict) -> dict:
@@ -194,7 +193,7 @@ class MaskFormer(nn.Module):
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
-        targets = self.sorting.sort_targets(targets, outputs["sort_indices"])
+        targets = self.sorting.sort_targets(targets, outputs["final"]["sort_indices"])
         batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
             layer_costs = None
