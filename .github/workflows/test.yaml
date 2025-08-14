@@ -20,7 +20,7 @@ jobs:
       # Step 3: Run tests
       - name: Test pixi
         run: |
-          pixi run python --version
+          pixi run -e ci python --version
       - name: Install Git LFS
         run: |
           git lfs install
