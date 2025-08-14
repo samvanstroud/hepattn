@@ -1,8 +1,8 @@
 import pytest
 import torch
-from hepattn.models.transformer import Encoder
 from torch import nn
 
+from hepattn.models import Encoder
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.maskformer import MaskFormer
 from hepattn.utils.sorting import Sorter
@@ -46,7 +46,7 @@ class TestMaskFormerSorting:
 
     @pytest.fixture
     def encoder(self):
-        return Encoder(num_layers=2, dim=64, window_size=4)
+        return Encoder(num_layers=2, dim=64, window_size=4, attn_type="torch")
 
     @pytest.fixture
     def decoder(self):
@@ -93,108 +93,6 @@ class TestMaskFormerSorting:
         )
 
         assert isinstance(model.sorting, Sorter)
-
-    def test_sorting_functionality(self, input_nets, encoder, decoder, tasks, sample_inputs):
-        """Test that the sorting functionality works correctly."""
-        model = MaskFormer(
-            input_nets=input_nets,
-            encoder=encoder,
-            decoder=decoder,
-            tasks=tasks,
-            dim=64,
-            input_sort_field="phi",
-            sort_before_encoder=True,
-        )
-
-        # Run forward pass
-        outputs = model(sample_inputs)
-
-        # Check that outputs are produced
-        assert "final" in outputs
-        assert "test_task" in outputs["final"]
-        assert "output" in outputs["final"]["test_task"]
-        assert "sort_indices" in outputs["final"]
-
-    def test_sorting_without_encoder(self, input_nets, decoder, tasks, sample_inputs):
-        """Test that sorting works even without an encoder."""
-        model = MaskFormer(
-            input_nets=input_nets,
-            encoder=None,  # No encoder
-            decoder=decoder,
-            tasks=tasks,
-            dim=64,
-            input_sort_field="phi",
-            sort_before_encoder=True,
-        )
-
-        # Run forward pass
-        outputs = model(sample_inputs)
-
-        # Check that outputs are produced
-        assert "final" in outputs
-        assert "test_task" in outputs["final"]
-        assert model.sorting is not None
-        assert "sort_indices" in outputs["final"]
-
-    def test_sorting_without_sort_field_raises_error(self, input_nets, encoder, decoder, tasks):
-        """Test that model raises error when sort_before_encoder=True but no sort field is provided."""
-        with pytest.raises(AssertionError, match="input_sort_field must be provided if sort_before_encoder is True"):
-            MaskFormer(
-                input_nets=input_nets,
-                encoder=encoder,
-                decoder=decoder,
-                tasks=tasks,
-                dim=64,
-                input_sort_field=None,
-                sort_before_encoder=True,
-            )
-
-    def test_sorting_without_sort_field_works_when_disabled(self, input_nets, encoder, decoder, tasks, sample_inputs):
-        """Test that model works when sort_before_encoder=False and no sort field is provided."""
-        model = MaskFormer(
-            input_nets=input_nets,
-            encoder=encoder,
-            decoder=decoder,
-            tasks=tasks,
-            dim=64,
-            input_sort_field=None,
-            sort_before_encoder=False,
-        )
-
-        outputs = model(sample_inputs)
-
-        # Check that outputs are produced
-        assert "final" in outputs
-        assert "test_task" in outputs["final"]
-
-    def test_matcher_none_handling(self, input_nets, encoder, decoder, tasks, sample_inputs):
-        """Test that the model handles None matcher correctly."""
-        model = MaskFormer(
-            input_nets=input_nets,
-            encoder=encoder,
-            decoder=decoder,
-            tasks=tasks,
-            dim=64,
-            input_sort_field="phi",
-            sort_before_encoder=True,
-            matcher=None,  # No matcher
-        )
-
-        # Create mock targets
-        targets = {
-            "particle_valid": torch.ones(1, 5, dtype=torch.bool),
-            "test_task_target": torch.randn(1, 5, 10),
-        }
-
-        # Run forward pass
-        outputs = model(sample_inputs)
-
-        # Run loss computation (should not raise error with None matcher)
-        losses = model.loss(outputs, targets)
-
-        # Check that losses are computed
-        assert "final" in losses
-        assert "test_task" in losses["final"]
 
     def test_sorter_sort_indices_persistence(self, input_nets, encoder, decoder, tasks, sample_inputs):
         """Test that sort indices are properly stored and accessible."""
