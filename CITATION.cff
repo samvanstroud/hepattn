@@ -5,6 +5,7 @@ type: software
 repository-code: "https://github.com/samvanstroud/hepattn"
 license: GPL-3.0-or-later
 version: "0.2.0"
+doi: "10.5281/zenodo.16880940"
 authors:
   - given-names: Samuel
     family-names: Van Stroud
