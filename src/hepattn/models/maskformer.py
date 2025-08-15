@@ -199,9 +199,7 @@ class MaskFormer(nn.Module):
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
-        for input_hit, input_sort_field in outputs["final"][self.input_sort_field].items():
-            # TODO need to write this function - should now be quite simple?
-            targets[input_hit] = self.sorting.sort_targets(targets, input_hit, input_sort_field)
+        targets = self.sorting.sort_targets(targets, outputs["final"][self.input_sort_field])
 
         batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
@@ -209,18 +207,12 @@ class MaskFormer(nn.Module):
 
             # Get the cost contribution from each of the tasks
             for task in self.tasks:
-                # if task has attribute input hit, then use that as the input type
-                input_hit = task.input_hit if hasattr(task, "input_hit") else None
-
                 # Skip tasks that do not contribute intermediate losses
                 if layer_name != "final" and not task.has_intermediate_loss:
                     continue
                 # Only use the cost from the final set of predictions
 
-                if input_hit is not None:
-                    task_costs = task.cost(layer_outputs[task.name], targets[input_hit])
-                else:
-                    task_costs = task.cost(layer_outputs[task.name], targets)
+                task_costs = task.cost(layer_outputs[task.name], targets)
 
                 # Add the cost on to our running cost total, otherwise initialise a running cost matrix
                 for cost in task_costs.values():
@@ -247,9 +239,6 @@ class MaskFormer(nn.Module):
             )
 
             # Get the indicies that can permute the predictions to yield their optimal matching
-            # TODO must know which input obj is related to which cost so can sort this correctly
-            # TODO OR MAYBE DON'T NEED TO SORT????? I'M CONFUSED
-            # TODO DO WE EVEN NEED TO SORT TARGETS IF THEY'RE ALIGNED BY THE MATCHER????
             pred_idxs = self.matcher(cost, target_object_valid)
 
             for task in self.tasks:
@@ -271,10 +260,6 @@ class MaskFormer(nn.Module):
             for task in self.tasks:
                 if layer_name != "final" and not task.has_intermediate_loss:
                     continue
-                input_hit = task.input_hit if hasattr(task, "input_hit") else None
-                if input_hit is not None:
-                    losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets[input_hit])
-                else:
-                    losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
+                losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses, targets
