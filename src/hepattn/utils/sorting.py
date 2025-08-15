@@ -52,7 +52,6 @@ class Sorter(nn.Module):
 
     def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
         """Sort targets to align with sorted outputs."""
-
         sort_indices = {}
         for input_hit in self.input_sort_keys:
             if input_hit == "key":
@@ -77,7 +76,8 @@ class Sorter(nn.Module):
                 # optional sorting for other targets if there is a dim that == num_hits
                 # this is a catch in case other class / element is added - shouldn't miss tensor that needs to be sorted
                 # this could be a problem if multiple input_hit types have same num hits?
-                # could instead just # targets_sorted[key] = value OR targets_sorted = targets.copy() and assume that config contains everything it needs to?
+                # could instead just # targets_sorted[key] = value
+                # OR targets_sorted = targets.copy() and assume that config contains everything it needs to?
                 for input_hit in sort_indices:
                     targets_sorted[key] = self._sort_tensor_by_index(
                         value, sort_indices[input_hit]["key_sort_idx"], sort_indices[input_hit]["num_hits"]

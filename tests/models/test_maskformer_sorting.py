@@ -101,7 +101,6 @@ class TestMaskFormerSorting:
             ]),  # Specific unsorted values
         }
 
-
     def test_sorter_sort_indices_persistence(self, input_nets, encoder, decoder, tasks, sample_inputs):
         """Test that sort indices are properly stored and accessible."""
         model = MaskFormer(
@@ -203,7 +202,6 @@ class TestMaskFormerSorting:
 
         # Run forward pass
         outputs = model(sample_inputs)
-        
 
         assert outputs["final"]["phi"]["input1_phi"] is not None
         assert outputs["final"]["phi"]["input2_phi"] is not None
