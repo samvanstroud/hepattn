@@ -5,7 +5,6 @@ from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
-from hepattn.utils.sorting import Sorter
 
 
 class MaskFormer(nn.Module):
@@ -117,7 +116,7 @@ class MaskFormer(nn.Module):
             )
             for input_name in input_names:
                 x[input_name + "_" + self.input_sort_field] = inputs[input_name + "_" + self.input_sort_field]
-            
+
         # Dedicated sorting step before encoder
         if self.sorting is not None:
             x = self.sorting.sort_inputs(x)
