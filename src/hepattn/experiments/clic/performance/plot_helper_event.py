@@ -41,9 +41,9 @@ class PlotEventHelper:
             comb = np.hstack([self.perf.data[name][var + "_res"] for name in self.perf.network_names])
             match var:
                 case "met":
-                    min_percent, max_percent = 10, 90
+                    min_percent, max_percent = 2, 98
                 case "ht":
-                    min_percent, max_percent = 1, 99
+                    min_percent, max_percent = 2, 98
                 case "nconst_ch" | "nconst_neut":
                     min_percent, max_percent = 2, 98
             min_, max_ = np.percentile(comb, min_percent), np.percentile(comb, max_percent)
@@ -63,7 +63,7 @@ class PlotEventHelper:
             ax.minorticks_on()
             ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
             ax.legend()
-            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)
             ax.set_ylim(0, ax.get_ylim()[1] * (1 + len(self.perf.network_names) * 0.15))
             ax.set_ylabel("Events")
             if separate_figures:
@@ -82,7 +82,7 @@ class PlotEventHelper:
             "nconst": r"$\Delta$ number of jet constituents",
         }
 
-        jet_vars = ["pt", "dR", "nconst", "e_rel"]  # 'eta', 'phi']
+        jet_vars = ["pt", "e_rel", "dR", "nconst"]  # 'eta', 'phi']
         if pt_relative:
             jet_vars[0] = "pt_rel"
 
@@ -98,7 +98,7 @@ class PlotEventHelper:
 
             comb = np.hstack([self.perf.data[name]["jet_residuals"][var] for name in self.perf.network_names])
             # _min, _max = np.percentile(comb, 2), np.percentile(comb, 98)  # COCOA
-            min_, max_ = np.percentile(comb, 5), np.percentile(comb, 95)  # CLIC
+            min_, max_ = np.percentile(comb, 2), np.percentile(comb, 98)  # CLIC
             abs_max = max(abs(min_), abs(max_))
             bins = np.linspace(-abs_max, abs_max, 50)
             if var == "dR":
@@ -127,7 +127,7 @@ class PlotEventHelper:
                     )
             ax.set_xlabel(xlabel_dict[var])
             ax.set_ylabel("Jets")
-            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)
             ax.minorticks_on()
             ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
             ax.legend()
@@ -193,7 +193,7 @@ class PlotEventHelper:
             ax.set_xticklabels([f"{bin_min}-{bin_max}" for bin_min, bin_max in zip(bin_mins, bin_maxs, strict=False)])
         ax.set_xlabel(xlabel)
         ax.set_ylabel("Jet ($p_T^{reco} - p_T^{truth}) / p_T^{truth}$")
-        ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+        ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)
         ax.minorticks_on()
         ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
         ax.legend(labels, loc="upper right", ncol=len(self.perf.network_names))
@@ -227,7 +227,7 @@ class PlotEventHelper:
             fig2, ax2 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI, constrained_layout=True)
 
         else:
-            fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW), dpi=FIG_DPI, constrained_layout=True)
+            fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW * 1.1), dpi=FIG_DPI, constrained_layout=True)
             gs = fig.add_gridspec(1, 2, hspace=0.0)
             ax1 = fig.add_subplot(gs[0])
             ax2 = fig.add_subplot(gs[1])
@@ -290,7 +290,7 @@ class PlotEventHelper:
 
         for ax in [ax1, ax2]:
             ax.set_xlabel(f"Jet ${v_name}^{{truth}}$ [GeV]")
-            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)
             ax.minorticks_on()
             ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
             ax.legend()
