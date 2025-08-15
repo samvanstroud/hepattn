@@ -157,9 +157,10 @@ class MaskFormer(nn.Module):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
             # store info about the input sort field for each input type
-        outputs["final"][self.input_sort_field] = {}
-        for input_name in input_names:
-            outputs["final"][self.input_sort_field][f"{input_name}_{self.input_sort_field}"] = inputs[input_name + "_" + self.input_sort_field]
+        if self.input_sort_field is not None:
+            outputs["final"][self.input_sort_field] = {}
+            for input_name in input_names:
+                outputs["final"][self.input_sort_field][f"{input_name}_{self.input_sort_field}"] = inputs[input_name + "_" + self.input_sort_field]
         return outputs
 
     def predict(self, outputs: dict) -> dict:

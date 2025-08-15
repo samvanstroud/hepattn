@@ -173,6 +173,15 @@ model:
         decoder_layer_config:
           dim: *dim
 
+      sorter:
+        class_path: hepattn.utils.sorting.Sorter
+        init_args:
+          input_sort_field: phi
+          raw_variables:
+            - x
+            - y
+            - z
+
       matcher:
         class_path: hepattn.models.matcher.Matcher
         init_args:
