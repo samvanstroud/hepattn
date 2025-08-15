@@ -52,7 +52,7 @@ class Sorter(nn.Module):
     def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
         """Sort targets to align with sorted outputs."""
         for input_hit in self.input_sort_keys:
-            key_sort_idx, num_hits = self.get_sort_idx(targets, input_hit)
+            key_sort_idx, num_hits = self.get_sort_idx(sort_fields[input_hit], input_hit)
             targets_sorted: dict[str, Tensor] = {}
             for target_field in self.target_sort_keys[input_hit]:
                 targets_sorted[target_field] = self._sort_tensor_by_index(
@@ -62,6 +62,7 @@ class Sorter(nn.Module):
             for key, value in targets.items():
                 # optional sorting for other targets if there is a dim that == num_hits
                 # this is a catch in case other class / element is added - shouldn't miss tensor that needs to be sorted
+                # TODO: this could be a problem if multiple input_hit types have same no. hits?
                 targets_sorted[key] = self._sort_tensor_by_index(value, key_sort_idx, num_hits)
 
         return targets_sorted
