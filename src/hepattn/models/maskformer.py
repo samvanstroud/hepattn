@@ -115,7 +115,9 @@ class MaskFormer(nn.Module):
             x[f"key_{self.input_sort_field}"] = torch.concatenate(
                 [inputs[input_name + "_" + self.input_sort_field] for input_name in input_names], dim=-1
             )
-
+            for input_name in input_names:
+                x[input_name + "_" + self.input_sort_field] = inputs[input_name + "_" + self.input_sort_field]
+            
         # Dedicated sorting step before encoder
         if self.sorting is not None:
             x = self.sorting.sort_inputs(x)
@@ -158,7 +160,7 @@ class MaskFormer(nn.Module):
             # store info about the input sort field for each input type
         outputs["final"][self.input_sort_field] = {}
         for input_name in input_names:
-            outputs["final"][self.input_sort_field][input_name] = inputs[input_name + "_" + self.input_sort_field]
+            outputs["final"][self.input_sort_field][f"{input_name}_{self.input_sort_field}"] = inputs[input_name + "_" + self.input_sort_field]
         return outputs
 
     def predict(self, outputs: dict) -> dict:
@@ -233,13 +235,8 @@ class MaskFormer(nn.Module):
             if cost is None:
                 continue
 
-            input_hit = task.input_hit if hasattr(task, "input_hit") else None
-            target_object_valid = (
-                targets[f"{self.target_object}_valid"][input_hit] if input_hit is not None else targets[f"{self.target_object}_valid"]
-            )
-
             # Get the indicies that can permute the predictions to yield their optimal matching
-            pred_idxs = self.matcher(cost, target_object_valid)
+            pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
 
             for task in self.tasks:
                 # Tasks without a object dimension do not need permutation (constituent-level or sample-level)

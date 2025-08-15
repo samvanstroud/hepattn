@@ -82,7 +82,7 @@ class AttnMaskLogger(Callback):
 
         # Process decoder layer outputs
         for layer_name, layer_outputs in outputs.items():
-            if "attn_mask" in layer_outputs:
+            if layer_name != "loss" and "attn_mask" in layer_outputs:
                 layer_index = int(layer_name.split("_")[1])
                 attn_mask = layer_outputs["attn_mask"]
 
