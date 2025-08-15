@@ -134,8 +134,9 @@ model:
               key_embed: 1
               key_valid: 1
           target_sort_keys:
-            hit:
-              particle_hit_valid: 2
+            particle_hit_valid:
+              input_hit: hit
+              input_hit_dim: 2
       dim: &dim 256
       input_nets:
         class_path: torch.nn.ModuleList
