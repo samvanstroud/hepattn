@@ -7,12 +7,14 @@ class Sorter(nn.Module):
         self,
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
-        input_nets: nn.ModuleList | None = None,
+        input_sort_keys: dict[str, dict[str, int]] | None = None,
+        target_sort_keys: dict[str, str] | None = None,
     ) -> None:
         super().__init__()
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
-        self.input_nets = input_nets or nn.ModuleList()
+        self.input_sort_keys = input_sort_keys or {}
+        self.target_sort_keys = target_sort_keys or {}
 
     def sort_inputs(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         """Sort inputs before passing to encoder for better window attention performance.
@@ -30,50 +32,51 @@ class Sorter(nn.Module):
         self.sort_indices = {}
 
         # Get key_embed shape for reference in sorting
-        self.num_hits = x["key_embed"].shape[-2]
 
-        key_sort_value = x[f"key_{self.input_sort_field}"]
-        key_sort_idx = torch.argsort(key_sort_value, dim=-1)
-        if len(key_sort_idx.shape) == 2:
-            key_sort_idx = key_sort_idx[0]
-        assert len(key_sort_idx.shape) == 1, "Sort index must be 1D"
-        assert key_sort_idx.shape[0] == self.num_hits, f"Key sort index shape {key_sort_idx.shape} does not match num_hits {self.num_hits}"
-        self.sort_indices["key"] = key_sort_idx
+        for input_hit in self.input_sort_keys:
+            sort_idx, num_hits = self.get_sort_idx(x, input_hit)
+            for input_key, input_key_dim in self.input_sort_keys[input_hit].items():
+                assert input_key_dim in x, f"Input sort key {input_key} not found in x"
+                if x[input_key] is not None:
+                    x[input_key] = self._sort_tensor_by_index(x[input_key], sort_idx, num_hits, sort_dim=input_key_dim)
 
-        x[f"key_{self.input_sort_field}"] = self._sort_tensor_by_index(x[f"key_{self.input_sort_field}"], key_sort_idx, self.num_hits)
-
-        for input_name in [input_net.input_name for input_net in self.input_nets]:
-            if input_name + "_embed" in x:
-                x[input_name + "_embed"] = self._sort_tensor_by_index(x[input_name + "_embed"], key_sort_idx, self.num_hits)
-            if input_name + "_valid" in x:
-                x[input_name + "_valid"] = self._sort_tensor_by_index(x[input_name + "_valid"], key_sort_idx, self.num_hits)
-            if f"key_is_{input_name}" in x:
-                x[f"key_is_{input_name}"] = self._sort_tensor_by_index(x[f"key_is_{input_name}"], key_sort_idx, self.num_hits)
-
-        # Sort key embeddings
-        x["key_embed"] = self._sort_tensor_by_index(x["key_embed"], key_sort_idx, self.num_hits)
-
-        # Sort key validity mask
-        if x["key_valid"] is not None:
-            x["key_valid"] = self._sort_tensor_by_index(x["key_valid"], key_sort_idx, self.num_hits)
-
-        # Sort raw variables if they have the right shape
-        for raw_var in self.raw_variables:
-            if raw_var in x and x[raw_var].shape[-1] == x["key_embed"].shape[-2]:
-                x[raw_var] = self._sort_tensor_by_index(x[raw_var], key_sort_idx, self.num_hits)
-            else:
-                print(f"Warning: Raw variable {raw_var} has invalid shape: {x[raw_var].shape}")
+            # Sort raw variables if they have the right shape
+            # TODO: what should the sort index for these be? Would they be associated with a particular input hit???
+            # If I run these for both they will only sort if the num_hits matches? Risk is if multiple input_hit types have same no. hits?
+            for raw_var in self.raw_variables:
+                if raw_var in x:
+                    x[raw_var] = self._sort_tensor_by_index(x[raw_var], sort_idx, num_hits)
 
         return x
 
-    def sort_targets(self, targets: dict, sort_indices: dict[str, Tensor]) -> dict:
+    def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
         """Sort targets to align with sorted outputs."""
-        for key, value in targets.items():
-            targets[key] = self._sort_tensor_by_index(value, sort_indices["key"], self.num_hits)
+        for input_hit in self.input_sort_keys:
+            key_sort_idx, num_hits = self.get_sort_idx(targets, input_hit)
+            targets_sorted: dict[str, Tensor] = {}
+            for target_field in self.target_sort_keys[input_hit]:
+                targets_sorted[target_field] = self._sort_tensor_by_index(
+                    targets[target_field], key_sort_idx, num_hits, sort_dim=self.target_sort_keys[input_hit][target_field]
+                )
 
-        return targets
+            for key, value in targets.items():
+                # optional sorting for other targets if there is a dim that == num_hits
+                # this is a catch in case other class / element is added - shouldn't miss tensor that needs to be sorted
+                targets_sorted[key] = self._sort_tensor_by_index(value, key_sort_idx, num_hits)
 
-    def _sort_tensor_by_index(self, tensor: Tensor, sort_idx: Tensor, num_hits: int) -> Tensor:
+        return targets_sorted
+
+    def get_sort_idx(self, x: dict[str, Tensor], input_hit: str) -> Tensor:
+        num_hits = x[f"{input_hit}_valid"].shape[1]
+        sort_value = x[f"{input_hit}_{self.input_sort_field}"]
+        sort_idx = torch.argsort(sort_value, dim=-1)
+        if len(sort_idx.shape) == 2:
+            sort_idx = sort_idx[0]
+        assert len(sort_idx.shape) == 1, "Sort index must be 1D"
+        assert sort_idx.shape[0] == num_hits, f"Key sort index shape {sort_idx.shape} does not match num_hits {num_hits}"
+        return sort_idx, num_hits
+
+    def _sort_tensor_by_index(self, tensor: Tensor, sort_idx: Tensor, num_hits: int, sort_dim: int | None = None) -> Tensor:
         """Sort a tensor along the dimension that has the same shape as key_embed[0].
 
         Parameters
@@ -84,18 +87,21 @@ class Sorter(nn.Module):
             Sort indices.
         num_hits : int
             Number of hits.
+        sort_dim : int | None
+            Dimension to sort along.
 
         Returns:
         Tensor
             Sorted tensor.
         """
-        sort_dim = None
-        # If num hits is provided, find the dimension with matching size
+        if sort_dim is not None:
+            assert tensor.shape[sort_dim] == num_hits, f"Sort dimension {sort_dim} has size {tensor.shape[sort_dim]} but num_hits is {num_hits}"
+            return tensor.index_select(sort_dim, sort_idx)
+        # If sort_dim is not provided, find the dimension with matching size
         for dim, size in enumerate(tensor.shape):
             if size == num_hits:
                 sort_dim = dim
                 break
-
         if sort_dim is not None:
             return tensor.index_select(sort_dim, sort_idx)
         return tensor

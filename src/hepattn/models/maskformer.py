@@ -21,7 +21,7 @@ class MaskFormer(nn.Module):
         matcher: nn.Module | None = None,
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
-        sort_before_encoder: bool = False,
+        sorter: nn.Module | None = None,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object inference with attention-based decoding and optional encoder blocks.
@@ -65,9 +65,11 @@ class MaskFormer(nn.Module):
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
         self.sorting = None
-        if sort_before_encoder:
+        if sorter is not None:
             assert self.input_sort_field is not None, "input_sort_field must be provided if sort_before_encoder is True"
-            self.sorting = Sorter(input_sort_field=self.input_sort_field, raw_variables=self.raw_variables, input_nets=self.input_nets)
+            sorter.input_sort_field = self.input_sort_field
+            sorter.raw_variables = self.raw_variables
+            self.sorting = sorter
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
         # Atomic input names
@@ -153,7 +155,10 @@ class MaskFormer(nn.Module):
             if isinstance(task, ObjectClassificationTask):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
-        outputs["final"]["sort_indices"] = self.sorting.sort_indices
+            # store info about the input sort field for each input type
+        outputs["final"][self.input_sort_field] = {}
+        for input_name in input_names:
+            outputs["final"][self.input_sort_field][input_name] = inputs[input_name + "_" + self.input_sort_field]
         return outputs
 
     def predict(self, outputs: dict) -> dict:
@@ -194,19 +199,28 @@ class MaskFormer(nn.Module):
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
-        targets = self.sorting.sort_targets(targets, outputs["final"]["sort_indices"])
+        for input_hit, input_sort_field in outputs["final"][self.input_sort_field].items():
+            # TODO need to write this function - should now be quite simple?
+            targets[input_hit] = self.sorting.sort_targets(targets, input_hit, input_sort_field)
+
         batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
             layer_costs = None
 
             # Get the cost contribution from each of the tasks
             for task in self.tasks:
+                # if task has attribute input hit, then use that as the input type
+                input_hit = task.input_hit if hasattr(task, "input_hit") else None
+
                 # Skip tasks that do not contribute intermediate losses
                 if layer_name != "final" and not task.has_intermediate_loss:
                     continue
-
                 # Only use the cost from the final set of predictions
-                task_costs = task.cost(layer_outputs[task.name], targets)
+
+                if input_hit is not None:
+                    task_costs = task.cost(layer_outputs[task.name], targets[input_hit])
+                else:
+                    task_costs = task.cost(layer_outputs[task.name], targets)
 
                 # Add the cost on to our running cost total, otherwise initialise a running cost matrix
                 for cost in task_costs.values():
@@ -227,8 +241,16 @@ class MaskFormer(nn.Module):
             if cost is None:
                 continue
 
+            input_hit = task.input_hit if hasattr(task, "input_hit") else None
+            target_object_valid = (
+                targets[f"{self.target_object}_valid"][input_hit] if input_hit is not None else targets[f"{self.target_object}_valid"]
+            )
+
             # Get the indicies that can permute the predictions to yield their optimal matching
-            pred_idxs = self.matcher(cost, targets[f"{self.target_object}_valid"])
+            # TODO must know which input obj is related to which cost so can sort this correctly
+            # TODO OR MAYBE DON'T NEED TO SORT????? I'M CONFUSED
+            # TODO DO WE EVEN NEED TO SORT TARGETS IF THEY'RE ALIGNED BY THE MATCHER????
+            pred_idxs = self.matcher(cost, target_object_valid)
 
             for task in self.tasks:
                 # Tasks without a object dimension do not need permutation (constituent-level or sample-level)
@@ -249,6 +271,10 @@ class MaskFormer(nn.Module):
             for task in self.tasks:
                 if layer_name != "final" and not task.has_intermediate_loss:
                     continue
-                losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
+                input_hit = task.input_hit if hasattr(task, "input_hit") else None
+                if input_hit is not None:
+                    losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets[input_hit])
+                else:
+                    losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses, targets
