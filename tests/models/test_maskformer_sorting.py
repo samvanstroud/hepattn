@@ -80,20 +80,6 @@ class TestMaskFormerSorting:
             "input2_phi": torch.randn(1, 15),  # Sort field
         }
 
-    def test_sort_before_encoder_creates_sorter(self, input_nets, encoder, decoder, tasks):
-        """Test that sort_before_encoder=True creates a Sorter instance."""
-        model = MaskFormer(
-            input_nets=input_nets,
-            encoder=encoder,
-            decoder=decoder,
-            tasks=tasks,
-            dim=64,
-            input_sort_field="phi",
-            sort_before_encoder=True,
-        )
-
-        assert isinstance(model.sorting, Sorter)
-
     def test_sorter_sort_indices_persistence(self, input_nets, encoder, decoder, tasks, sample_inputs):
         """Test that sort indices are properly stored and accessible."""
         model = MaskFormer(
@@ -103,7 +89,7 @@ class TestMaskFormerSorting:
             tasks=tasks,
             dim=64,
             input_sort_field="phi",
-            sort_before_encoder=True,
+            sorting=Sorter(input_sort_keys={"hit": {"phi": 1}}),
         )
 
         outputs = model(sample_inputs)

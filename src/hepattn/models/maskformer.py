@@ -201,7 +201,8 @@ class MaskFormer(nn.Module):
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
-        targets = self.sorting.sort_targets(targets, outputs["final"][self.input_sort_field])
+        if self.sorting is not None:
+            targets = self.sorting.sort_targets(targets, outputs["final"])
 
         batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
