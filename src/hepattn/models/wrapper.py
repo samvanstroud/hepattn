@@ -82,7 +82,7 @@ class ModelWrapper(LightningModule):
         outputs = self.model(inputs)
 
         # Compute and log losses
-        losses = self.model.loss(outputs, targets)
+        losses, targets = self.model.loss(outputs, targets)
         total_loss = self.log_losses(losses, "train")
 
         # Get the predictions from the model
@@ -95,7 +95,7 @@ class ModelWrapper(LightningModule):
             self.mlt_opt(losses, outputs)
             return None
 
-        return total_loss
+        return {"loss": total_loss, **outputs}
 
     def validation_step(self, batch):
         inputs, targets = batch
@@ -104,21 +104,21 @@ class ModelWrapper(LightningModule):
         outputs = self.model(inputs)
 
         # Compute and log losses
-        losses = self.model.loss(outputs, targets)
+        losses, targets = self.model.loss(outputs, targets)
         total_loss = self.log_losses(losses, "val")
 
         # Get the predictions from the model
         preds = self.model.predict(outputs)
         self.log_metrics(preds, targets, "val")
 
-        return total_loss
+        return {"loss": total_loss, **outputs}
 
     def test_step(self, batch):
         inputs, targets = batch
         outputs = self.model(inputs)
 
         # Calculate loss to also run matching
-        losses = self.model.loss(outputs, targets)
+        losses, targets = self.model.loss(outputs, targets)
 
         # Get the predictions from the model
         preds = self.model.predict(outputs)

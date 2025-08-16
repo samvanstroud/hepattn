@@ -22,7 +22,7 @@ class MaskFormerDecoder(nn.Module):
         num_decoder_layers: int,
         mask_attention: bool = True,
         use_query_masks: bool = False,
-        log_attn_mask: bool = False,
+        key_posenc: nn.Module | None = None,
         query_posenc: nn.Module | None = None,
         preserve_posenc: bool = False,
     ):
@@ -34,7 +34,7 @@ class MaskFormerDecoder(nn.Module):
             num_decoder_layers: The number of decoder layers to stack.
             mask_attention: If True, attention masks will be used to control which input objects are attended to.
             use_query_masks: If True, predicted query masks will be used to control which queries are valid.
-            log_attn_mask: If True, log attention masks for debugging.
+            key_posenc: Optional module for key positional encoding.
             query_posenc: Optional module for query positional encoding.
             preserve_posenc: If True, preserves positional encoding in embeddings.
         """
@@ -45,14 +45,13 @@ class MaskFormerDecoder(nn.Module):
         decoder_layer_config["mask_attention"] = mask_attention
 
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
-        self.tasks = None  # Will be set by MaskFormer
+        self.tasks: list | None = None  # Will be set by MaskFormer
         self.num_queries = num_queries
         self.mask_attention = mask_attention
         self.use_query_masks = use_query_masks
-        self.log_attn_mask = log_attn_mask
+        self.key_posenc = key_posenc
         self.query_posenc = query_posenc
         self.preserve_posenc = preserve_posenc
-        self.log_step = 0
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -66,16 +65,24 @@ class MaskFormerDecoder(nn.Module):
         """
         batch_size = x["query_embed"].shape[0]
         num_constituents = x["key_embed"].shape[-2]
-        self.log_step += 1
 
-        outputs = {}
+        if (self.key_posenc is not None) or (self.query_posenc is not None):
+            x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
+        if not self.preserve_posenc:
+            x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
+
+        outputs: dict[str, dict] = {}
 
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
             outputs[f"layer_{layer_index}"] = {}
 
-            attn_masks = {}
+            if self.preserve_posenc:
+                x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
+
+            attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
 
+            assert self.tasks is not None
             for task in self.tasks:
                 if not task.has_intermediate_loss:
                     continue
@@ -104,6 +111,7 @@ class MaskFormerDecoder(nn.Module):
                     task_query_mask = task.query_mask(task_outputs)
                     if task_query_mask is not None:
                         query_mask = task_query_mask if query_mask is None else query_mask | task_query_mask
+                        x["query_mask"] = query_mask
 
             # Construct the full attention mask for MaskAttention decoder
             attn_mask = None
@@ -111,28 +119,16 @@ class MaskFormerDecoder(nn.Module):
                 attn_mask = torch.full((batch_size, self.num_queries, num_constituents), True, device=x["key_embed"].device)
                 for input_name, task_attn_mask in attn_masks.items():
                     attn_mask[..., x[f"key_is_{input_name}"]] = task_attn_mask
+                outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
-            # Log attention mask if requested
-            if self.log_attn_mask and (attn_mask is not None) and (self.log_step % 1000 == 0):
-                if not hasattr(self, "attn_masks_to_log"):
-                    self.attn_masks_to_log = {}
-                if layer_index == 0 or layer_index == len(self.decoder_layers) - 1:
-                    self.attn_masks_to_log[layer_index] = {
-                        "mask": attn_mask[0].detach().cpu().clone(),
-                        "step": self.log_step,
-                        "layer": layer_index,
-                    }
-
-            # Add query positional encodings
-            x = self.add_query_posenc(x)
-
-            # Update embeddings through decoder layer
+            # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
-                x["query_embed"], x["key_embed"], attn_mask=attn_mask, q_mask=query_mask, kv_mask=x.get("key_valid")
+                x["query_embed"],
+                x["key_embed"],
+                attn_mask=attn_mask,
+                q_mask=x.get("query_mask"),
+                kv_mask=x.get("key_valid"),
             )
-
-            # Re-add original embeddings (similar to SAM's prompt token re-addition)
-            x = self.re_add_original_embeddings(x)
 
             # Unmerge the updated features back into separate input types for intermediate tasks
             for input_name in input_names:
@@ -140,22 +136,22 @@ class MaskFormerDecoder(nn.Module):
 
         return x, outputs
 
-    def re_add_original_embeddings(self, x: dict):
-        # Re-add original query embeddings (similar to SAM's prompt token re-addition)
-        if self.preserve_posenc:
-            x["key_embed"] += x["key_posenc"]
-            if self.query_posenc is not None:
-                x["query_embed"] += x["query_posenc"]
-        return x
-
-    def add_query_posenc(self, x: dict):
+    def add_positional_encodings(self, x: dict):
         if self.query_posenc is not None:
-            # The query positional encoding is static, so we compute it once and cache it in `x`.
-            if "query_posenc" not in x:
-                x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
-                x["query_posenc"] = self.query_posenc(x)
-            x["query_embed"] += x["query_posenc"]
-        return x
+            x["query_embed"] = x["query_embed"] + x["query_posenc"]
+        if self.key_posenc is not None:
+            x["key_embed"] = x["key_embed"] + x["key_posenc"]
+        return x["query_embed"], x["key_embed"]
+
+    def generate_positional_encodings(self, x: dict):
+        query_posenc = None
+        key_posenc = None
+        if self.query_posenc is not None:
+            x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+            query_posenc = self.query_posenc(x)
+        if self.key_posenc is not None:
+            key_posenc = self.key_posenc(x)
+        return query_posenc, key_posenc
 
 
 class MaskFormerDecoderLayer(nn.Module):
