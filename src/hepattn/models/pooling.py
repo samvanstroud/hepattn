@@ -7,22 +7,18 @@ from hepattn.models.dense import Dense
 class Pooling(nn.Module):
     def __init__(self, input_object: str, output_object: str, dim: int, pool_net: nn.Module | None = None) -> None:
         """A pooling module that applies optional transformation and weighted aggregation
-        over input objects.
+        over input entities (constituents or objects).
 
         Parameters
         ----------
         input_object : str
-            Name of the input object.
+            Name of the input entity (e.g., 'hit', 'particle').
         output_object : str
-            Name of the output object.
+            Name of the output entity (e.g., 'track', 'jet').
         dim : int
             Dimensionality of the input embeddings.
         pool_net : nn.Module, optional
-            Optional network applied to input objects before pooling.
-        input_object : str | None
-            Name of input object for the pooling.
-        output_object : str | None
-            Name of output object for the pooling.
+            Optional network applied to input entities before pooling.
         """
         super().__init__()
 

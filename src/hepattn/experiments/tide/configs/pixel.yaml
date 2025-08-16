@@ -441,7 +441,7 @@ model:
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: pred_pix_assignment
-                input_hit: pix
+                input_constituent: pix
                 input_object: query
                 output_object: pred
                 target_object: sudo

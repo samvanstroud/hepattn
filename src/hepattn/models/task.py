@@ -149,11 +149,11 @@ class HitFilterTask(Task):
         loss_fn: Literal["bce", "focal", "both"] = "bce",
         has_intermediate_loss: bool = True,
     ):
-        """Task used for classifying whether hits belong to reconstructable objects or not.
+        """Task used for classifying whether constituents belong to reconstructable objects or not.
 
         Args:
             name: Name of the task.
-            input_object: Name of the hit object type.
+            input_object: Name of the constituent type.
             target_field: Name of the target field to predict.
             dim: Embedding dimension.
             threshold: Threshold for classification.
@@ -216,7 +216,7 @@ class ObjectHitMaskTask(Task):
     def __init__(
         self,
         name: str,
-        input_hit: str,
+        input_constituent: str,
         input_object: str,
         output_object: str,
         target_object: str,
@@ -234,7 +234,7 @@ class ObjectHitMaskTask(Task):
 
         Args:
             name: Name of the task.
-            input_hit: Name of the input hit object.
+            input_constituent: Name of the input constituent type (traditionally hits in tracking).
             input_object: Name of the input object.
             output_object: Name of the output object.
             target_object: Name of the target object.
@@ -251,7 +251,7 @@ class ObjectHitMaskTask(Task):
         super().__init__(has_intermediate_loss=has_intermediate_loss)
 
         self.name = name
-        self.input_hit = input_hit
+        self.input_constituent = input_constituent
         self.input_object = input_object
         self.output_object = output_object
         self.target_object = target_object
@@ -266,9 +266,9 @@ class ObjectHitMaskTask(Task):
         self.pred_threshold = pred_threshold
         self.has_intermediate_loss = mask_attn
 
-        self.output_object_hit = output_object + "_" + input_hit
-        self.target_object_hit = target_object + "_" + input_hit
-        self.inputs = [input_object + "_embed", input_hit + "_embed"]
+        self.output_object_hit = output_object + "_" + input_constituent
+        self.target_object_hit = target_object + "_" + input_constituent
+        self.inputs = [input_object + "_embed", input_constituent + "_embed"]
         self.outputs = [self.output_object_hit + "_logit"]
         self.hit_net = Dense(dim, dim)
         self.object_net = Dense(dim, dim)
@@ -276,13 +276,13 @@ class ObjectHitMaskTask(Task):
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # Produce new task-specific embeddings for the hits and objects
         x_object = self.object_net(x[self.input_object + "_embed"])
-        x_hit = self.hit_net(x[self.input_hit + "_embed"])
+        x_hit = self.hit_net(x[self.input_constituent + "_embed"])
 
         # Object-hit probability is the dot product between the hit and object embedding
         object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", x_object, x_hit)
 
         # Zero out entries for any hit slots that are not valid
-        object_hit_logit[~x[self.input_hit + "_valid"].unsqueeze(-2).expand_as(object_hit_logit)] = torch.finfo(object_hit_logit.dtype).min
+        object_hit_logit[~x[self.input_constituent + "_valid"].unsqueeze(-2).expand_as(object_hit_logit)] = torch.finfo(object_hit_logit.dtype).min
 
         return {self.output_object_hit + "_logit": object_hit_logit}
 
@@ -296,7 +296,7 @@ class ObjectHitMaskTask(Task):
         # TODO: See if the query masking stops this from being necessary
         attn_mask[torch.where(torch.all(attn_mask, dim=-1))] = False
 
-        return {self.input_hit: attn_mask}
+        return {self.input_constituent: attn_mask}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Object-hit pairs that have a predicted probability above the threshold are predicted as being associated to one-another
@@ -306,7 +306,7 @@ class ObjectHitMaskTask(Task):
         output = outputs[self.output_object_hit + "_logit"].detach().to(torch.float32)
         target = targets[self.target_object_hit + "_" + self.target_field].detach().to(output.dtype)
 
-        hit_pad = targets[self.input_hit + "_valid"]
+        hit_pad = targets[self.input_constituent + "_valid"]
 
         costs = {}
         # sample_weight = target + self.null_weight * (1 - target)
@@ -318,7 +318,7 @@ class ObjectHitMaskTask(Task):
         output = outputs[self.output_object_hit + "_logit"]
         target = targets[self.target_object_hit + "_" + self.target_field].type_as(output)
 
-        hit_pad = targets[self.input_hit + "_valid"]
+        hit_pad = targets[self.input_constituent + "_valid"]
         object_pad = targets[self.target_object + "_valid"]
 
         sample_weight = target + self.null_weight * (1 - target)
@@ -642,7 +642,7 @@ class ObjectHitRegressionTask(RegressionTask):
     def __init__(
         self,
         name: str,
-        input_hit: str,
+        input_constituent: str,
         input_object: str,
         output_object: str,
         target_object: str,
@@ -653,11 +653,11 @@ class ObjectHitRegressionTask(RegressionTask):
         loss: RegressionLossType = "smooth_l1",
         has_intermediate_loss: bool = True,
     ):
-        """Regression task for object-hit associations.
+        """Regression task for object-constituent associations.
 
         Args:
             name: Name of the task.
-            input_hit: Name of the input hit object.
+            input_constituent: Name of the input constituent type (e.g. hits in tracking).
             input_object: Name of the input object.
             output_object: Name of the output object.
             target_object: Name of the target object.
@@ -670,10 +670,10 @@ class ObjectHitRegressionTask(RegressionTask):
         """
         super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, loss=loss, has_intermediate_loss=has_intermediate_loss)
 
-        self.input_hit = input_hit
+        self.input_constituent = input_constituent
         self.input_object = input_object
 
-        self.inputs = [input_object + "_embed", input_hit + "_embed"]
+        self.inputs = [input_object + "_embed", input_constituent + "_embed"]
         self.outputs = [self.output_object + "_regr"]
 
         self.dim = dim
@@ -685,7 +685,7 @@ class ObjectHitRegressionTask(RegressionTask):
     def latent(self, x: dict[str, Tensor]) -> Tensor:
         # Embed the hits and tracks and reshape so we have a separate embedding for each DoF
         x_obj = self.object_net(x[self.input_object + "_embed"])
-        x_hit = self.hit_net(x[self.input_hit + "_embed"])
+        x_hit = self.hit_net(x[self.input_constituent + "_embed"])
 
         x_obj = x_obj.reshape(x_obj.size()[:-1] + torch.Size((self.ndofs, self.dim_per_dof)))  # Shape BNDE
         x_hit = x_hit.reshape(x_hit.size()[:-1] + torch.Size((self.ndofs, self.dim_per_dof)))  # Shape BMDE
@@ -695,7 +695,7 @@ class ObjectHitRegressionTask(RegressionTask):
         x_obj_hit = torch.einsum("...nie,...mie->...nmi", x_obj, x_hit)  # Shape BNMD
 
         # Shape of padding goes BM -> B1M -> B1M1 -> BNMD
-        x_obj_hit *= x[self.input_hit + "_valid"].unsqueeze(-2).unsqueeze(-1).expand_as(x_obj_hit).float()
+        x_obj_hit *= x[self.input_constituent + "_valid"].unsqueeze(-2).unsqueeze(-1).expand_as(x_obj_hit).float()
         return x_obj_hit
 
 
@@ -897,7 +897,7 @@ class IncidenceRegressionTask(Task):
     def __init__(
         self,
         name: str,
-        input_hit: str,
+        input_constituent: str,
         input_object: str,
         output_object: str,
         target_object: str,
@@ -911,7 +911,7 @@ class IncidenceRegressionTask(Task):
 
         Args:
             name: Name of the task.
-            input_hit: Name of the input hit object.
+            input_constituent: Name of the input hit object.
             input_object: Name of the input object.
             output_object: Name of the output object.
             target_object: Name of the target object.
@@ -923,7 +923,7 @@ class IncidenceRegressionTask(Task):
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
         self.name = name
-        self.input_hit = input_hit
+        self.input_constituent = input_constituent
         self.input_object = input_object
         self.output_object = output_object
         self.target_object = target_object
@@ -932,15 +932,15 @@ class IncidenceRegressionTask(Task):
         self.net = net
         self.node_net = node_net if node_net is not None else nn.Identity()
 
-        self.inputs = [input_object + "_embed", input_hit + "_embed"]
+        self.inputs = [input_object + "_embed", input_constituent + "_embed"]
         self.outputs = [self.output_object + "_incidence"]
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         x_object = self.net(x[self.input_object + "_embed"])
-        x_hit = self.node_net(x[self.input_hit + "_embed"])
+        x_hit = self.node_net(x[self.input_constituent + "_embed"])
 
         incidence_pred = torch.einsum("bqe,ble->bql", x_object, x_hit)
-        incidence_pred = incidence_pred.softmax(dim=1) * x[self.input_hit + "_valid"].unsqueeze(1).expand_as(incidence_pred)
+        incidence_pred = incidence_pred.softmax(dim=1) * x[self.input_constituent + "_valid"].unsqueeze(1).expand_as(incidence_pred)
 
         return {self.output_object + "_incidence": incidence_pred}
 
@@ -962,7 +962,7 @@ class IncidenceRegressionTask(Task):
         target = targets[self.target_object + "_incidence"].type_as(output)
 
         # Create a mask for valid nodes and objects
-        node_mask = targets[self.input_hit + "_valid"].unsqueeze(1).expand_as(output)
+        node_mask = targets[self.input_constituent + "_valid"].unsqueeze(1).expand_as(output)
         object_mask = targets[self.target_object + "_valid"].unsqueeze(-1).expand_as(output)
         mask = node_mask & object_mask
         # Calculate the loss from each specified loss function.
@@ -976,7 +976,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
     def __init__(
         self,
         name: str,
-        input_hit: str,
+        input_constituent: str,
         input_object: str,
         output_object: str,
         target_object: str,
@@ -996,7 +996,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
 
         Args:
             name: Name of the task.
-            input_hit: Name of the input hit object.
+            input_constituent: Name of the input hit object.
             input_object: Name of the input object.
             output_object: Name of the output object.
             target_object: Name of the target object.
@@ -1026,14 +1026,14 @@ class IncidenceBasedRegressionTask(RegressionTask):
             loss=loss,
             has_intermediate_loss=has_intermediate_loss,
         )
-        self.input_hit = input_hit
+        self.input_constituent = input_constituent
         self.input_object = input_object
         self.scaler = FeatureScaler(scale_dict_path=scale_dict_path)
         self.use_incidence = use_incidence
         self.cost_weight = cost_weight
         self.net = net
         self.use_nodes = use_nodes
-        self.inputs = [input_object + "_embed"] + [input_hit + "_" + field for field in fields]
+        self.inputs = [input_object + "_embed"] + [input_constituent + "_" + field for field in fields]
         self.outputs = [output_object + "_regr", output_object + "_proxy_regr"]
         self.mode = mode
         if mode not in {"offset", "scale"}:
@@ -1059,8 +1059,8 @@ class IncidenceBasedRegressionTask(RegressionTask):
                 -1,
             )
             if self.use_nodes:
-                valid_mask = x[self.input_hit + "_valid"].unsqueeze(-1)
-                masked_embed = x[self.input_hit + "_embed"] * valid_mask
+                valid_mask = x[self.input_constituent + "_valid"].unsqueeze(-1)
+                masked_embed = x[self.input_constituent + "_embed"] * valid_mask
                 node_feats = torch.bmm(inc, masked_embed)
                 input_data = torch.cat([input_data, node_feats], dim=-1)
         else:
@@ -1159,11 +1159,11 @@ class IncidenceBasedRegressionTask(RegressionTask):
         class_probs: Tensor,
     ) -> tuple[Tensor, Tensor]:
         proxy_feats = torch.cat(
-            [inputs[self.input_hit + "_" + field].unsqueeze(-1) for field in self.fields],
+            [inputs[self.input_constituent + "_" + field].unsqueeze(-1) for field in self.fields],
             axis=-1,
         )
 
-        charged_inc = incidence * inputs[self.input_hit + "_is_track"].unsqueeze(1)
+        charged_inc = incidence * inputs[self.input_constituent + "_is_track"].unsqueeze(1)
         # Use the most weighted track as proxy for charged particles
         charged_inc_top2 = (topk_attn(charged_inc, 2, dim=-2) & (charged_inc > 0)).float()
         charged_inc_max = charged_inc.max(-2, keepdim=True)[0]
@@ -1181,7 +1181,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         proxy_feats_charged = self.scale_proxy_feats(proxy_feats_charged) * is_charged.unsqueeze(-1)
 
         inc_e_weighted = incidence * proxy_feats[..., 0].unsqueeze(1)
-        inc_e_weighted *= 1 - inputs[self.input_hit + "_is_track"].unsqueeze(1)
+        inc_e_weighted *= 1 - inputs[self.input_constituent + "_is_track"].unsqueeze(1)
         inc = inc_e_weighted / (inc_e_weighted.sum(dim=-1, keepdim=True) + 1e-6)
 
         proxy_feats_neutral = torch.einsum("bnf,bpn->bpf", proxy_feats, inc)

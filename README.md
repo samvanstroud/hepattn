@@ -1,7 +1,7 @@
 # hepattn
 
 We present a general end-to-end ML approach for particle physics reconstruction by adapting cutting-edge object detection techniques.
-We demonstrate that a single encoder-decoder transformer can solve many different reconstruction problems that traditionally required specialised, task-specific approaches for each domain.
+We demonstrate that a single encoder-decoder transformer can solve many different reconstruction problems that traditionally required specialised, task-specific approaches.
 
 This general approach has been applied to various reconstruction tasks and detector setups:
 
@@ -101,6 +101,15 @@ See experiment directories for instructions on how to run experiments.
 
 - [TrackML Tracking](src/hepattn/experiments/trackml/)
 - [CLIC Particle Flow](src/hepattn/experiments/clic/)
+
+## 📖 Terminology
+
+To ensure clarity and consistency throughout this project, we use the following definitions:
+
+- **constituent** - input entities that go into the encoder/decoder, e.g. inner detector hits
+- **object** - reconstructed outputs from the decoder, e.g. reconstructed charged particle tracks
+- **input** - (also `input_object`) generic term for any input to a module (could be constituents, objects, or other data)
+- **output** - generic term for any output from a module (could be objects, predictions, or intermediate representations)
 
 ## 🤝 Contributing
 

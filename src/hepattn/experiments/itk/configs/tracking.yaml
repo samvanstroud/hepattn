@@ -200,7 +200,7 @@ model:
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: track_pixel_assignment
-                input_hit: pixel
+                input_constituent: pixel
                 input_object: query
                 output_object: track
                 target_object: particle
@@ -218,7 +218,7 @@ model:
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: track_strip_assignment
-                input_hit: strip
+                input_constituent: strip
                 input_object: query
                 output_object: track
                 target_object: particle

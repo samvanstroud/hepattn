@@ -28,24 +28,24 @@ class Tagger(nn.Module):
 
         x = {}
 
-        # Embed the input objects
+        # Embed the input constituents
         for input_net in self.input_nets:
             input_name = input_net.input_name
             x[input_name + "_embed"] = input_net(inputs)
             x[input_name + "_valid"] = inputs[input_name + "_valid"]
 
             # These slices can be used to pick out specific
-            # objects after we have merged them all together
+            # constituents after we have merged them all together
             device = inputs[input_name + "_valid"].device
             x[f"key_is_{input_name}"] = torch.cat(
                 [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in input_names], dim=-1
             )
 
-        # Merge the input objects and he padding mask into a single set
+        # Merge the input constituents and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in input_names], dim=-2)
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in input_names], dim=-1)
 
-        # Pass merged input hits through the encoder
+        # Pass merged input constituents through the encoder
         x["key_embed"] = self.encoder(x["key_embed"], kv_mask=x.get("key_valid"))
 
         # Unmerge the updated features back into the separate input types
