@@ -8,7 +8,7 @@ class Sorter(nn.Module):
         input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
         input_sort_keys: dict[str, dict[str, int]] | None = None,
-        target_sort_keys: dict[str, dict[str, int]] | None = None,
+        target_sort_keys: dict[str, dict[str, str | int]] | None = None,
     ) -> None:
         super().__init__()
         self.input_sort_field = input_sort_field
