@@ -68,7 +68,7 @@ class Sorter(nn.Module):
                         sort_indices[input_hit]["num_hits"],
                         sort_dim=sort_dim,
                     )
-                assert not torch.allclose(targets_sorted[key], value), f"Target {key} is not sorted"
+                    assert not torch.allclose(targets_sorted[key], value), f"Target {key} is not sorted"
 
         return targets_sorted
 
