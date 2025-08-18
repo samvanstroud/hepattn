@@ -96,7 +96,6 @@ cmd = "pytest -m 'not gpu and not requiresdata' --cov=src --cov-report=xml --cov
 
 [tool.ruff]
 src = ["src"]
-target-version = "py312"
 line-length = 150
 preview = true
 #format.skip-magic-trailing-comma = true
