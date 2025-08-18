@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v1-queryPE-phionly-lite-intermediateloss
+name: TRK-v1-queryPE-phionly-lite-flex
 
 data:
   train_dir:  /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/train/
@@ -165,6 +165,7 @@ model:
         class_path: hepattn.models.decoder.MaskFormerDecoder
         init_args:
           num_decoder_layers: 4
+          attn_type: flex
           decoder_layer_config:
             dim: *dim
             norm: RMSNorm
@@ -199,9 +200,9 @@ model:
         init_args:
           num_layers: 10
           dim: *dim
-          attn_type: flash
-          window_size: 512
-          window_wrap: true
+          attn_type: flex
+          # window_size: 512
+          # window_wrap: true
           hybrid_norm: true
           norm: RMSNorm
 

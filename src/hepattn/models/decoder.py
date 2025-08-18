@@ -13,6 +13,7 @@ from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.models.transformer import Residual
+from hepattn.utils.local_strided_attn import auto_local_ca_mask
 
 create_block_mask = torch.compile(create_block_mask, dynamic=True)
 
@@ -35,6 +36,7 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
+        attn_type: str = "torch",
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -70,6 +72,7 @@ class MaskFormerDecoder(nn.Module):
         self.local_strided_attn = local_strided_attn
         self.window_size = window_size
         self.window_wrap = window_wrap
+        self.attn_type = attn_type
         assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
         if self.local_strided_attn:
             assert self.attn_type in ["torch", "flex"], f"Invalid attention type when use_decoder_mask is True: {self.attn_type}, must be 'torch' or 'flex'"

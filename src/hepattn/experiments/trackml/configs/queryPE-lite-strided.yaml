@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v1-queryPE-phionly-lite-intermediateloss
+name: TRK-v1-queryPE-phionly-lite-flex-strided
 
 data:
   train_dir:  /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/train/
@@ -123,7 +123,6 @@ model:
     init_args:
       input_sort_field: phi
       dim: &dim 256
-      log_task_attn_mask: true
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -165,14 +164,17 @@ model:
         class_path: hepattn.models.decoder.MaskFormerDecoder
         init_args:
           num_decoder_layers: 4
+          num_queries: *num_objects
+          attn_type: flex
+          local_strided_attn: true
+          window_size: 512
+          window_wrap: true
+          mask_attention: false
+          log_attn_mask: true
           decoder_layer_config:
             dim: *dim
             norm: RMSNorm
             hybrid_norm: true
-          num_queries: *num_objects
-          mask_attention: true
-          log_attn_mask: true
-          posenc_analysis: true
           preserve_posenc: true
           query_posenc:
               class_path: hepattn.models.PositionEncoder
@@ -199,9 +201,9 @@ model:
         init_args:
           num_layers: 10
           dim: *dim
-          attn_type: flash
-          window_size: 512
-          window_wrap: true
+          attn_type: flex
+          # window_size: 512
+          # window_wrap: true
           hybrid_norm: true
           norm: RMSNorm
 
@@ -239,7 +241,7 @@ model:
                   mask_focal: 50.0
                 dim: *dim
                 null_weight: 1.0
-                has_intermediate_loss: true
+                has_intermediate_loss: false
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
