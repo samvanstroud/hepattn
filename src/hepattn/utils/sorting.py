@@ -32,7 +32,7 @@ class Sorter(nn.Module):
         self.sort_indices: dict[str, dict[str, Tensor]] = {}
 
         # Get key_embed shape for reference in sorting
-        # TODO could iterate over x keys instead of specifying input_sort keys? Would this be cleaner? May be a lot of unnecessary sorting?
+        # TODO: could iterate over x keys instead of specifying input_sort keys? Would this be cleaner? May be a lot of unnecessary sorting?
         for input_hit in self.input_sort_keys:
             num_hits = x[f"{input_hit}_embed"].shape[1]
             sort_idx = self.get_sort_idx(x, input_hit, num_hits)
