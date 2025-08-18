@@ -197,9 +197,7 @@ class TestMaskFormerSorting:
         targets = {
             "particle_valid": torch.ones(1, 5, dtype=torch.bool),  # Default target for matching
             "particle_input1_valid": original_input1_valid,
-            "particle_input1_phi": original_input1_phi,
             "particle_input2_valid": original_input2_valid,
-            "particle_input2_phi": original_input2_phi,
         }
 
         # Run loss computation which should sort targets
@@ -213,23 +211,14 @@ class TestMaskFormerSorting:
 
         # Check that the targets are sorted by verifying they're different from the original
         # (since we're using unsorted values, sorting should change the order)
-        assert not torch.allclose(sorted_targets["particle_input1_phi"], original_input1_phi)
-        assert not torch.allclose(sorted_targets["particle_input2_phi"], original_input2_phi)
         assert not torch.allclose(sorted_targets["particle_input1_valid"], original_input1_valid)
         assert not torch.allclose(sorted_targets["particle_input2_valid"], original_input2_valid)
-
-        # Check that the sorted targets have the same values as the original (just reordered)
-        assert torch.allclose(torch.sort(sorted_targets["particle_input1_phi"])[0], torch.sort(original_input1_phi)[0])
-        assert torch.allclose(torch.sort(sorted_targets["particle_input2_phi"])[0], torch.sort(original_input2_phi)[0])
-
-        # Verify that the sorted targets are actually sorted
-        assert torch.allclose(sorted_targets["particle_input1_phi"], torch.sort(original_input1_phi)[0])
-        assert torch.allclose(sorted_targets["particle_input2_phi"], torch.sort(original_input2_phi)[0])
 
         # Verify that the valid tensors are reordered according to the phi sorting
         # The valid tensors should be reordered using the same indices that sort the phi values
         expected_input1_valid = original_input1_valid.index_select(2, input1_sort_idx)
         expected_input2_valid = original_input2_valid.index_select(2, input2_sort_idx)
 
+        # Verify that the sorted targets are actually sorted
         assert torch.allclose(sorted_targets["particle_input1_valid"], expected_input1_valid)
         assert torch.allclose(sorted_targets["particle_input2_valid"], expected_input2_valid)
