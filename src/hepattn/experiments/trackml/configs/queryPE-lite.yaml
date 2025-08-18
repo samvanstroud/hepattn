@@ -127,16 +127,12 @@ model:
           input_sort_field: phi
           input_sort_keys:
             hit:
-              hit_embed: 1
-              hit_valid: 1
-              key_is_hit: 0
+              - hit_embed
+              - hit_valid
+              - key_is_hit
             key:
-              key_embed: 1
-              key_valid: 1
-          target_sort_keys:
-            particle_hit_valid:
-              input_hit: hit
-              input_hit_dim: 2
+              - key_embed
+              - key_valid
       dim: &dim 256
       input_nets:
         class_path: torch.nn.ModuleList

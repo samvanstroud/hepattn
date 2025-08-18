@@ -113,19 +113,9 @@ class TestMaskFormerSorting:
             sorter=Sorter(
                 input_sort_field="phi",
                 input_sort_keys={
-                    "key": {"key_embed": 1, "key_valid": 1, "key_phi": 1},
-                    "input1": {"input1_phi": 1, "input1_valid": 1, "input1_embed": 1},
-                    "input2": {"input2_phi": 1, "input2_valid": 1, "input2_embed": 1},
-                },
-                target_sort_keys={
-                    "particle_input1_valid": {
-                        "input_hit": "input1",
-                        "input_hit_dim": 2,
-                    },
-                    "particle_input2_valid": {
-                        "input_hit": "input2",
-                        "input_hit_dim": 2,
-                    },
+                    "key": ["key_embed", "key_valid"],
+                    "input1": ["input1_phi", "input1_valid", "input1_embed"],
+                    "input2": ["input2_phi", "input2_valid", "input2_embed"],
                 },
             ),
         )
@@ -183,19 +173,9 @@ class TestMaskFormerSorting:
             sorter=Sorter(
                 input_sort_field="phi",
                 input_sort_keys={
-                    "key": {"key_embed": 1, "key_valid": 1, "key_phi": 1},
-                    "input1": {"input1_phi": 1, "input1_valid": 1, "input1_embed": 1},
-                    "input2": {"input2_phi": 1, "input2_valid": 1, "input2_embed": 1},
-                },
-                target_sort_keys={
-                    "particle_input1_phi": {
-                        "input_hit": "input1",
-                        "input_hit_dim": 1,
-                    },
-                    "particle_input1_valid": {
-                        "input_hit": "input1",
-                        "input_hit_dim": 2,
-                    },
+                    "key": ["key_embed", "key_valid"],
+                    "input1": ["input1_phi", "input1_valid", "input1_embed"],
+                    "input2": ["input2_phi", "input2_valid", "input2_embed"],
                 },
             ),
         )
