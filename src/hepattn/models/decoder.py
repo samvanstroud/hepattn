@@ -60,7 +60,7 @@ class MaskFormerDecoder(nn.Module):
         self.query_posenc = query_posenc
         self.preserve_posenc = preserve_posenc
         self.local_strided_attn = local_strided_attn
-        self.attn_type = decoder_layer_config["attn_type"]
+        self.attn_type = decoder_layer_config.get("attn_type", "torch")
         self.window_size = window_size
         self.window_wrap = window_wrap
         if self.local_strided_attn:
