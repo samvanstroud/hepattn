@@ -62,10 +62,9 @@ def custom_hist_v2(ax, vals, label_length=-1, metrics="mean std iqr", f=None, **
     hist_kwargs["label"] += f" (M={np.nanmedian(vals):+.3f},".replace("+", " ")
     iqr = np.nanpercentile(vals, 75) - np.nanpercentile(vals, 25)
     hist_kwargs["label"] += f" IQR={iqr:.3f}"
-    if f is not None:
-        hist_kwargs["label"] += f", $f$={f:.3f})"
-    else:
-        hist_kwargs["label"] += ")"
+    # if f is not None and False:
+    #    hist_kwargs["label"] += f", $f$={f:.3f}"
+    hist_kwargs["label"] += ")"
 
     ax.hist(vals, **hist_kwargs)
 
