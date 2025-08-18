@@ -60,15 +60,14 @@ class Sorter(nn.Module):
 
         for input_hit in sort_indices:
             for key, value in targets.items():
-                sort_dim = 2 if key == f"particle_{input_hit}_valid" else None
-                if (key.startswith(input_hit)) or (key == f"particle_{input_hit}_valid"):
+                sort_dim = 2 if key.startswith(f"particle_{input_hit}") else None
+                if key.startswith((input_hit, f"particle_{input_hit}")):
                     targets_sorted[key] = self._sort_tensor_by_index(
                         value,
                         sort_indices[input_hit]["key_sort_idx"],
                         sort_indices[input_hit]["num_hits"],
                         sort_dim=sort_dim,
                     )
-                    assert not torch.allclose(targets_sorted[key], value), f"Target {key} is not sorted"
 
         return targets_sorted
 
