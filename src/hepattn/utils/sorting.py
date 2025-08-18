@@ -27,8 +27,6 @@ class Sorter(nn.Module):
         dict[str, Tensor]
             Sort indices for key and query dimensions.
         """
-        self.sort_indices: dict[str, dict[str, Tensor]] = {}
-
         # Get key_embed shape for reference in sorting
         # TODO: could iterate over x keys instead of specifying input_sort keys? Would this be cleaner? May be a lot of unnecessary sorting?
         for input_hit in self.input_sort_keys:
