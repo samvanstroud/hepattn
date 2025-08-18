@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v1-queryPE-phionly-hybrid-scalePE-lite
+name: TRK-v1-queryPE-phionly-lite
 
 data:
   train_dir:  /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/train/
@@ -121,20 +121,23 @@ model:
   model:
     class_path: hepattn.models.MaskFormer
     init_args:
-      input_sort_field: phi
-      num_queries: *num_objects
+      sorter:
+        class_path: hepattn.utils.sorting.Sorter
+        init_args:
+          input_sort_field: phi
+          input_sort_keys:
+            hit:
+              hit_embed: 1
+              hit_valid: 1
+              key_is_hit: 0
+            key:
+              key_embed: 1
+              key_valid: 1
+          target_sort_keys:
+            particle_hit_valid:
+              input_hit: hit
+              input_hit_dim: 2
       dim: &dim 256
-      log_attn_mask: true
-      query_posenc:
-          class_path: hepattn.models.PositionEncoder
-          init_args:
-            input_name: query
-            fields:
-              - phi
-            dim: *dim
-            alpha: 1000
-            base: 100
-      preserve_posenc: true
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -172,6 +175,36 @@ model:
                     fields:
                       - phi
                     dim: *dim
+      decoder:
+        class_path: hepattn.models.decoder.MaskFormerDecoder
+        init_args:
+          num_decoder_layers: 4
+          decoder_layer_config:
+            dim: *dim
+            norm: RMSNorm
+            hybrid_norm: true
+          num_queries: *num_objects
+          mask_attention: true
+          preserve_posenc: true
+          query_posenc:
+              class_path: hepattn.models.PositionEncoder
+              init_args:
+                input_name: query
+                fields:
+                  - phi
+                dim: *dim
+                alpha: 2
+                base: 50000
+          key_posenc:
+              class_path: hepattn.models.PositionEncoder
+              init_args:
+                input_name: key
+                fields:
+                  - phi
+                dim: *dim
+                alpha: 2
+                base: 50000
+
 
       encoder:
         class_path: hepattn.models.Encoder
@@ -183,13 +216,6 @@ model:
           window_wrap: true
           hybrid_norm: true
           norm: RMSNorm
-
-      num_decoder_layers: 4
-      decoder_layer_config:
-        dim: *dim
-        norm: RMSNorm
-        mask_attention: true
-        hybrid_norm: true
 
       tasks:
         class_path: torch.nn.ModuleList
@@ -207,6 +233,7 @@ model:
                   object_bce: 1.0
                 dim: *dim
                 null_weight: 1.0
+                has_intermediate_loss: false
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: track_hit_valid
@@ -224,6 +251,7 @@ model:
                   mask_focal: 50.0
                 dim: *dim
                 null_weight: 1.0
+                has_intermediate_loss: true
 
       matcher:
         class_path: hepattn.models.matcher.Matcher

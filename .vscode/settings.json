@@ -8,7 +8,22 @@
             "source.organizeImports.ruff": "explicit"
         },
     },
+    "files.exclude": {
+        "**/.git/**": true,
+        "**/.pixi/**": true,
+        "**/.venv/**": true,
+        "**/.*_cache/**": true,
+    },
     "files.watcherExclude": {
-        "**/.git/**": true
+        "**/.git/**": true,
+        "**/.pixi/**": true,
+        "**/.venv/**": true,
+        "**/.*_cache/**": true,
+    },
+    "search.exclude": {
+        "**/.git/**": true,
+        "**/.pixi/**": true,
+        "**/.venv/**": true,
+        "**/.*_cache/**": true,
     }
 }

@@ -7,6 +7,7 @@ from .utils import custom_hist_v2
 
 FIG_H_1ROW = 4  # noqa: F811
 FIG_DPI = 200
+FIG_W_1COL = 6.4
 DEFAULT_QS_ALL = {"Charged": {"pt": 90, "eta": 80, "phi": 80}, "Neutral": {"pt": 90, "eta": 80, "phi": 80}}
 DEFAULT_QS_NEUTRALS = {"Neutral hadron": {"pt": 98, "eta": 75, "phi": 75}, "Photon": {"pt": 99, "eta": 90, "phi": 90}}
 
@@ -56,14 +57,14 @@ class PlotParticleHelper:
         # figure
         n_row, n_col = 2, 3
 
-        fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW * n_row), dpi=FIG_DPI)
-        gs = fig.add_gridspec(n_row, n_col, hspace=0.3, wspace=0.3)
+        fig = plt.figure(figsize=(FIG_W_1COL * n_col, FIG_H_1ROW * n_row), dpi=FIG_DPI)
+        gs = fig.add_gridspec(n_row, n_col, hspace=0.25, wspace=0.1)
         axs = [[fig.add_subplot(gs[i, j]) for j in range(n_col)] for i in range(n_row)]
 
         xlabel_dict = {
-            "pt": "$p_T^{reco} - p_T^{truth}$ [GeV]" if not pt_relative else "$(p_T^{reco} - p_T^{truth})/p_T^{truth}$",
-            "eta": r"$\eta^{reco} - \eta^{truth}$",
-            "phi": r"$\phi^{reco} - \phi^{truth}$",
+            "pt": r"$p_T^\text{reco} - p_T^\text{truth}$ [GeV]" if not pt_relative else r"$(p_T^\text{reco} - p_T^\text{truth})/p_T^\text{truth}$",
+            "eta": r"$\eta^\text{reco} - \eta^\text{truth}$",
+            "phi": r"$\phi^\text{reco} - \phi^\text{truth}$",
         }
 
         for name, res_dict in residual_dict.items():
@@ -88,14 +89,14 @@ class PlotParticleHelper:
                     ax.set_xlabel(xlabel_dict[var])
                     ax.set_ylabel("Particles")
                     ax.set_title(f"({cl_name})", y=1.0)
-                    ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+                    ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)
                     if log_y:
                         ax.set_yscale("log")
 
         for axs_row in axs:
             for ax in axs_row:
                 ax.legend()  # loc='lower left', bbox_to_anchor=(-0.27, 1.01))
-                ax.set_ylim(0, ax.get_ylim()[1] * (1 + len(residual_dict) * 0.23))
+                ax.set_ylim(ax.get_ylim()[0], ax.get_ylim()[1] * (1 + 10 * len(residual_dict)))
 
         return fig
 
@@ -144,19 +145,19 @@ class PlotParticleHelper:
             for _i in range(n_row):
                 tmp_axs = []
                 for _j in range(n_col):
-                    fig, ax = plt.subplots(figsize=(FIG_W / 3, FIG_H_1ROW), dpi=FIG_DPI)
+                    fig, ax = plt.subplots(figsize=(FIG_W_1COL, FIG_H_1ROW), dpi=FIG_DPI)
                     figs.append(fig)
                     tmp_axs.append(ax)
                 axs.append(tmp_axs)
         else:
-            fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW * n_row), dpi=FIG_DPI * 3)
-            gs = fig.add_gridspec(n_row, n_col, hspace=0.3, wspace=0.3)
+            fig = plt.figure(figsize=(FIG_W_1COL * n_col, FIG_H_1ROW * n_row), dpi=FIG_DPI * 3)
+            gs = fig.add_gridspec(n_row, n_col, hspace=0.25, wspace=0.1)
             axs = [[fig.add_subplot(gs[i, j]) for j in range(n_col)] for i in range(n_row)]
 
         xlabel_dict = {
-            "pt": "$p_T^{reco} - p_T^{truth}$ [GeV]" if not pt_relative else "$(p_T^{reco} - p_T^{truth})/p_T^{truth}$",
-            "eta": r"$\eta^{reco} - \eta^{truth}$",
-            "phi": r"$\phi^{reco} - \phi^{truth}$",
+            "pt": r"$p_T^\text{reco} - p_T^\text{truth}$ [GeV]" if not pt_relative else r"$(p_T^\text{reco} - p_T^\text{truth})/p_T^\text{truth}$",
+            "eta": r"$\eta^\text{reco} - \eta^\text{truth}$",
+            "phi": r"$\phi^\text{reco} - \phi^\text{truth}$",
         }
 
         for name, res_dict in residual_dict.items():
@@ -182,14 +183,14 @@ class PlotParticleHelper:
                     ax.set_xlabel(xlabel_dict[var])
                     ax.set_ylabel("Particles")
                     ax.set_title(cl_name, y=1.0)
-                    ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+                    ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)
                     if log_y:
                         ax.set_yscale("log")
 
         for axs_row in axs:
             for ax in axs_row:
                 ax.legend()  # loc='lower left', bbox_to_anchor=(-0.27, 1.01))
-                ax.set_ylim(0, ax.get_ylim()[1] * (1 + len(residual_dict) * 0.23))
+                ax.set_ylim(ax.get_ylim()[0], ax.get_ylim()[1] * (1 + len(residual_dict) * 10))
 
         return figs if separate_figures else fig
 

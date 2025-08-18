@@ -38,7 +38,7 @@ class PlotHelper(PlotEventHelper, PlotParticleHelper):
         fig_kwargs = DEFAULT_FIG_KWARGS.copy() if fig_kwargs is None else DEFAULT_FIG_KWARGS | fig_kwargs
         self.save_and_close(
             self.plot_evt_res(),
-            filename=self.plot_path / "event_response.pdf",
+            filename=self.plot_path / "event_residuals.pdf",
             fig_kwargs=fig_kwargs,
         )
         self.save_and_close(

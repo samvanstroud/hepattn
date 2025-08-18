@@ -1,7 +1,7 @@
 [project]
 authors = [{name = "Sam Van Stroud", email = "sam.van.stroud@cern.ch"}]
 description = "Attention for High Energy Physics"
-license = { text = "MIT" }
+license = { text = "GPL-3.0-or-later" }
 readme = "README.md"
 name = "hepattn"
 requires-python = "== 3.12"

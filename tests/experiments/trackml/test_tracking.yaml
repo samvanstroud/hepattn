@@ -78,6 +78,7 @@ trainer:
   callbacks:
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
+    - class_path: hepattn.callbacks.AttnMaskLogger
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
@@ -111,7 +112,22 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 32
-      input_sort_field: phi
+      sorter:
+        class_path: hepattn.utils.sorting.Sorter
+        init_args:
+          input_sort_field: phi
+          input_sort_keys:
+            hit:
+              hit_embed: 1
+              hit_valid: 1
+              key_is_hit: 0
+            key:
+              key_embed: 1
+              key_valid: 1
+          target_sort_keys:
+            particle_hit_valid:
+              input_hit: hit
+              input_hit_dim: 2
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:

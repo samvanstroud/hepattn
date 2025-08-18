@@ -23,8 +23,8 @@ class PlotEventHelper:
     def plot_evt_res(self, separate_figures=False):
         evt_vars = ["met", "ht", "nconst_ch", "nconst_neut"]
         xlabel_dict = {
-            "met": r"$(p_T^{miss, reco} - p_T^{miss, truth}) / p_T^{miss, truth}$",
-            "ht": r"$(H_T^{reco} - H_T^{truth}) / H_T^{truth}$",
+            "met": r"$(p_T^{\text{miss}, \text{reco}} - p_T^{\text{miss}, \text{truth}}) / p_T^{\text{miss}, \text{truth}}$",
+            "ht": r"$(H_T^\text{reco} - H_T^\text{truth}) / H_T^\text{truth}$",
             "nconst_ch": r"$\Delta$ number of charged constituents",
             "nconst_neut": r"$\Delta$ number of neutral constituents",
         }
@@ -41,9 +41,9 @@ class PlotEventHelper:
             comb = np.hstack([self.perf.data[name][var + "_res"] for name in self.perf.network_names])
             match var:
                 case "met":
-                    min_percent, max_percent = 10, 90
+                    min_percent, max_percent = 2, 98
                 case "ht":
-                    min_percent, max_percent = 1, 99
+                    min_percent, max_percent = 2, 98
                 case "nconst_ch" | "nconst_neut":
                     min_percent, max_percent = 2, 98
             min_, max_ = np.percentile(comb, min_percent), np.percentile(comb, max_percent)
@@ -63,8 +63,8 @@ class PlotEventHelper:
             ax.minorticks_on()
             ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
             ax.legend()
-            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
-            ax.set_ylim(0, ax.get_ylim()[1] * (1 + len(self.perf.network_names) * 0.15))
+            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)
+            ax.set_ylim(0, ax.get_ylim()[1] * (1 + len(self.perf.network_names) * 0.18))
             ax.set_ylabel("Events")
             if separate_figures:
                 figs.append(fig)
@@ -72,17 +72,17 @@ class PlotEventHelper:
 
     def plot_jet_residuals(self, pt_relative=True, separate_figures=False):
         xlabel_dict = {
-            "pt": "Jet $p_T^{reco} - p_T^{truth}$ [GeV]",
-            "pt_rel": "Jet $(p_T^{reco} - p_T^{truth})/p_T^{truth}$",
-            "e": "Jet $E^{reco} - E^{truth}$ [GeV]",
-            "e_rel": "Jet $(E^{reco} - E^{truth})/E^{truth}$",
-            "eta": r"Jet $\eta^{reco} - \eta^{truth}$",
-            "phi": r"Jet $\phi^{reco} - \phi^{truth}$",
-            "dR": "Jet $\\Delta R \\left( truth, \\; reco \\right)$",
+            "pt": r"Jet $p_T^\text{reco} - p_T^\text{truth}$ [GeV]",
+            "pt_rel": r"Jet $(p_T^\text{reco} - p_T^\text{truth})/p_T^\text{truth}$",
+            "e": r"Jet $E^\text{reco} - E^\text{truth}$ [GeV]",
+            "e_rel": r"Jet $(E^\text{reco} - E^\text{truth})/E^\text{truth}$",
+            "eta": r"Jet $\eta^\text{reco} - \eta^\text{truth}$",
+            "phi": r"Jet $\phi^\text{reco} - \phi^\text{truth}$",
+            "dR": r"Jet $\Delta R \left(\text{truth}, \; \text{reco} \right)$",
             "nconst": r"$\Delta$ number of jet constituents",
         }
 
-        jet_vars = ["pt", "dR", "nconst", "e_rel"]  # 'eta', 'phi']
+        jet_vars = ["pt", "e_rel", "nconst", "dR"]  # 'eta', 'phi']
         if pt_relative:
             jet_vars[0] = "pt_rel"
 
@@ -98,7 +98,7 @@ class PlotEventHelper:
 
             comb = np.hstack([self.perf.data[name]["jet_residuals"][var] for name in self.perf.network_names])
             # _min, _max = np.percentile(comb, 2), np.percentile(comb, 98)  # COCOA
-            min_, max_ = np.percentile(comb, 5), np.percentile(comb, 95)  # CLIC
+            min_, max_ = np.percentile(comb, 2), np.percentile(comb, 98)  # CLIC
             abs_max = max(abs(min_), abs(max_))
             bins = np.linspace(-abs_max, abs_max, 50)
             if var == "dR":
@@ -127,7 +127,7 @@ class PlotEventHelper:
                     )
             ax.set_xlabel(xlabel_dict[var])
             ax.set_ylabel("Jets")
-            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)
             ax.minorticks_on()
             ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
             ax.legend()
@@ -183,17 +183,17 @@ class PlotEventHelper:
 
         ax.set_xticks(np.arange(len(bin_mids)) * (len(self.perf.network_names) + 1) + len(self.perf.network_names) / 2)
         if var == "pt":
-            xlabel = "Jet $p_T^{truth}$ [GeV]"
+            xlabel = r"Jet $p_T^\text{truth}$ [GeV]"
             ax.set_xticklabels([f"{bin_min}-{bin_max}" for bin_min, bin_max in zip(bin_mins, bin_maxs, strict=False)])
         elif var == "eta":
-            xlabel = r"Jet $\eta^{truth}$"
+            xlabel = r"Jet $\eta^\text{truth}$"
             ax.set_xticklabels([f"{bin_min:.1f}-{bin_max:.1f}" for bin_min, bin_max in zip(bin_mins, bin_maxs, strict=False)])
         elif var == "e":
-            xlabel = "Jet $E^{truth}$ [GeV]"
+            xlabel = r"Jet $E^\text{truth}$ [GeV]"
             ax.set_xticklabels([f"{bin_min}-{bin_max}" for bin_min, bin_max in zip(bin_mins, bin_maxs, strict=False)])
         ax.set_xlabel(xlabel)
-        ax.set_ylabel("Jet ($p_T^{reco} - p_T^{truth}) / p_T^{truth}$")
-        ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+        ax.set_ylabel(r"Jet ($p_T^\text{reco} - p_T^\text{truth}) / p_T^\text{truth}$")
+        ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)
         ax.minorticks_on()
         ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
         ax.legend(labels, loc="upper right", ncol=len(self.perf.network_names))
@@ -227,7 +227,7 @@ class PlotEventHelper:
             fig2, ax2 = plt.subplots(figsize=(FIG_W // 2, FIG_H_1ROW * 1.5 / 2), dpi=FIG_DPI, constrained_layout=True)
 
         else:
-            fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW), dpi=FIG_DPI, constrained_layout=True)
+            fig = plt.figure(figsize=(FIG_W, FIG_H_1ROW * 1.1), dpi=FIG_DPI, constrained_layout=True)
             gs = fig.add_gridspec(1, 2, hspace=0.0)
             ax1 = fig.add_subplot(gs[0])
             ax2 = fig.add_subplot(gs[1])
@@ -285,15 +285,31 @@ class PlotEventHelper:
         if use_energy:
             v_name = "E"
 
-        ax1.set_ylabel(f"Jet $median \\left( \\left( {v_name}^{{reco}} - {v_name}^{{truth}} \\right) / {v_name}^{{truth}} \\right)$")
-        ax2.set_ylabel(f"Jet $IQR \\left( \\left( {v_name}^{{reco}} - {v_name}^{{truth}} \\right) / {v_name}^{{truth}} \\right)$")
+        ax1.set_ylabel(
+            r"Jet $\text{median} \left(\left("
+            + v_name
+            + r"^{\text{reco}} - "
+            + v_name
+            + r"^{\text{truth}}\right) / "
+            + v_name
+            + r"^{\text{truth}}\right)$"
+        )
+        ax2.set_ylabel(
+            r"Jet $\text{IQR} \left(\left("
+            + v_name
+            + r"^{\text{reco}} - "
+            + v_name
+            + r"^{\text{truth}}\right) / "
+            + v_name
+            + r"^{\text{truth}}\right)$"
+        )
 
         for ax in [ax1, ax2]:
-            ax.set_xlabel(f"Jet ${v_name}^{{truth}}$ [GeV]")
-            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+            ax.set_xlabel(r"Jet $" + v_name + r"^{\text{truth}}$ [GeV]")
+            ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)
             ax.minorticks_on()
             ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
-            ax.legend()
+            ax.legend(loc="upper right", ncol=len(self.perf.network_names), fontsize=8)
             y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
             ax.set_ylim(ax.get_ylim()[0] - 0.2 * y_range, ax.get_ylim()[1] + 0.2 * y_range)
 

@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 from torch import Tensor, nn
 
@@ -16,8 +18,9 @@ class MaskFormer(nn.Module):
         target_object: str = "particle",
         pooling: nn.Module | None = None,
         matcher: nn.Module | None = None,
-        input_sort_field: str | None = None,
+        encoder_input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
+        sorter: nn.Module | None = None,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object reconstruction with attention-based decoding and optional encoder blocks.
@@ -58,10 +61,15 @@ class MaskFormer(nn.Module):
         self.target_object = target_object
         self.matcher = matcher
         self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
-        self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
+        self.sorting = sorter
+        if sorter is not None:
+            sorter.raw_variables = self.raw_variables
+            self.input_sort_field = sorter.input_sort_field
+        else:
+            self.input_sort_field = encoder_input_sort_field
 
-    def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
         # Atomic input names
         input_names = [input_net.input_name for input_net in self.input_nets]
 
@@ -110,14 +118,21 @@ class MaskFormer(nn.Module):
             x[f"key_{self.input_sort_field}"] = torch.concatenate(
                 [inputs[input_name + "_" + self.input_sort_field] for input_name in input_names], dim=-1
             )
+            for input_name in input_names:
+                x[input_name + "_" + self.input_sort_field] = inputs[input_name + "_" + self.input_sort_field]
+
+        # Dedicated sorting step before encoder
+        if self.sorting is not None:
+            x = self.sorting.sort_inputs(x)
 
         # Pass merged input constituents through the encoder
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
-            x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x.get(f"key_{self.input_sort_field}"), kv_mask=x.get("key_valid"))
-
+            # Disable encoder's internal sorting if we're using pre-encoder sorting
+            x_sort_value = None if self.sorting is not None else x.get(f"key_{self.input_sort_field}")
+            x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
         # Unmerge the updated features back into the separate input types
-        # These are just views into the tensor that old all the merged hits
+        # These are just views into the tensor that hold all the merged hits
         for input_name in input_names:
             x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
@@ -127,13 +142,12 @@ class MaskFormer(nn.Module):
 
         # Pass through decoder layers
         x, outputs = self.decoder(x, input_names)
-
         # Do any pooling if desired
         if self.pooling is not None:
             x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
             x[f"{self.pooling.output_name}_embed"] = x_pooled
 
-        # Get the final outputs - we don't need to compute attention masks or update things here
+        # Get the final outputs
         outputs["final"] = {}
         for task in self.tasks:
             outputs["final"][task.name] = task(x)
@@ -145,7 +159,11 @@ class MaskFormer(nn.Module):
             if isinstance(task, ObjectClassificationTask):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
-
+            # store info about the input sort field for each input type
+        if self.sorting is not None:
+            outputs["final"][self.input_sort_field] = {}
+            for input_name in input_names:
+                outputs["final"][self.input_sort_field][f"{input_name}_{self.input_sort_field}"] = inputs[input_name + "_" + self.input_sort_field]
         return outputs
 
     def predict(self, outputs: dict) -> dict:
@@ -157,7 +175,7 @@ class MaskFormer(nn.Module):
         outputs:
             The outputs produces the forward pass of the model.
         """
-        preds = {}
+        preds: dict[str, dict[str, Any]] = {}
 
         # Compute predictions for each task in each block
         for layer_name, layer_outputs in outputs.items():
@@ -170,7 +188,7 @@ class MaskFormer(nn.Module):
 
         return preds
 
-    def loss(self, outputs: dict, targets: dict) -> dict:
+    def loss(self, outputs: dict, targets: dict) -> tuple[dict, dict]:
         """Computes the loss between the forward pass of the model and the data / targets.
         It first computes the cost / loss between each of the predicted and true tracks in each ROI
         and then uses the Hungarian algorihtm to perform an optimal bipartite matching. The model
@@ -186,6 +204,9 @@ class MaskFormer(nn.Module):
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
+        if self.sorting is not None:
+            targets = self.sorting.sort_targets(targets, outputs["final"][self.input_sort_field])
+
         batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
             layer_costs = None
@@ -195,8 +216,8 @@ class MaskFormer(nn.Module):
                 # Skip tasks that do not contribute intermediate losses
                 if layer_name != "final" and not task.has_intermediate_loss:
                     continue
-
                 # Only use the cost from the final set of predictions
+
                 task_costs = task.cost(layer_outputs[task.name], targets)
 
                 # Add the cost on to our running cost total, otherwise initialise a running cost matrix
@@ -234,7 +255,7 @@ class MaskFormer(nn.Module):
                     outputs[layer_name][task.name][output_name] = outputs[layer_name][task.name][output_name][batch_idxs, pred_idxs]
 
         # Compute the losses for each task in each block
-        losses = {}
+        losses: dict[str, dict[str, Tensor]] = {}
         for layer_name in outputs:
             losses[layer_name] = {}
             for task in self.tasks:
@@ -242,4 +263,4 @@ class MaskFormer(nn.Module):
                     continue
                 losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
-        return losses
+        return losses, targets
