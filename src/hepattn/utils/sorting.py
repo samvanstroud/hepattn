@@ -7,14 +7,12 @@ class Sorter(nn.Module):
         self,
         input_sort_field: str,
         raw_variables: list[str] | None = None,
-        input_sort_keys: dict[str, dict[str, int]] | None = None,
-        target_sort_keys: dict[str, dict[str, str | int]] | None = None,
+        input_sort_keys: dict[str, list[str]] | None = None,
     ) -> None:
         super().__init__()
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
         self.input_sort_keys = input_sort_keys or {}
-        self.target_sort_keys = target_sort_keys or {}
 
     def sort_inputs(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         """Sort inputs before passing to encoder for better window attention performance.
