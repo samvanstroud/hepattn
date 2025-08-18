@@ -109,9 +109,9 @@ class TestMaskFormerSorting:
             decoder=decoder,
             tasks=tasks,
             dim=64,
-            input_sort_field="phi",
             matcher=MockMatcher(),
             sorter=Sorter(
+                input_sort_field="phi",
                 input_sort_keys={
                     "key": {"key_embed": 1, "key_valid": 1, "key_phi": 1},
                     "input1": {"input1_phi": 1, "input1_valid": 1, "input1_embed": 1},
@@ -145,7 +145,7 @@ class TestMaskFormerSorting:
             decoder=decoder,
             tasks=tasks,
             dim=64,
-            input_sort_field=None,  # No sorting
+            encoder_input_sort_field=None,  # No sorting
             sorter=None,
             matcher=MockMatcher(),
         )
@@ -179,9 +179,9 @@ class TestMaskFormerSorting:
             decoder=decoder,
             tasks=tasks,
             dim=64,
-            input_sort_field="phi",
             matcher=MockMatcher(),
             sorter=Sorter(
+                input_sort_field="phi",
                 input_sort_keys={
                     "key": {"key_embed": 1, "key_valid": 1, "key_phi": 1},
                     "input1": {"input1_phi": 1, "input1_valid": 1, "input1_embed": 1},

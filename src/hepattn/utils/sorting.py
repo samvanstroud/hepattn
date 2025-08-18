@@ -5,7 +5,7 @@ from torch import Tensor, nn
 class Sorter(nn.Module):
     def __init__(
         self,
-        input_sort_field: str | None = None,
+        input_sort_field: str,
         raw_variables: list[str] | None = None,
         input_sort_keys: dict[str, dict[str, int]] | None = None,
         target_sort_keys: dict[str, dict[str, str | int]] | None = None,
@@ -60,32 +60,26 @@ class Sorter(nn.Module):
             num_hits = key_sort_idx.shape[0]
             sort_indices[input_hit] = {"key_sort_idx": key_sort_idx, "num_hits": num_hits}
 
-        targets_sorted: dict[str, Tensor] = {}
+        targets_sorted = targets.copy()
 
-        for key, value in targets.items():
-            if key in self.target_sort_keys:
-                input_hit = self.target_sort_keys[key]["input_hit"]
-                targets_sorted[key] = self._sort_tensor_by_index(
-                    value,
-                    sort_indices[input_hit]["key_sort_idx"],
-                    sort_indices[input_hit]["num_hits"],
-                    sort_dim=self.target_sort_keys[key]["input_hit_dim"],
-                )
-                assert not torch.allclose(targets_sorted[key], value), f"Target {key} is not sorted"
-            else:
-                # optional sorting for other targets if there is a dim that == num_hits
-                # this is a catch in case other class / element is added - shouldn't miss tensor that needs to be sorted
-                # this could be a problem if multiple input_hit types have same num hits?
-                # could instead just # targets_sorted[key] = value
-                # OR targets_sorted = targets.copy() and assume that config contains everything it needs to?
-                for input_hit in sort_indices:
+        for input_hit in sort_indices:
+            for key, value in targets.items():
+                if input_hit not in key:
+                    continue
+                if key in self.target_sort_keys:
+                    targets_sorted[key] = self._sort_tensor_by_index(
+                        value,
+                        sort_indices[input_hit]["key_sort_idx"],
+                        sort_indices[input_hit]["num_hits"],
+                        sort_dim=self.target_sort_keys[key]["input_hit_dim"],
+                    )
+                    assert not torch.allclose(targets_sorted[key], value), f"Target {key} is not sorted"
+                else:
+                    # sort targets if there is a dim that == num_hits and input_hit is in key
+                    # this is a catch in case other class / element is added - shouldn't miss tensor that needs to be sorted
                     targets_sorted[key] = self._sort_tensor_by_index(
                         value, sort_indices[input_hit]["key_sort_idx"], sort_indices[input_hit]["num_hits"]
                     )
-
-        # if phi is perfectly ordered (ie. doesn't need reordering) this will cause problems - could remove?
-        for key in self.target_sort_keys:
-            assert not torch.allclose(targets_sorted[key], targets[key]), f"Target {key} is not sorted"
 
         return targets_sorted
 

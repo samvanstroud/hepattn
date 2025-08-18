@@ -121,10 +121,10 @@ model:
   model:
     class_path: hepattn.models.MaskFormer
     init_args:
-      input_sort_field: phi
       sorter:
         class_path: hepattn.utils.sorting.Sorter
         init_args:
+          input_sort_field: phi
           input_sort_keys:
             hit:
               hit_embed: 1

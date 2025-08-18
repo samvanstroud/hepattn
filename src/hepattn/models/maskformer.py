@@ -18,7 +18,7 @@ class MaskFormer(nn.Module):
         target_object: str = "particle",
         pooling: nn.Module | None = None,
         matcher: nn.Module | None = None,
-        input_sort_field: str | None = None,
+        encoder_input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
         sorter: nn.Module | None = None,
     ):
@@ -61,14 +61,13 @@ class MaskFormer(nn.Module):
         self.target_object = target_object
         self.matcher = matcher
         self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
-        self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
-        self.sorting = None
+        self.sorting = sorter
         if sorter is not None:
-            assert self.input_sort_field is not None, "input_sort_field must be provided if sort_before_encoder is True"
-            sorter.input_sort_field = self.input_sort_field
             sorter.raw_variables = self.raw_variables
-            self.sorting = sorter
+            self.input_sort_field = sorter.input_sort_field
+        else:
+            self.input_sort_field = encoder_input_sort_field
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
         # Atomic input names
@@ -125,7 +124,6 @@ class MaskFormer(nn.Module):
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
             # Disable encoder's internal sorting if we're using pre-encoder sorting
-            # Disable encoder's internal sorting if we're using pre-encoder sorting
             x_sort_value = None if self.sorting is not None else x.get(f"key_{self.input_sort_field}")
             x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
         # Unmerge the updated features back into the separate input types
@@ -157,7 +155,7 @@ class MaskFormer(nn.Module):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
             # store info about the input sort field for each input type
-        if self.input_sort_field is not None:
+        if self.sorter is not None:
             outputs["final"][self.input_sort_field] = {}
             for input_name in input_names:
                 outputs["final"][self.input_sort_field][f"{input_name}_{self.input_sort_field}"] = inputs[input_name + "_" + self.input_sort_field]
