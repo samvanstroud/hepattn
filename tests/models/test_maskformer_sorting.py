@@ -135,7 +135,6 @@ class TestMaskFormerSorting:
             decoder=decoder,
             tasks=tasks,
             dim=64,
-            encoder_input_sort_field=None,  # No sorting
             sorter=None,
             matcher=MockMatcher(),
         )
