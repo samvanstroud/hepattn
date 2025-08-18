@@ -7,35 +7,35 @@ from hepattn.utils.local_ca import auto_local_ca_mask, get_local_ca_mask
 def test_basic_functionality():
     result = get_local_ca_mask(n_objects=3, n_inputs=10, window_size=0)
     expected = torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]], dtype=torch.bool)
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
 
 
 def test_window_size():
     result = get_local_ca_mask(n_objects=3, n_inputs=10, window_size=2)
     expected = torch.tensor([[1, 1, 0, 0, 0, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0, 0, 0, 0, 0]], dtype=torch.bool)
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
 
 
 def test_window_stride():
     result = get_local_ca_mask(n_objects=3, n_inputs=10, window_size=0, stride=2)
     expected = torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]], dtype=torch.bool)
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
 
     result = get_local_ca_mask(n_objects=3, n_inputs=10, window_size=2, stride=3)
     expected = torch.tensor([[1, 1, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 1, 1, 1, 0, 0]], dtype=torch.bool)
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
 
 
 def test_window_size_larger_than_input():
     result = get_local_ca_mask(n_objects=2, n_inputs=5, window_size=10)
     expected = torch.tensor([[1, 1, 1, 1, 1], [1, 1, 1, 1, 1]], dtype=torch.bool)
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
 
 
 def test_single_object():
     result = get_local_ca_mask(n_objects=1, n_inputs=5, window_size=2)
     expected = torch.tensor([[1, 1, 0, 0, 0]], dtype=torch.bool)
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
 
 
 def test_auto_mask():
@@ -49,7 +49,7 @@ def test_auto_mask():
         [False, False, False, False, False, False, False, True, True, True, True, True, False, False, False],
         [False, False, False, False, False, False, False, False, False, False, True, True, True, True, True],
     ])
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
 
 
 def test_realistic():
@@ -69,16 +69,16 @@ def test_realistic():
 def test_wrap():
     result = get_local_ca_mask(n_objects=3, n_inputs=10, window_size=2, wrap=True)
     expected = torch.tensor([[1, 1, 0, 0, 0, 0, 0, 0, 0, 1], [1, 1, 1, 0, 0, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0, 0, 0, 0, 0]], dtype=torch.bool)
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
 
     result = get_local_ca_mask(n_objects=3, n_inputs=10, window_size=4, wrap=True)
     expected = torch.tensor([[1, 1, 1, 0, 0, 0, 0, 0, 1, 1], [1, 1, 1, 1, 0, 0, 0, 0, 0, 1], [1, 1, 1, 1, 1, 0, 0, 0, 0, 0]], dtype=torch.bool)
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
 
     result = get_local_ca_mask(n_objects=3, n_inputs=10, window_size=2, stride=2, wrap=True)
     expected = torch.tensor([[1, 1, 0, 0, 0, 0, 0, 0, 0, 1], [0, 1, 1, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 1, 1, 0, 0, 0, 0]], dtype=torch.bool)
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
 
     result = get_local_ca_mask(n_objects=3, n_inputs=6, window_size=4, stride=2, wrap=True)
     expected = torch.tensor([[1, 1, 1, 0, 1, 1], [1, 1, 1, 1, 1, 0], [1, 0, 1, 1, 1, 1]], dtype=torch.bool)
-    assert torch.all(result == expected)
+    assert torch.all(result == expected.unsqueeze(0))
