@@ -12,6 +12,7 @@ from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
+from hepattn.utils.local_ca import auto_local_ca_mask
 
 
 class MaskFormerDecoder(nn.Module):
@@ -25,6 +26,9 @@ class MaskFormerDecoder(nn.Module):
         key_posenc: nn.Module | None = None,
         query_posenc: nn.Module | None = None,
         preserve_posenc: bool = False,
+        local_strided_attn: bool = False,
+        window_size: int = 512,
+        window_wrap: bool = True,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -37,6 +41,9 @@ class MaskFormerDecoder(nn.Module):
             key_posenc: Optional module for key positional encoding.
             query_posenc: Optional module for query positional encoding.
             preserve_posenc: If True, preserves positional encoding in embeddings.
+            local_strided_attn: If True, uses local strided window attention.
+            window_size: The size of the window for local strided window attention.
+            window_wrap: If True, wraps the window for local strided window attention.
         """
         super().__init__()
 
@@ -52,6 +59,13 @@ class MaskFormerDecoder(nn.Module):
         self.key_posenc = key_posenc
         self.query_posenc = query_posenc
         self.preserve_posenc = preserve_posenc
+        self.local_strided_attn = local_strided_attn
+        self.attn_type = decoder_layer_config["attn_type"]
+        self.window_size = window_size
+        self.window_wrap = window_wrap
+        if self.local_strided_attn:
+            assert self.attn_type == "torch", f"Invalid attention type when use_decoder_mask is True: {self.attn_type}, must be 'torch'"
+        assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -78,6 +92,9 @@ class MaskFormerDecoder(nn.Module):
 
             if self.preserve_posenc:
                 x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
+
+            if self.local_strided_attn:
+                decoder_mask = self.create_local_strided_window_mask(x["query_embed"], x["key_embed"])
 
             attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
@@ -121,6 +138,9 @@ class MaskFormerDecoder(nn.Module):
                     attn_mask[..., x[f"key_is_{input_name}"]] = task_attn_mask
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
+            if self.local_strided_attn:
+                attn_mask = decoder_mask
+
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"],
@@ -152,6 +172,20 @@ class MaskFormerDecoder(nn.Module):
         if self.key_posenc is not None:
             key_posenc = self.key_posenc(x)
         return query_posenc, key_posenc
+
+    def create_local_strided_window_mask(
+        self,
+        query_embed: Tensor,
+        key_embed: Tensor,
+    ):
+        if self.attn_type == "torch":
+            decoder_mask = auto_local_ca_mask(
+                query_embed,
+                key_embed,
+                self.window_size,
+                wrap=self.window_wrap,
+            )
+        return decoder_mask
 
 
 class MaskFormerDecoderLayer(nn.Module):
