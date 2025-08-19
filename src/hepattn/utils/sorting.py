@@ -36,8 +36,7 @@ class Sorter(nn.Module):
                     continue
                 if not (key.startswith(input_hit) or key.endswith(input_hit)):
                     continue
-                if (val.shape[1] == num_hits) or (val.shape[0] == num_hits):
-                    x[key] = self._sort_tensor_by_index(val, sort_idx, num_hits)
+                x[key] = self._sort_tensor_by_index(val, sort_idx, num_hits)
         return x
 
     def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
