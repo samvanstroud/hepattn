@@ -7,7 +7,7 @@ from hepattn.utils.local_ca import auto_local_ca_mask, get_local_ca_mask
 def test_basic_functionality():
     result = get_local_ca_mask(n_objects=3, n_inputs=10, window_size=0)
     expected = torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]], dtype=torch.bool)
-    assert torch.all(result.squeeze(0) == expected)
+    assert torch.all(result == expected)
 
 
 def test_window_size():
