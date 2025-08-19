@@ -123,7 +123,7 @@ class MaskFormer(nn.Module):
         # Pass merged input constituents through the encoder
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
-            x_sort_value = None if self.sorter is not None else x[f"key_{self.input_sort_field}"]
+            x_sort_value = x.get(f"key_{self.input_sort_field}") if self.sorter is None else None
             x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
 
         # Unmerge the updated features back into the separate input types
