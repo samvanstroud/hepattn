@@ -16,32 +16,51 @@ class Sorter(nn.Module):
 
     def sort_inputs(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         """Sort inputs before passing to encoder for better window attention performance."""
-        input_names = [self.input_names, "key"]
+        input_names = [*self.input_names, "key"]
         return self._sort_tensors(x, input_names, x)
 
     def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
         """Sort targets to align with sorted outputs."""
-        input_names = [name for name in self.input_names if name != "key"]
-        return self._sort_tensors(targets, input_names, sort_fields)
+        return self._sort_tensors(targets, self.input_names, sort_fields)
 
-    def _sort_tensors(self, tensors: dict, sort_source: dict[str, Tensor]) -> dict:
+    def _sort_tensors(self, tensors: dict, input_names: list[str], sort_source: dict[str, Tensor]) -> dict:
+        print(tensors.keys(), sort_source.keys())
         """Unified sorting logic for both inputs and targets."""
-        for input_hit in self.input_names:
-            # Get sorting info
-            num_hits = sort_source[f"{input_hit}_embed"].shape[1]
-            sort_idx = self.get_sort_idx(sort_source, input_hit, num_hits)
 
-            # Sort all relevant tensors in-place
-            for key, val in tensors.items():
-                if val is None or not self._should_sort_tensor(key, input_hit):
+        # sort combined inputs once
+        combined_sort_vals = sort_source[f"key_{self.input_sort_field}"]
+        combined_sort_idx = torch.argsort(combined_sort_vals, dim=-1)
+        combined_num = combined_sort_idx.shape[0]
+
+        for input_name in input_names:
+            num_hits = sort_source[f"{input_name}_embed"].shape[1]
+            sort_idx = torch.argsort(sort_source[f"{input_name}_{self.input_sort_field}"], dim=-1)
+
+            for key, x in tensors.items():
+                if x is None or input_name not in key:
                     continue
-                sort_dim = self._get_sort_dimension(key, input_hit)
-                tensors[key] = self._sort_tensor_by_index(val, sort_idx, num_hits, sort_dim)
+
+                # this is the [batch, combined_num] mask to extract a single input type
+                if "key_is_" in key:
+                    this_sort_idx = combined_sort_idx
+                    print(f"Sorting {key} for input {input_name} with num_hits {num_hits}")
+                    print(f"x shape: {x.shape}, this_sort_idx shape: {this_sort_idx.shape}")
+                    tensors[key] = torch.gather(x, -1, combined_sort_idx)
+
+                # these are the uncombined inputs
+                else:
+                    sort_dim = self._get_sort_dimension(key, input_name)
+                    this_sort_idx = sort_idx
+                    if x.ndim != sort_idx.ndim:
+                        this_sort_idx = this_sort_idx.unsqueeze(-1).expand_as(x)
+                    print(f"Sorting {key} for input {input_name} with num_hits {num_hits}")
+                    print(f"x shape: {x.shape}, this_sort_idx shape: {this_sort_idx.shape}")
+                    tensors[key] = torch.gather(x, sort_dim, this_sort_idx)
 
         return tensors
 
-    def get_sort_idx(self, x: dict[str, Tensor], input_hit: str, num_hits=None) -> Tensor:
-        sort_value = x[f"{input_hit}_{self.input_sort_field}"]
+    def get_sort_idx(self, x: dict[str, Tensor], input_name: str, num_hits=None) -> Tensor:
+        sort_value = x[f"{input_name}_{self.input_sort_field}"]
         sort_idx = torch.argsort(sort_value, dim=-1)
         if len(sort_idx.shape) == 2:
             sort_idx = sort_idx[0]
@@ -50,11 +69,7 @@ class Sorter(nn.Module):
             assert sort_idx.shape[0] == num_hits, f"Key sort index shape {sort_idx.shape} does not match num_hits {num_hits}"
         return sort_idx
 
-    def _should_sort_tensor(self, tensor_key: str, input_hit: str) -> bool:
-        """Check if tensor should be sorted - unified logic for inputs and targets."""
-        return tensor_key.startswith(input_hit) or tensor_key.endswith(input_hit) or f"_{input_hit}_" in tensor_key
-
-    def _get_sort_dimension(self, tensor_key: str, input_hit: str) -> int:
+    def _get_sort_dimension(self, tensor_key: str, input_name: str) -> int:
         """Determine sort dimension: embeddings use dim 1, all others use -1."""
         return 1 if tensor_key.endswith("_embed") else -1
 
