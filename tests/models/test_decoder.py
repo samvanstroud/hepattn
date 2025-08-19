@@ -45,6 +45,21 @@ class TestMaskFormerDecoder:
         )
 
     @pytest.fixture
+    def decoder_local_strided_attn(self, decoder_layer_config):
+        """Decoder with local_strided_attn=True for testing local window attention."""
+        config = decoder_layer_config.copy()
+        config["attn_type"] = "torch"  # Required for local_strided_attn
+        return MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=config,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=False,  # Must be False when local_strided_attn=True
+            local_strided_attn=True,
+            window_size=4,
+            window_wrap=True,
+        )
+
+    @pytest.fixture
     def sample_decoder_data(self):
         x = {
             "query_embed": torch.randn(BATCH_SIZE, NUM_QUERIES, DIM),
@@ -108,6 +123,48 @@ class TestMaskFormerDecoder:
             assert f"layer_{i}" in outputs
             assert isinstance(outputs[f"layer_{i}"], dict)
 
+    def test_forward_local_strided_attn(self, decoder_local_strided_attn, sample_decoder_data):
+        """Test forward pass with local_strided_attn=True."""
+        x, input_names = sample_decoder_data
+        decoder_local_strided_attn.tasks = []  # Empty task list
+
+        updated_x, outputs = decoder_local_strided_attn(x, input_names)
+
+        # Check that x was updated with new embeddings
+        assert "query_embed" in updated_x
+        assert "key_embed" in updated_x
+        assert updated_x["query_embed"].shape == (BATCH_SIZE, NUM_QUERIES, DIM)
+        assert updated_x["key_embed"].shape == (BATCH_SIZE, SEQ_LEN, DIM)
+
+        # Check outputs structure
+        assert len(outputs) == NUM_LAYERS
+        for i in range(NUM_LAYERS):
+            assert f"layer_{i}" in outputs
+            assert isinstance(outputs[f"layer_{i}"], dict)
+            # Check that attention mask was created for local strided attention
+            assert "attn_mask" in outputs[f"layer_{i}"]
+            attn_mask = outputs[f"layer_{i}"]["attn_mask"]
+            assert attn_mask.shape == (BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
+            assert attn_mask.dtype == torch.bool
+
+    def test_create_local_strided_window_mask(self, decoder_local_strided_attn, sample_decoder_data):
+        """Test the create_local_strided_window_mask method."""
+        x, _ = sample_decoder_data
+        query_embed = x["query_embed"]
+        key_embed = x["key_embed"]
+
+        mask = decoder_local_strided_attn.create_local_strided_window_mask(query_embed, key_embed)
+
+        # Check mask shape and properties
+        assert mask.shape == (1, NUM_QUERIES, SEQ_LEN)
+        assert mask.dtype == torch.bool
+
+        # Check that each query has some valid attention positions
+        assert mask.any(dim=-1).all(), "Each query should have at least one valid attention position"
+
+        # Check that each key position is attended to by at least one query
+        assert mask.any(dim=-2).all(), "Each key position should be attended to by at least one query"
+
     def test_forward_shapes(self, decoder_no_mask_attention, sample_decoder_data):
         """Test that forward pass maintains correct tensor shapes."""
         x, input_names = sample_decoder_data
@@ -117,6 +174,19 @@ class TestMaskFormerDecoder:
         original_key_shape = x["key_embed"].shape
 
         updated_x, _ = decoder_no_mask_attention(x, input_names)
+
+        assert updated_x["query_embed"].shape == original_query_shape
+        assert updated_x["key_embed"].shape == original_key_shape
+
+    def test_forward_shapes_local_strided_attn(self, decoder_local_strided_attn, sample_decoder_data):
+        """Test that forward pass maintains correct tensor shapes with local_strided_attn."""
+        x, input_names = sample_decoder_data
+        decoder_local_strided_attn.tasks = []
+
+        original_query_shape = x["query_embed"].shape
+        original_key_shape = x["key_embed"].shape
+
+        updated_x, _ = decoder_local_strided_attn(x, input_names)
 
         assert updated_x["query_embed"].shape == original_query_shape
         assert updated_x["key_embed"].shape == original_key_shape
