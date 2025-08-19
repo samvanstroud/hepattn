@@ -64,7 +64,7 @@ class MaskFormerDecoder(nn.Module):
         self.window_size = window_size
         self.window_wrap = window_wrap
         if self.local_strided_attn:
-            assert self.attn_type == "torch", f"Invalid attention type when use_decoder_mask is True: {self.attn_type}, must be 'torch'"
+            assert self.attn_type == "torch", f"Invalid attention type when local_strided_attn is True: {self.attn_type}, must be 'torch'"
         assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
