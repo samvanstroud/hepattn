@@ -97,6 +97,11 @@ class MaskFormer(nn.Module):
                 [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in self.input_names], dim=-1
             )
 
+        if self.input_sort_field and not self.sorter:
+            x[f"key_{self.input_sort_field}"] = torch.concatenate(
+                [inputs[input_name + "_" + self.input_sort_field] for input_name in self.input_names], dim=-1
+            )
+
         # Merge the input constituents and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in self.input_names], dim=-1)
@@ -109,7 +114,7 @@ class MaskFormer(nn.Module):
             x["key_valid"] = None
 
         # Also merge the field being used for sorting in window attention if requested
-        if self.sorter is not None:
+        if self.input_sort_field is not None:
             x[f"key_{self.input_sort_field}"] = torch.concatenate(
                 [inputs[input_name + "_" + self.input_sort_field] for input_name in self.input_names], dim=-1
             )
@@ -118,12 +123,12 @@ class MaskFormer(nn.Module):
 
         # Dedicated sorting step before encoder
         if self.sorter is not None:
-            x = self.sorter.sort_inputs(x)
+            x = self.sorter.sort_inputs(x, self.input_names)
 
         # Pass merged input constituents through the encoder
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
-            x_sort_value = None if self.sorter is not None else x[f"key_{self.input_sort_field}"]
+            x_sort_value = x.get(f"key_{self.input_sort_field}") if self.sorter is None else None
             x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
 
         # Unmerge the updated features back into the separate input types

@@ -193,7 +193,7 @@ class TestMaskFormerSorting:
         # Run loss computation which should sort targets
         _, sorted_targets = model.loss(outputs, targets)
 
-        assert model.sorting is not None
+        assert model.sorter is not None
 
         # Get the sort indices that were used for the input phi values
         input1_sort_idx = torch.argsort(original_input1_phi[0])
