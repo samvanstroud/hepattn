@@ -18,7 +18,6 @@ class MaskFormer(nn.Module):
         target_object: str = "particle",
         pooling: nn.Module | None = None,
         matcher: nn.Module | None = None,
-        encoder_input_sort_field: str | None = None,
         raw_variables: list[str] | None = None,
         sorter: nn.Module | None = None,
     ):
@@ -66,8 +65,6 @@ class MaskFormer(nn.Module):
         if sorter is not None:
             sorter.raw_variables = self.raw_variables
             self.input_sort_field = sorter.input_sort_field
-        else:
-            self.input_sort_field = encoder_input_sort_field
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
         # Atomic input names
@@ -114,7 +111,7 @@ class MaskFormer(nn.Module):
             x["key_valid"] = None
 
         # Also merge the field being used for sorting in window attention if requested
-        if self.input_sort_field is not None:
+        if self.sorting is not None:
             x[f"key_{self.input_sort_field}"] = torch.concatenate(
                 [inputs[input_name + "_" + self.input_sort_field] for input_name in input_names], dim=-1
             )
@@ -123,14 +120,12 @@ class MaskFormer(nn.Module):
 
         # Dedicated sorting step before encoder
         if self.sorting is not None:
-            x = self.sorting.sort_inputs(x)
+            x = self.sorting.sort_inputs(x, input_names)
 
         # Pass merged input constituents through the encoder
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
-            # Disable encoder's internal sorting if we're using pre-encoder sorting
-            x_sort_value = None if self.sorting is not None else x.get(f"key_{self.input_sort_field}")
-            x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
+            x["key_embed"] = self.encoder(x["key_embed"], kv_mask=x.get("key_valid"))
         # Unmerge the updated features back into the separate input types
         # These are just views into the tensor that hold all the merged hits
         for input_name in input_names:
