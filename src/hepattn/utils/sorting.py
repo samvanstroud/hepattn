@@ -94,5 +94,7 @@ class Sorter(nn.Module):
         """
         if sort_dim is None:
             sort_dim = 0 if tensor.ndim == 1 else 1
-        assert tensor.shape[sort_dim] == num_hits, f"Sort dimension {sort_dim} has size {tensor.shape[sort_dim]} but num_hits is {num_hits}"
+        if tensor.shape[sort_dim] != num_hits:
+            print(f"Sort dimension {sort_dim} has size {tensor.shape[sort_dim]} but num_hits is {num_hits}")
+            return tensor
         return tensor.index_select(sort_dim, sort_idx)
