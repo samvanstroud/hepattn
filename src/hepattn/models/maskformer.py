@@ -109,7 +109,7 @@ class MaskFormer(nn.Module):
             x["key_valid"] = None
 
         # Also merge the field being used for sorting in window attention if requested
-        if self.sorter is not None:
+        if self.input_sort_field is not None:
             x[f"key_{self.input_sort_field}"] = torch.concatenate(
                 [inputs[input_name + "_" + self.input_sort_field] for input_name in self.input_names], dim=-1
             )
