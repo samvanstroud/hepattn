@@ -65,7 +65,7 @@ data:
     pixel:
       - on_valid_particle
 
-  one_hot_encodings:
+  one_hot_encodings_dict:
     barrel_endcap: [-2.0, 0.0, 2.0]
     layer_disk: [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
     localDir2: [0.0999755859375, 0.1500244140625]
@@ -82,9 +82,9 @@ trainer:
   enable_progress_bar: True
 
   logger:
-    class_path: lightning.pytorch.loggers.CometLogger
+    class_path: hepattn.utils.loggers.MyCometLogger
     init_args:
-      project_name: itk_filtering
+      project: itk_filtering
 
   callbacks:
     - class_path: hepattn.callbacks.Compile
@@ -149,7 +149,7 @@ model:
                   - barrel_endcap
                   - layer_disk
                   - localDir2
-                one_hot_encodings:
+                one_hot_encodings_dict:
                   barrel_endcap: [-2.0, 0.0, 2.0]
                   layer_disk: [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
                   localDir2: [0.0999755859375, 0.1500244140625]

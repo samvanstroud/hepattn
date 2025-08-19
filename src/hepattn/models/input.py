@@ -11,7 +11,7 @@ class InputNet(nn.Module):
         fields: list[str],
         posenc: nn.Module | None = None,
         input_dtype: str | None = None,
-        one_hot_encodings_dict: dict[str, int] | None = None,
+        one_hot_encodings_dict: dict[str, list] | None = None,
     ):
         super().__init__()
         """A wrapper that takes a list of input features, concatenates them, and passes them
@@ -34,7 +34,7 @@ class InputNet(nn.Module):
         self.net = net
         self.fields = fields
         self.posenc = posenc
-        self.one_hot_encodings_dict = one_hot_encodings_dict or {}
+        self.one_hot_encodings = one_hot_encodings_dict or {}
 
         # Record the global model dtype incase we want to have the input net at a different precision
         self.output_dtype = get_module_dtype(self)
@@ -65,7 +65,7 @@ class InputNet(nn.Module):
             if field in self.one_hot_encodings:
                 # This field has one-hot encoded variants
                 for val in self.one_hot_encodings[field]:
-                    tensors.extend(inputs[f"{self.input_name}_{field}_{val}"])
+                    tensors.append(inputs[f"{self.input_name}_{field}_{val}"])
             else:
                 tensors.append(inputs[f"{self.input_name}_{field}"])
 

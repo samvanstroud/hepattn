@@ -30,7 +30,7 @@ class ITkDataset(Dataset):
         hit_eval_path: str | None = None,
         append_hit_eval_output: bool = False,
         apply_hit_eval_pred: bool = False,
-        one_hot_encodings_dict: dict[str, dict[str, int]] | None = None,
+        one_hot_encodings_dict: dict[str, list] | None = None,
     ):
         if particle_min_num_hits is None:
             particle_min_num_hits = {"pixel": 3, "strip": 6}
