@@ -97,6 +97,11 @@ class MaskFormer(nn.Module):
                 [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in self.input_names], dim=-1
             )
 
+        if self.input_sort_field and not self.sorter:
+            x[f"key_{self.input_sort_field}"] = torch.concatenate(
+                [inputs[input_name + "_" + self.input_sort_field] for input_name in self.input_names], dim=-1
+            )
+
         # Merge the input constituents and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in self.input_names], dim=-1)
