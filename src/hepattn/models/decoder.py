@@ -136,10 +136,12 @@ class MaskFormerDecoder(nn.Module):
                 attn_mask = torch.full((batch_size, self.num_queries, num_constituents), True, device=x["key_embed"].device)
                 for input_name, task_attn_mask in attn_masks.items():
                     attn_mask[..., x[f"key_is_{input_name}"]] = task_attn_mask
-                outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
             if self.local_strided_attn:
                 attn_mask = decoder_mask
+
+            if attn_mask is not None:
+                outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
@@ -179,13 +181,13 @@ class MaskFormerDecoder(nn.Module):
         key_embed: Tensor,
     ):
         if self.attn_type == "torch":
-            decoder_mask = auto_local_ca_mask(
+            return auto_local_ca_mask(
                 query_embed,
                 key_embed,
                 self.window_size,
                 wrap=self.window_wrap,
             )
-        return decoder_mask
+        return None
 
 
 class MaskFormerDecoderLayer(nn.Module):
