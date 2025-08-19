@@ -3,7 +3,7 @@ import torch
 
 from hepattn.models.decoder import MaskFormerDecoder, MaskFormerDecoderLayer
 
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 SEQ_LEN = 10
 NUM_QUERIES = 5
 DIM = 64
