@@ -91,13 +91,17 @@ class TestMaskFormerSorting:
     @pytest.fixture
     def sample_inputs(self):
         return {
-            "input1_data": torch.randn(1, 10, 64),  # MockInputNet expects input1_data
-            "input1_valid": torch.ones(1, 10, dtype=torch.bool),
-            "input1_phi": torch.tensor([[3.0, 1.0, 4.0, 2.0, 5.0, 0.0, 6.0, 7.0, 8.0, 9.0]]),  # Specific unsorted values
-            "input2_data": torch.randn(1, 15, 64),  # MockInputNet expects input2_data
-            "input2_valid": torch.ones(1, 15, dtype=torch.bool),
+            "input1_data": torch.randn(2, 10, 64),  # MockInputNet expects input1_data
+            "input1_valid": torch.ones(2, 10, dtype=torch.bool),
+            "input1_phi": torch.tensor([
+                [3.0, 1.0, 4.0, 2.0, 5.0, 0.0, 6.0, 7.0, 8.0, 9.0],
+                [3.0, 1.0, 4.0, 2.0, 5.0, 0.0, 6.0, 7.0, 8.0, 9.0],
+            ]),  # Specific unsorted values
+            "input2_data": torch.randn(2, 15, 64),  # MockInputNet expects input2_data
+            "input2_valid": torch.ones(2, 15, dtype=torch.bool),
             "input2_phi": torch.tensor([
-                [15.0, 11.0, 14.0, 12.0, 13.0, 10.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0]
+                [15.0, 11.0, 14.0, 12.0, 13.0, 10.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0],
+                [15.0, 11.0, 14.0, 12.0, 13.0, 10.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0],
             ]),  # Specific unsorted values
         }
 
@@ -177,15 +181,18 @@ class TestMaskFormerSorting:
 
         # Test target sorting with multiple target fields
         # Create targets with known unsorted values to make sorting obvious
-        original_input1_phi = torch.tensor([[3.0, 1.0, 4.0, 2.0, 5.0, 0.0, 6.0, 7.0, 8.0, 9.0]])
-        original_input2_phi = torch.tensor([[15.0, 11.0, 14.0, 12.0, 13.0, 10.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0]])
+        original_input1_phi = torch.tensor([[3.0, 1.0, 4.0, 2.0, 5.0, 0.0, 6.0, 7.0, 8.0, 9.0], [3.0, 1.0, 4.0, 2.0, 5.0, 0.0, 6.0, 7.0, 8.0, 9.0]])
+        original_input2_phi = torch.tensor([
+            [15.0, 11.0, 14.0, 12.0, 13.0, 10.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0],
+            [15.0, 11.0, 14.0, 12.0, 13.0, 10.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0],
+        ])
 
         # Create random boolean tensors for valid fields
-        original_input1_valid = torch.randint(0, 2, (1, 5, 10), dtype=torch.bool)
-        original_input2_valid = torch.randint(0, 2, (1, 5, 15), dtype=torch.bool)
+        original_input1_valid = torch.randint(0, 2, (2, 5, 10), dtype=torch.bool)
+        original_input2_valid = torch.randint(0, 2, (2, 5, 15), dtype=torch.bool)
 
         targets = {
-            "particle_valid": torch.ones(1, 5, dtype=torch.bool),  # Default target for matching
+            "particle_valid": torch.ones(2, 5, dtype=torch.bool),  # Default target for matching
             "particle_input1_valid": original_input1_valid,
             "particle_input2_valid": original_input2_valid,
         }

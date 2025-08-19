@@ -66,9 +66,7 @@ class Sorter(nn.Module):
 
     def get_sort_idx(self, x: dict[str, Tensor], input_hit: str, num_hits=None) -> Tensor:
         sort_value = x[f"{input_hit}_{self.input_sort_field}"]
-        sort_idx = torch.argsort(sort_value, dim=-1)
-        if len(sort_idx.shape) == 2:
-            sort_idx = sort_idx[0]
+        sort_idx = torch.argsort(sort_value, dim=-1).squeeze()
         assert len(sort_idx.shape) == 1, "Sort index must be 1D"
         if num_hits is not None:
             assert sort_idx.shape[0] == num_hits, f"Key sort index shape {sort_idx.shape} does not match num_hits {num_hits}"
