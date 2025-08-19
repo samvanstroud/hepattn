@@ -48,7 +48,6 @@ class TestMaskFormerDecoder:
     def decoder_local_strided_attn(self, decoder_layer_config):
         """Decoder with local_strided_attn=True for testing local window attention."""
         config = decoder_layer_config.copy()
-        config["attn_type"] = "torch"  # Required for local_strided_attn
         return MaskFormerDecoder(
             num_queries=NUM_QUERIES,
             decoder_layer_config=config,
