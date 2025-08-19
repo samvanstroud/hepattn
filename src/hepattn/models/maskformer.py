@@ -118,7 +118,7 @@ class MaskFormer(nn.Module):
 
         # Dedicated sorting step before encoder
         if self.sorter is not None:
-            x = self.sorter.sort_inputs(x)
+            x = self.sorter.sort_inputs(x, self.input_names)
 
         # Pass merged input constituents through the encoder
         if self.encoder is not None:
