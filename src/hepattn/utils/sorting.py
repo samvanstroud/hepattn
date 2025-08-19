@@ -12,9 +12,8 @@ class Sorter(nn.Module):
         super().__init__()
         self.input_sort_field = input_sort_field
         self.raw_variables = raw_variables or []
-        self.input_sort_keys = input_sort_keys or {}
 
-    def sort_inputs(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def sort_inputs(self, x: dict[str, Tensor], input_names: list[str]) -> dict[str, Tensor]:
         """Sort inputs before passing to encoder for better window attention performance.
 
         Parameters
@@ -27,25 +26,24 @@ class Sorter(nn.Module):
         dict[str, Tensor]
             Sort indices for key and query dimensions.
         """
-        # Get key_embed shape for reference in sorting
-        # TODO: could iterate over x keys instead of specifying input_sort keys? Would this be cleaner? May be a lot of unnecessary sorting?
-        for input_hit in self.input_sort_keys:
+        self.input_names = [*input_names, "key"]
+        for input_hit in input_names:
+            # Get key_embed shape for reference in sorting
             num_hits = x[f"{input_hit}_embed"].shape[1]
             sort_idx = self.get_sort_idx(x, input_hit, num_hits)
-            for input_key in self.input_sort_keys[input_hit]:
-                assert input_key in x, f"Input sort key {input_key} not found in x"
-                if x[input_key] is not None:
-                    x[input_key] = self._sort_tensor_by_index(x[input_key], sort_idx, num_hits)
-            for raw_var in self.raw_variables:
-                if (raw_var in x) and (raw_var.startswith(input_hit)):
-                    x[raw_var] = self._sort_tensor_by_index(x[raw_var], sort_idx, num_hits)
-
+            for key, val in x.items():
+                if val is None:
+                    continue
+                if not (key.startswith(input_hit) or key.endswith(input_hit)):
+                    continue
+                if (val.shape[1] == num_hits) or (val.shape[0] == num_hits):
+                    x[key] = self._sort_tensor_by_index(val, sort_idx, num_hits)
         return x
 
     def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
         """Sort targets to align with sorted outputs."""
         sort_indices = {}
-        for input_hit in self.input_sort_keys:
+        for input_hit in self.input_names:
             if input_hit == "key":
                 continue
             key_sort_idx = self.get_sort_idx(sort_fields, input_hit)
@@ -56,15 +54,15 @@ class Sorter(nn.Module):
 
         for input_hit in sort_indices:
             for key, value in targets.items():
-                sort_dim = 2 if key.startswith(f"particle_{input_hit}") else None
-                if key.startswith((input_hit, f"particle_{input_hit}")):
+                key_split = key.split("_")[1]
+                sort_dim = 2 if key_split.startswith(input_hit) else None
+                if key.startswith(input_hit) or key_split.startswith(input_hit):
                     targets_sorted[key] = self._sort_tensor_by_index(
                         value,
                         sort_indices[input_hit]["key_sort_idx"],
                         sort_indices[input_hit]["num_hits"],
                         sort_dim=sort_dim,
                     )
-
         return targets_sorted
 
     def get_sort_idx(self, x: dict[str, Tensor], input_hit: str, num_hits=None) -> Tensor:

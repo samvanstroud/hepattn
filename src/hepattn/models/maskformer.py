@@ -62,7 +62,6 @@ class MaskFormer(nn.Module):
         self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
         self.raw_variables = raw_variables or []
         self.sorting = sorter
-        self.input_sort_field = None
         if sorter is not None:
             sorter.raw_variables = self.raw_variables
             self.input_sort_field = sorter.input_sort_field
@@ -121,7 +120,7 @@ class MaskFormer(nn.Module):
 
         # Dedicated sorting step before encoder
         if self.sorting is not None:
-            x = self.sorting.sort_inputs(x)
+            x = self.sorting.sort_inputs(x, input_names)
 
         # Pass merged input constituents through the encoder
         if self.encoder is not None:

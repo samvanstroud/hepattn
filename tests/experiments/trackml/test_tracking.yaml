@@ -116,14 +116,6 @@ model:
         class_path: hepattn.utils.sorting.Sorter
         init_args:
           input_sort_field: phi
-          input_sort_keys:
-            hit:
-              - hit_embed
-              - hit_valid
-              - key_is_hit
-            key:
-              - key_embed
-              - key_valid
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:

@@ -112,11 +112,6 @@ class TestMaskFormerSorting:
             matcher=MockMatcher(),
             sorter=Sorter(
                 input_sort_field="phi",
-                input_sort_keys={
-                    "key": ["key_embed", "key_valid"],
-                    "input1": ["input1_phi", "input1_valid", "input1_embed"],
-                    "input2": ["input2_phi", "input2_valid", "input2_embed"],
-                },
             ),
         )
 
@@ -171,11 +166,6 @@ class TestMaskFormerSorting:
             matcher=MockMatcher(),
             sorter=Sorter(
                 input_sort_field="phi",
-                input_sort_keys={
-                    "key": ["key_embed", "key_valid"],
-                    "input1": ["input1_phi", "input1_valid", "input1_embed"],
-                    "input2": ["input2_phi", "input2_valid", "input2_embed"],
-                },
             ),
         )
 
