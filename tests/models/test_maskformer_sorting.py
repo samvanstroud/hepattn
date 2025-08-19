@@ -112,21 +112,6 @@ class TestMaskFormerSorting:
             matcher=MockMatcher(),
             sorter=Sorter(
                 input_sort_field="phi",
-                input_sort_keys={
-                    "key": {"key_embed": 1, "key_valid": 1, "key_phi": 1},
-                    "input1": {"input1_phi": 1, "input1_valid": 1, "input1_embed": 1},
-                    "input2": {"input2_phi": 1, "input2_valid": 1, "input2_embed": 1},
-                },
-                target_sort_keys={
-                    "particle_input1_valid": {
-                        "input_hit": "input1",
-                        "input_hit_dim": 2,
-                    },
-                    "particle_input2_valid": {
-                        "input_hit": "input2",
-                        "input_hit_dim": 2,
-                    },
-                },
             ),
         )
 
@@ -145,7 +130,6 @@ class TestMaskFormerSorting:
             decoder=decoder,
             tasks=tasks,
             dim=64,
-            encoder_input_sort_field=None,  # No sorting
             sorter=None,
             matcher=MockMatcher(),
         )
@@ -182,21 +166,6 @@ class TestMaskFormerSorting:
             matcher=MockMatcher(),
             sorter=Sorter(
                 input_sort_field="phi",
-                input_sort_keys={
-                    "key": {"key_embed": 1, "key_valid": 1, "key_phi": 1},
-                    "input1": {"input1_phi": 1, "input1_valid": 1, "input1_embed": 1},
-                    "input2": {"input2_phi": 1, "input2_valid": 1, "input2_embed": 1},
-                },
-                target_sort_keys={
-                    "particle_input1_phi": {
-                        "input_hit": "input1",
-                        "input_hit_dim": 1,
-                    },
-                    "particle_input1_valid": {
-                        "input_hit": "input1",
-                        "input_hit_dim": 2,
-                    },
-                },
             ),
         )
 
@@ -218,9 +187,7 @@ class TestMaskFormerSorting:
         targets = {
             "particle_valid": torch.ones(1, 5, dtype=torch.bool),  # Default target for matching
             "particle_input1_valid": original_input1_valid,
-            "particle_input1_phi": original_input1_phi,
             "particle_input2_valid": original_input2_valid,
-            "particle_input2_phi": original_input2_phi,
         }
 
         # Run loss computation which should sort targets
@@ -234,23 +201,14 @@ class TestMaskFormerSorting:
 
         # Check that the targets are sorted by verifying they're different from the original
         # (since we're using unsorted values, sorting should change the order)
-        assert not torch.allclose(sorted_targets["particle_input1_phi"], original_input1_phi)
-        assert not torch.allclose(sorted_targets["particle_input2_phi"], original_input2_phi)
         assert not torch.allclose(sorted_targets["particle_input1_valid"], original_input1_valid)
         assert not torch.allclose(sorted_targets["particle_input2_valid"], original_input2_valid)
-
-        # Check that the sorted targets have the same values as the original (just reordered)
-        assert torch.allclose(torch.sort(sorted_targets["particle_input1_phi"])[0], torch.sort(original_input1_phi)[0])
-        assert torch.allclose(torch.sort(sorted_targets["particle_input2_phi"])[0], torch.sort(original_input2_phi)[0])
-
-        # Verify that the sorted targets are actually sorted
-        assert torch.allclose(sorted_targets["particle_input1_phi"], torch.sort(original_input1_phi)[0])
-        assert torch.allclose(sorted_targets["particle_input2_phi"], torch.sort(original_input2_phi)[0])
 
         # Verify that the valid tensors are reordered according to the phi sorting
         # The valid tensors should be reordered using the same indices that sort the phi values
         expected_input1_valid = original_input1_valid.index_select(2, input1_sort_idx)
         expected_input2_valid = original_input2_valid.index_select(2, input2_sort_idx)
 
+        # Verify that the sorted targets are actually sorted
         assert torch.allclose(sorted_targets["particle_input1_valid"], expected_input1_valid)
         assert torch.allclose(sorted_targets["particle_input2_valid"], expected_input2_valid)
