@@ -44,26 +44,25 @@ def custom_hist(ax, vals, label_length=-1, metrics="median std iqr", f=None, n_d
     if label_length != -1:
         hist_kwargs["label"] = hist_kwargs["label"].ljust(label_length)
 
-    stats = ""
-    for i, metric in enumerate(metrics.split()):
-        if i > 0:
-            stats += ", "
-        if metric == "mean":
-            stats += f"M={np.nanmean(vals):+.{n_digits}f}".replace("+", " ")
-        elif metric == "std":
-            stats += f"$\\sigma$={np.nanstd(vals):+.{n_digits}f}".replace("+", " ")
-        elif metric == "median":
-            stats += f"M={np.nanmedian(vals):+.{n_digits}f}".replace("+", " ")
-        elif metric == "iqr":
-            iqr = np.nanpercentile(vals, 75) - np.nanpercentile(vals, 25)
-            stats += f"IQR={iqr:.{n_digits}f}"
-        elif metric == "f":
-            if f is not None:
-                stats += f"$f$={f:.{n_digits}f}"
-        else:
-            raise ValueError(f"Unknown metric: {metric}")
-    if stats:
-        hist_kwargs["label"] += f" ({stats})"
+    stats_parts = []
+    for metric in metrics.split():
+        match metric:
+            case "mean":
+                stats_parts.append(f"M={np.nanmean(vals):+.{n_digits}f}".replace("+", " "))
+            case "std":
+                stats_parts.append(f"\\sigma$={np.nanstd(vals):+.{n_digits}f}".replace("+", " "))
+            case "median":
+                stats_parts.append(f"M={np.nanmedian(vals):+.{n_digits}f}".replace("+", " "))
+            case "iqr":
+                iqr = np.nanpercentile(vals, 75) - np.nanpercentile(vals, 25)
+                stats_parts.append(f"IQR={iqr:.{n_digits}f}")
+            case "f":
+                if f is not None:
+                    stats_parts.append(f"$f$={f:.{n_digits}f}")
+            case _:
+                raise ValueError(f"Unknown metric: {metric}")
+    if stats_parts:
+        hist_kwargs["label"] += f" ({', '.join(stats_parts)})"
     ax.hist(vals, **hist_kwargs)
 
 
