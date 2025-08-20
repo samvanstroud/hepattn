@@ -11,7 +11,7 @@ class MaskFormer(nn.Module):
     def __init__(
         self,
         input_nets: nn.ModuleList,
-        encoder: nn.Module | None,
+        encoder: nn.Module,
         decoder: MaskFormerDecoder,
         tasks: nn.ModuleList,
         dim: int,
@@ -58,14 +58,14 @@ class MaskFormer(nn.Module):
         if self.sorter is not None:
             self.sorter.input_names = self.input_names
 
+        assert "key" not in self.input_names, "'key' input name is reserved."
+        assert "query" not in self.input_names, "'query' input name is reserved."
+
     @property
     def input_names(self) -> list[str]:
         return [input_net.input_name for input_net in self.input_nets]
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
-        assert "key" not in self.input_names, "'key' input name is reserved."
-        assert "query" not in self.input_names, "'query' input name is reserved."
-
         x = {"inputs": inputs}
 
         # Store input positional encodings if we need to preserve them for the decoder
@@ -91,10 +91,8 @@ class MaskFormer(nn.Module):
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in self.input_names], dim=-1)
 
-        # calculate the batch size and combined number of input constituents
-        batch_size = x["key_valid"].shape[0]
-
         # if all key_valid are true, then we can just set it to None
+        batch_size = x["key_valid"].shape[0]
         if batch_size == 1 and x["key_valid"].all():
             x["key_valid"] = None
 
