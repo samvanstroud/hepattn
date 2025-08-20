@@ -116,7 +116,7 @@ class MaskFormerDecoder(nn.Module):
 
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
-                # Collect attention masks from tasks
+                # Collect attention masks from different tasks tasks
                 task_attn_masks = task.attn_mask(task_outputs)
                 for input_name, attn_mask in task_attn_masks.items():
                     if input_name in attn_masks:
@@ -133,9 +133,9 @@ class MaskFormerDecoder(nn.Module):
 
             # Construct the full attention mask for MaskAttention decoder
             if attn_masks and self.mask_attention:
-                attn_mask = torch.full((batch_size, self.num_queries, num_constituents), True, device=x["key_embed"].device)
+                attn_mask = torch.full((batch_size, self.num_queries, num_constituents), False, device=x["key_embed"].device)
                 for input_name, task_attn_mask in attn_masks.items():
-                    attn_mask[x[f"key_is_{input_name}"]] = task_attn_mask
+                    attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
 
             if attn_mask is not None:
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
