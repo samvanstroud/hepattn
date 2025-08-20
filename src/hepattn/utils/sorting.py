@@ -44,30 +44,3 @@ class Sorter(nn.Module):
                 assert inputs[key].shape == shape_before, f"Shape mismatch after sorting: {inputs[key].shape} != {shape_before} for key {key}"
 
         return inputs
-
-    def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
-        for input_name in self.input_names:
-            sort_idx = torch.argsort(sort_fields[f"{input_name}_{self.input_sort_field}"], dim=-1)
-
-            for key, x in targets.items():
-                if x is None or input_name not in key:
-                    continue
-
-                # sort target mask
-                if x.ndim == 3:
-                    sort_dim = 2
-                    this_sort_idx = sort_idx
-                    this_sort_idx = sort_idx.unsqueeze(1).expand_as(x)
-
-                # sort target for input constituent
-                elif x.ndim == 2:
-                    sort_dim = 1
-                    this_sort_idx = sort_idx
-                else:
-                    raise ValueError(f"Unexpected key {key} for input hit {input_name}")
-
-                shape_before = x.shape
-                targets[key] = torch.gather(x, sort_dim, this_sort_idx)
-                assert targets[key].shape == shape_before, f"Shape mismatch after sorting: {targets[key].shape} != {shape_before} for key {key}"
-
-        return targets
