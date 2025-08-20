@@ -106,7 +106,6 @@ class PlotEventHelper:
         n_digits_dict["nconst"] = 1
 
         jet_vars = ["pt", "e_rel", "nconst", "dR"]  # 'eta', 'phi']
-        # jet_vars = ["pt", "e_rel", "theta", "dR"]  # 'eta', 'phi']
         if pt_relative:
             jet_vars[0] = "pt_rel"
 
