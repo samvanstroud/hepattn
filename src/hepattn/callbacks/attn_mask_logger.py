@@ -133,28 +133,28 @@ class AttnMaskLogger(Callback):
             layer_index = int(layer_name.split("_")[1])
             attn_mask = current_layer_outputs["attn_mask"]
             # Log first layer (0) and last layer (max layer index)
-            if layer_index == 0 or layer_index == max_layer_index:
-                    # Apply the same processing as the original attn_mask_logging function
-                    attn_mask_im = attn_mask[0].detach().cpu().clone().int()
+            if layer_index in [0, max_layer_index]:
+                # Apply the same processing as the original attn_mask_logging function
+                attn_mask_im = attn_mask[0].detach().cpu().clone().int()
 
-                    # Log the attention mask
-                    self._log_attention_mask(
+                # Log the attention mask
+                self._log_attention_mask(
+                    pl_module,
+                    attn_mask_im,
+                    step,
+                    layer_index,
+                    f"local_ma_mask_{prefix_suffix}",
+                )
+
+                # Log stats if enabled
+                if self.log_stats:
+                    self._log_attention_stats(
                         pl_module,
                         attn_mask_im,
                         step,
                         layer_index,
                         f"local_ma_mask_{prefix_suffix}",
                     )
-
-                    # Log stats if enabled
-                    if self.log_stats:
-                        self._log_attention_stats(
-                            pl_module,
-                            attn_mask_im,
-                            step,
-                            layer_index,
-                            f"local_ma_mask_{prefix_suffix}",
-                        )
 
         # Mark this step as logged
         self.logged_steps.add(step)
