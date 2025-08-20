@@ -29,6 +29,7 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
+        combine: str = "",
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -65,7 +66,9 @@ class MaskFormerDecoder(nn.Module):
         self.window_wrap = window_wrap
         if self.local_strided_attn:
             assert self.attn_type == "torch", f"Invalid attention type when use_decoder_mask is True: {self.attn_type}, must be 'torch'"
-        assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
+        self.combine = combine
+        if self.combine != "":
+            assert self.mask_attention, "If combine, MA must == True"
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -139,7 +142,12 @@ class MaskFormerDecoder(nn.Module):
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
             if self.local_strided_attn:
-                attn_mask = decoder_mask
+                if self.combine == "and":
+                    attn_mask = decoder_mask & attn_mask
+                elif self.combine == "or":
+                    attn_mask = decoder_mask | attn_mask
+                else:
+                    attn_mask = decoder_mask
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
