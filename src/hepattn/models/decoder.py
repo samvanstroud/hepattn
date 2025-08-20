@@ -13,6 +13,7 @@ from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.local_ca import auto_local_ca_mask
+from hepattn.utils.model_utils import unmerge_inputs
 
 
 class MaskFormerDecoder(nn.Module):
@@ -149,9 +150,8 @@ class MaskFormerDecoder(nn.Module):
                 kv_mask=x.get("key_valid"),
             )
 
-            # Unmerge the updated features back into separate input types for intermediate tasks
-            for input_name in input_names:
-                x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
+            # update the individual input constituent representations
+            x = unmerge_inputs(x, input_names)
 
         return x, outputs
 

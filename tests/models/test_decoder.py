@@ -98,7 +98,6 @@ class TestMaskFormerDecoder:
             "key_is_input2": torch.zeros(BATCH_SIZE, SEQ_LEN, dtype=torch.bool),
         }
 
-        # Set some positions to be input1 and input2
         x["key_is_input1"][:, :4] = True
         x["key_is_input2"][:, 4:] = True
 
@@ -112,12 +111,12 @@ class TestMaskFormerDecoder:
             "key_embed": torch.randn(1, SEQ_LEN, DIM),
             "key_posenc": torch.randn(1, SEQ_LEN, DIM),
             "key_valid": torch.ones(1, SEQ_LEN, dtype=torch.bool),
-            "key_is_input1": torch.zeros(SEQ_LEN, dtype=torch.bool),
-            "key_is_input2": torch.zeros(SEQ_LEN, dtype=torch.bool),
+            "key_is_input1": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
+            "key_is_input2": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
         }
-        # Set some positions to be input1 and input2
-        x["key_is_input1"][:3] = True
-        x["key_is_input2"][3:6] = True
+
+        x["key_is_input1"][:, :4] = True
+        x["key_is_input2"][:, 4:] = True
 
         input_names = ["input1", "input2"]
         return x, input_names

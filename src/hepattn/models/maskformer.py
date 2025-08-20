@@ -5,12 +5,7 @@ from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
-
-
-def extract_input(x: dict[str, Tensor], constituent_name: str) -> Tensor:
-    batch_size = x["key_embed"].shape[0]
-    dim = x["key_embed"].shape[-1]
-    return x["key_embed"][x[f"key_is_{constituent_name}"]].view(batch_size, -1, dim)
+from hepattn.utils.model_utils import unmerge_inputs
 
 
 class MaskFormer(nn.Module):
@@ -90,9 +85,7 @@ class MaskFormer(nn.Module):
             # TODO: Clean this up
             device = inputs[input_name + "_valid"].device
             # Create mask for each input type, then add batch dimension
-            mask = torch.cat(
-                [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in self.input_names], dim=-1
-            )
+            mask = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1)
             batch_size = inputs[input_name + "_valid"].shape[0]
             x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
 
@@ -122,14 +115,11 @@ class MaskFormer(nn.Module):
 
         # Pass merged input constituents through the encoder
         if self.encoder is not None:
-            # Note that a padded feature is a feature that is not valid!
             x_sort_value = x.get(f"key_{self.input_sort_field}") if self.sorter is None else None
             x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
 
         # Unmerge the updated features back into the separate input types
-        # These are just views into the tensor that hold all the merged hits
-        for input_name in self.input_names:
-            x[input_name + "_embed"] = extract_input(x, input_name)
+        x = unmerge_inputs(x, self.input_names)
 
         # Generate the queries that represent objects
         x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
