@@ -56,12 +56,11 @@ class MaskFormer(nn.Module):
         self.raw_variables = raw_variables or []
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
-        self.sorter = sorter
         self.input_sort_field = input_sort_field
-        if sorter is not None:
-            sorter.raw_variables = self.raw_variables
-            self.input_sort_field = sorter.input_sort_field
-            sorter.input_names = self.input_names
+        self.sorter = sorter
+        if self.sorter is not None:
+            self.sorter.raw_variables = self.raw_variables
+            self.sorter.input_names = self.input_names
 
     @property
     def input_names(self) -> list[str]:
@@ -75,6 +74,7 @@ class MaskFormer(nn.Module):
 
         for raw_var in self.raw_variables:
             # If the raw variable is present in the inputs, add it directly to the output
+            # TODO: sort inputs before this so raw variables are automatically sorted too
             if raw_var in inputs:
                 x[raw_var] = inputs[raw_var]
 
@@ -97,11 +97,6 @@ class MaskFormer(nn.Module):
                 [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in self.input_names], dim=-1
             )
 
-        if self.input_sort_field and not self.sorter:
-            x[f"key_{self.input_sort_field}"] = torch.concatenate(
-                [inputs[input_name + "_" + self.input_sort_field] for input_name in self.input_names], dim=-1
-            )
-
         # Merge the input constituents and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in self.input_names], dim=-1)
@@ -113,16 +108,19 @@ class MaskFormer(nn.Module):
         if batch_size == 1 and x["key_valid"].all():
             x["key_valid"] = None
 
-        # Also merge the field being used for sorting in window attention if requested
-        if self.input_sort_field is not None:
+        # LEGACY. TODO: remove
+        if self.input_sort_field and not self.sorter:
             x[f"key_{self.input_sort_field}"] = torch.concatenate(
                 [inputs[input_name + "_" + self.input_sort_field] for input_name in self.input_names], dim=-1
             )
-            for input_name in self.input_names:
-                x[input_name + "_" + self.input_sort_field] = inputs[input_name + "_" + self.input_sort_field]
 
         # Dedicated sorting step before encoder
         if self.sorter is not None:
+            x[f"key_{self.sorter.input_sort_field}"] = torch.concatenate(
+                [inputs[input_name + "_" + self.sorter.input_sort_field] for input_name in self.input_names], dim=-1
+            )
+            for input_name in self.input_names:
+                x[input_name + "_" + self.sorter.input_sort_field] = inputs[input_name + "_" + self.sorter.input_sort_field]
             x = self.sorter.sort_inputs(x)
 
         # Pass merged input constituents through the encoder
@@ -159,11 +157,12 @@ class MaskFormer(nn.Module):
             if isinstance(task, ObjectClassificationTask):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
-            # store info about the input sort field for each input type
+
+        # store info about the input sort field for each input type
         if self.sorter is not None:
-            outputs["final"][self.input_sort_field] = {}
-            for input_name in self.input_names:
-                outputs["final"][self.input_sort_field][f"{input_name}_{self.input_sort_field}"] = inputs[input_name + "_" + self.input_sort_field]
+            sort = self.sorter.input_sort_field
+            sort_dict = {f"{name}_{sort}": inputs[f"{name}_{sort}"] for name in self.input_names}
+            outputs["final"][sort] = sort_dict
         return outputs
 
     def predict(self, outputs: dict) -> dict:
@@ -206,7 +205,7 @@ class MaskFormer(nn.Module):
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
         if self.sorter is not None:
-            targets = self.sorter.sort_targets(targets, outputs["final"][self.input_sort_field])
+            targets = self.sorter.sort_targets(targets, outputs["final"][self.sorter.input_sort_field])
 
         batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
