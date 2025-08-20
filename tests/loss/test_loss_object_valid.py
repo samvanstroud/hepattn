@@ -225,7 +225,7 @@ def test_partial_validity_patterns():
     ]
 
     for pattern in patterns:
-        object_valid_mask = pattern.unsqueeze(0).expand(batch_size, -1)
+        object_valid_mask = pattern.expand(-1, batch_size, -1)
 
         # Extract only valid objects for comparison
         valid_indices = pattern.nonzero(as_tuple=True)[0]

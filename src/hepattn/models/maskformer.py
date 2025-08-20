@@ -45,13 +45,11 @@ class MaskFormer(nn.Module):
 
         # Set tasks as a member of the decoder and extract num_queries
         self.decoder.tasks = tasks
-        self.num_queries = decoder.num_queries
 
         self.pooling = pooling
         self.tasks = tasks
         self.target_object = target_object
         self.matcher = matcher
-        self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
@@ -86,7 +84,7 @@ class MaskFormer(nn.Module):
             # TODO: Clean this up
             device = inputs[input_name + "_valid"].device
             mask = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1)
-            x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
+            x[f"key_is_{input_name}"] = mask.expand(-1, batch_size, -1)
 
         # Merge the input constituents and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
@@ -118,10 +116,6 @@ class MaskFormer(nn.Module):
 
         # Unmerge the updated features back into the separate input types
         x = unmerge_inputs(x, self.input_names)
-
-        # Generate the queries that represent objects
-        x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
-        x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
 
         # Pass through decoder layers
         x, outputs = self.decoder(x, self.input_names)

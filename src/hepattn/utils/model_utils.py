@@ -14,6 +14,6 @@ def unmerge_inputs(x: dict[str, Tensor], input_names: list[str]) -> dict[str, Te
     batch_size = x["key_embed"].shape[0]
     dim = x["key_embed"].shape[-1]
     for input_name in input_names:
-        x[input_name + "_embed"] = x["key_embed"][x[f"key_is_{input_name}"]].view(batch_size, -1, dim)
+        x[f"{input_name}_embed"] = x["key_embed"][x[f"key_is_{input_name}"]].view(batch_size, -1, dim)
 
     return x

@@ -64,6 +64,8 @@ class MaskFormerDecoder(nn.Module):
         self.attn_type = decoder_layer_config.get("attn_type", "torch")
         self.window_size = window_size
         self.window_wrap = window_wrap
+        self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
+
         if self.local_strided_attn:
             assert self.attn_type == "torch", f"Invalid attention type when local_strided_attn is True: {self.attn_type}, must be 'torch'"
         assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
@@ -80,6 +82,10 @@ class MaskFormerDecoder(nn.Module):
         """
         batch_size = x["query_embed"].shape[0]
         num_constituents = x["key_embed"].shape[-2]
+
+        # Generate the queries that represent objects
+        x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
+        x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
 
         if (self.key_posenc is not None) or (self.query_posenc is not None):
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
