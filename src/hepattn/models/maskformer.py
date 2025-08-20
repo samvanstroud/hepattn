@@ -67,6 +67,7 @@ class MaskFormer(nn.Module):
         return [input_net.input_name for input_net in self.input_nets]
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
+        batch_size = inputs[self.input_names[0] + "_valid"].shape[0]
         x = {"inputs": inputs}
 
         # Store input positional encodings if we need to preserve them for the decoder
@@ -84,9 +85,7 @@ class MaskFormer(nn.Module):
             # objects after we have merged them all together
             # TODO: Clean this up
             device = inputs[input_name + "_valid"].device
-            # Create mask for each input type, then add batch dimension
             mask = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1)
-            batch_size = inputs[input_name + "_valid"].shape[0]
             x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
 
         # Merge the input constituents and the padding mask into a single set
@@ -94,7 +93,6 @@ class MaskFormer(nn.Module):
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in self.input_names], dim=-1)
 
         # if all key_valid are true, then we can just set it to None
-        batch_size = x["key_valid"].shape[0]
         if batch_size == 1 and x["key_valid"].all():
             x["key_valid"] = None
 

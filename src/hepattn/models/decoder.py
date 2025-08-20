@@ -117,7 +117,7 @@ class MaskFormerDecoder(nn.Module):
 
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
-                # Collect attention masks from different tasks tasks
+                # Collect attention masks from different tasks
                 task_attn_masks = task.attn_mask(task_outputs)
                 for input_name, attn_mask in task_attn_masks.items():
                     if input_name in attn_masks:
