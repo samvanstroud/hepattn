@@ -10,7 +10,7 @@ class AttnMaskLogger(Callback):
         log_train: bool = False,
         log_val: bool = True,
         log_stats: bool = False,
-        log_every_n_steps: int = 1000,
+        log_every_n_steps: int = 10,
     ):
         """Initialize the attention mask logger.
 
@@ -25,6 +25,8 @@ class AttnMaskLogger(Callback):
         self.log_val = log_val
         self.log_stats = log_stats
         self.log_every_n_steps = log_every_n_steps
+        # Track which steps we've already logged to prevent duplicates
+        self.logged_steps: set[int] = set()
 
     def _log_attention_mask(self, pl_module, mask, step, layer, prefix="local_ca_mask"):
         """Helper method to create and log attention mask figures."""
@@ -80,14 +82,25 @@ class AttnMaskLogger(Callback):
         if not is_validation and step % self.log_every_n_steps != 0:
             return
 
+        # Check if we've already logged this step to prevent duplicates
+        if step in self.logged_steps:
+            return
+
+        # Get all layer outputs (excluding loss)
+        layer_outputs = {k: v for k, v in outputs.items() if k != "loss" and "attn_mask" in v}
+        layer_indices = sorted([int(k.split("_")[1]) for k in layer_outputs])
+
+        if not layer_indices:
+            return
+
         # Process decoder layer outputs
         for layer_name, layer_outputs in outputs.items():
             if layer_name != "loss" and "attn_mask" in layer_outputs:
                 layer_index = int(layer_name.split("_")[1])
                 attn_mask = layer_outputs["attn_mask"]
 
-                # Only log first and last layers
-                if layer_index == 0 or layer_index == len(outputs) - 1:
+                # Log first layer (0) and last layer (max layer index)
+                if layer_index == 0 or layer_index == max(layer_indices):
                     # Apply the same processing as the original attn_mask_logging function
                     attn_mask_im = attn_mask[0].detach().cpu().clone().int()
 
@@ -97,6 +110,9 @@ class AttnMaskLogger(Callback):
                     # Log stats if enabled
                     if self.log_stats:
                         self._log_attention_stats(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+
+        # Mark this step as logged
+        self.logged_steps.add(step)
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.log_val:

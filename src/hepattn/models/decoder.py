@@ -26,6 +26,7 @@ class MaskFormerDecoder(nn.Module):
         key_posenc: nn.Module | None = None,
         query_posenc: nn.Module | None = None,
         preserve_posenc: bool = False,
+        re_add_posenc_in_bidirectional: bool = False,
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
@@ -42,6 +43,7 @@ class MaskFormerDecoder(nn.Module):
             key_posenc: Optional module for key positional encoding.
             query_posenc: Optional module for query positional encoding.
             preserve_posenc: If True, preserves positional encoding in embeddings.
+            re_add_posenc_in_bidirectional: If True, re-adds positional encodings before bidirectional cross-attention.
             local_strided_attn: If True, uses local strided window attention.
             window_size: The size of the window for local strided window attention.
             window_wrap: If True, wraps the window for local strided window attention.
@@ -60,6 +62,7 @@ class MaskFormerDecoder(nn.Module):
         self.key_posenc = key_posenc
         self.query_posenc = query_posenc
         self.preserve_posenc = preserve_posenc
+        self.re_add_posenc_in_bidirectional = re_add_posenc_in_bidirectional
         self.local_strided_attn = local_strided_attn
         self.attn_type = decoder_layer_config.get("attn_type", "torch")
         self.window_size = window_size
@@ -88,6 +91,8 @@ class MaskFormerDecoder(nn.Module):
         if not self.preserve_posenc:
             x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
 
+        sort_indices = self.get_sort_indices(x)
+
         outputs: dict[str, dict] = {}
 
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -95,9 +100,6 @@ class MaskFormerDecoder(nn.Module):
 
             if self.preserve_posenc:
                 x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
-
-            if self.local_strided_attn:
-                decoder_mask = self.create_local_strided_window_mask(x["query_embed"], x["key_embed"])
 
             attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
@@ -139,9 +141,20 @@ class MaskFormerDecoder(nn.Module):
                 attn_mask = torch.full((batch_size, self.num_queries, num_constituents), True, device=x["key_embed"].device)
                 for input_name, task_attn_mask in attn_masks.items():
                     attn_mask[..., x[f"key_is_{input_name}"]] = task_attn_mask
-                outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
+                # order attn mask
+                attn_mask = self.sort_attn_mask_by_phi(
+                    attn_mask, sort_indices["key"], sort_indices["query"]
+                )
+
+            for input, sort_key in zip(
+                ["query_embed", "key_embed", "query_mask", "key_valid"],
+                ["query", "key", "query", "key"],
+            ):
+                if input in x:
+                    x[input] = self.sort_var_by_phi(x[input], sort_indices[sort_key])
 
             if self.local_strided_attn:
+                decoder_mask = self.create_local_strided_window_mask(x["query_embed"], x["key_embed"])
                 if self.combine == "and":
                     attn_mask = decoder_mask & attn_mask
                 elif self.combine == "or":
@@ -149,20 +162,109 @@ class MaskFormerDecoder(nn.Module):
                 else:
                     attn_mask = decoder_mask
 
+            outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
+
             # Update the keys and queries
-            x["query_embed"], x["key_embed"] = decoder_layer(
-                x["query_embed"],
-                x["key_embed"],
-                attn_mask=attn_mask,
-                q_mask=x.get("query_mask"),
-                kv_mask=x.get("key_valid"),
-            )
+            if self.re_add_posenc_in_bidirectional:
+                # Pass positional encoding data to decoder layer
+                posenc_kwargs = self.get_positional_encoding_kwargs(x)
+                x["query_embed"], x["key_embed"] = decoder_layer(
+                    x["query_embed"],
+                    x["key_embed"],
+                    attn_mask=attn_mask,
+                    q_mask=x.get("query_mask"),
+                    kv_mask=x.get("key_valid"),
+                    **posenc_kwargs,
+                )
+            else:
+                x["query_embed"], x["key_embed"] = decoder_layer(
+                    x["query_embed"],
+                    x["key_embed"],
+                    attn_mask=attn_mask,
+                    q_mask=x.get("query_mask"),
+                    kv_mask=x.get("key_valid"),
+                )
+
+            for input, sort_key in zip(
+                ["query_embed", "key_embed"],
+                ["query", "key"],
+            ):
+                x[input] = self.sort_var_by_phi(
+                    x[input], self.get_unsort_idx(sort_indices[sort_key])
+                )
 
             # Unmerge the updated features back into separate input types for intermediate tasks
             for input_name in input_names:
                 x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
         return x, outputs
+
+    def get_sort_indices(self, x):
+        sort_indices = {}
+        sort_indices["key"] = self.get_sort_idx(x.get("key_phi"))
+        sort_indices["query"] = self.get_sort_idx(x.get("query_phi"))
+        return sort_indices
+
+    def get_sort_idx(self, phi: Tensor) -> Tensor:
+        if len(phi.shape) == 2:
+            phi = phi[0]
+        assert len(phi.shape) == 1, "Phi must be 1D"
+        return torch.argsort(phi)
+
+    def get_unsort_idx(self, sort_idx: Tensor) -> Tensor:
+        if len(sort_idx.shape) == 2:
+            sort_idx = sort_idx[0]
+        assert len(sort_idx.shape) == 1, "Sort index must be 1D"
+        return torch.argsort(sort_idx, dim=0)
+
+    def sort_attn_mask_by_phi(self, attn_mask, key_sort_idx, query_sort_idx):
+        if len(key_sort_idx.shape) == 2:
+            key_sort_idx = key_sort_idx[0]
+        assert len(key_sort_idx.shape) == 1, "Key sort index must be 1D"
+        if len(query_sort_idx.shape) == 2:
+            query_sort_idx = query_sort_idx[0]
+        assert len(query_sort_idx.shape) == 1, "Query sort index must be 1D"
+
+        if attn_mask is not None:
+            attn_mask = attn_mask.index_select(2, key_sort_idx.to(attn_mask.device))
+            attn_mask = attn_mask.index_select(1, query_sort_idx.to(attn_mask.device))
+        return attn_mask
+
+    def sort_var_by_phi(self, var, sort_idx):
+        if len(sort_idx.shape) == 2:
+            sort_idx = sort_idx[0]
+        assert len(sort_idx.shape) == 1, "Sort index must be 1D"
+
+        if var is not None:
+            if len(var.shape) == 2:
+                var_sorted = var[0][sort_idx]
+                var_sorted = var_sorted.unsqueeze(0)  # Preserve batch dimension
+            elif len(var.shape) == 1:
+                var_sorted = var[sort_idx]
+            elif len(var.shape) == 3:
+                # For 3D tensors, sort along the middle dimension (dim=1)
+                var_sorted = var.index_select(1, sort_idx.to(var.device))
+            else:
+                raise ValueError(f"Variable {var} has invalid shape: {var.shape}")
+        else:
+            var_sorted = None
+        return var_sorted
+
+    def get_positional_encoding_kwargs(self, x: dict) -> dict:
+        """Get positional encodings as keyword arguments for decoder layer.
+
+        Args:
+            x: Dictionary containing positional encoding data.
+
+        Returns:
+            Dictionary with query_posenc and key_posenc keys.
+        """
+        kwargs = {}
+        if self.query_posenc is not None:
+            kwargs["query_posenc"] = x.get("query_posenc")
+        if self.key_posenc is not None:
+            kwargs["key_posenc"] = x.get("key_posenc")
+        return kwargs
 
     def add_positional_encodings(self, x: dict):
         if self.query_posenc is not None:
@@ -244,7 +346,34 @@ class MaskFormerDecoderLayer(nn.Module):
             self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
-    def forward(self, q: Tensor, kv: Tensor, attn_mask: Tensor | None = None, q_mask: Tensor | None = None, kv_mask: Tensor | None = None) -> Tensor:
+    def apply_positional_encodings(self, q: Tensor, kv: Tensor, query_posenc: Tensor, key_posenc: Tensor) -> tuple[Tensor, Tensor]:
+        """Apply positional encodings to query and key/value tensors.
+
+        Args:
+            q: Query embeddings.
+            kv: Key/value embeddings.
+            query_posenc: Query positional encoding.
+            key_posenc: Key positional encoding.
+
+        Returns:
+            Tuple of updated query and key/value embeddings with positional encodings added.
+        """
+        if query_posenc is not None:
+            q = q + query_posenc
+        if key_posenc is not None:
+            kv = kv + key_posenc
+        return q, kv
+
+    def forward(
+        self,
+        q: Tensor,
+        kv: Tensor,
+        attn_mask: Tensor | None = None,
+        q_mask: Tensor | None = None,
+        kv_mask: Tensor | None = None,
+        query_posenc: Tensor | None = None,
+        key_posenc: Tensor | None = None,
+    ) -> Tensor:
         """Forward pass for the decoder layer.
 
         Args:
@@ -253,6 +382,8 @@ class MaskFormerDecoderLayer(nn.Module):
             attn_mask: Optional attention mask.
             q_mask: Optional query mask.
             kv_mask: Optional key/value mask.
+            query_posenc: Optional query positional encoding.
+            key_posenc: Optional key positional encoding.
 
         Returns:
             Tuple of updated query and key/value embeddings.
@@ -273,6 +404,10 @@ class MaskFormerDecoderLayer(nn.Module):
 
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
+            # Re-add positional encodings before bidirectional cross-attention if modules are available
+            if query_posenc is not None or key_posenc is not None:
+                q, kv = self.apply_positional_encodings(q, kv, query_posenc, key_posenc)
+
             if attn_mask is not None:
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask.transpose(-2, -1)
