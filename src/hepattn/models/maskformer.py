@@ -19,31 +19,24 @@ class MaskFormer(nn.Module):
         pooling: nn.Module | None = None,
         matcher: nn.Module | None = None,
         raw_variables: list[str] | None = None,
+        input_sort_field: str | None = None,
         sorter: nn.Module | None = None,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object reconstruction with attention-based decoding and optional encoder blocks.
 
-        Parameters
-        ----------
-        input_nets : nn.ModuleList
-            A list of input modules, each responsible for embedding a specific constituent type.
-        encoder : nn.Module
-            An optional encoder module that processes merged constituent embeddings with optional sorting.
-        decoder : MaskFormerDecoder
-            The decoder module that handles multi-layer decoding and task integration.
-        tasks : nn.ModuleList
-            A list of task modules, each responsible for producing and processing predictions from decoder outputs.
-        matcher : nn.Module or None
-            A module used to match predictions to targets (e.g., using the Hungarian algorithm) for loss computation.
-        dim : int
-            The dimensionality of the query and key embeddings.
-        target_object : str
-            The target object name which is used to mark valid/invalid objects during matching.
-        input_sort_field : str or None, optional
-            An optional key used to sort the input constituents (e.g., for windowed attention).
-        raw_variables : list[str] or None, optional
-            A list of variable names that passed to tasks without embedding.
+        Args:
+            input_nets: A list of input modules, each responsible for embedding a specific constituent type.
+            encoder: An optional encoder module that processes merged constituent embeddings with optional sorting.
+            decoder: The decoder module that handles multi-layer decoding and task integration.
+            tasks: A list of task modules, each responsible for producing and processing predictions from decoder outputs.
+            dim: The dimensionality of the query and key embeddings.
+            target_object: The target object name which is used to mark valid/invalid objects during matching.
+            pooling: An optional pooling module used to aggregate features from the input constituents.
+            matcher: A module used to match predictions to targets (e.g., using the Hungarian algorithm) for loss computation.
+            raw_variables: A list of variable names that passed to tasks without embedding.
+            input_sort_field: An optional key used to sort the input constituents (e.g., for windowed attention).
+            sorter: An optional sorter module used to reorder input constituents before processing.
         """
         super().__init__()
 
@@ -61,17 +54,22 @@ class MaskFormer(nn.Module):
         self.matcher = matcher
         self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
         self.raw_variables = raw_variables or []
-        self.sorting = sorter
+
+        assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
+        self.sorter = sorter
+        self.input_sort_field = input_sort_field
         if sorter is not None:
             sorter.raw_variables = self.raw_variables
             self.input_sort_field = sorter.input_sort_field
+            sorter.input_names = self.input_names
+
+    @property
+    def input_names(self) -> list[str]:
+        return [input_net.input_name for input_net in self.input_nets]
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
-        # Atomic input names
-        input_names = [input_net.input_name for input_net in self.input_nets]
-
-        assert "key" not in input_names, "'key' input name is reserved."
-        assert "query" not in input_names, "'query' input name is reserved."
+        assert "key" not in self.input_names, "'key' input name is reserved."
+        assert "query" not in self.input_names, "'query' input name is reserved."
 
         x = {}
 
@@ -96,12 +94,17 @@ class MaskFormer(nn.Module):
             # TODO: Clean this up
             device = inputs[input_name + "_valid"].device
             x[f"key_is_{input_name}"] = torch.cat(
-                [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in input_names], dim=-1
+                [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in self.input_names], dim=-1
+            )
+
+        if self.input_sort_field and not self.sorter:
+            x[f"key_{self.input_sort_field}"] = torch.concatenate(
+                [inputs[input_name + "_" + self.input_sort_field] for input_name in self.input_names], dim=-1
             )
 
         # Merge the input constituents and the padding mask into a single set
-        x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in input_names], dim=-2)
-        x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in input_names], dim=-1)
+        x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
+        x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in self.input_names], dim=-1)
 
         # calculate the batch size and combined number of input constituents
         batch_size = x["key_valid"].shape[0]
@@ -111,24 +114,26 @@ class MaskFormer(nn.Module):
             x["key_valid"] = None
 
         # Also merge the field being used for sorting in window attention if requested
-        if self.sorting is not None:
+        if self.input_sort_field is not None:
             x[f"key_{self.input_sort_field}"] = torch.concatenate(
-                [inputs[input_name + "_" + self.input_sort_field] for input_name in input_names], dim=-1
+                [inputs[input_name + "_" + self.input_sort_field] for input_name in self.input_names], dim=-1
             )
-            for input_name in input_names:
+            for input_name in self.input_names:
                 x[input_name + "_" + self.input_sort_field] = inputs[input_name + "_" + self.input_sort_field]
 
         # Dedicated sorting step before encoder
-        if self.sorting is not None:
-            x = self.sorting.sort_inputs(x, input_names)
+        if self.sorter is not None:
+            x = self.sorter.sort_inputs(x, self.input_names)
 
         # Pass merged input constituents through the encoder
         if self.encoder is not None:
             # Note that a padded feature is a feature that is not valid!
-            x["key_embed"] = self.encoder(x["key_embed"], kv_mask=x.get("key_valid"))
+            x_sort_value = x.get(f"key_{self.input_sort_field}") if self.sorter is None else None
+            x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
+
         # Unmerge the updated features back into the separate input types
         # These are just views into the tensor that hold all the merged hits
-        for input_name in input_names:
+        for input_name in self.input_names:
             x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
 
         # Generate the queries that represent objects
@@ -136,7 +141,7 @@ class MaskFormer(nn.Module):
         x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
 
         # Pass through decoder layers
-        x, outputs = self.decoder(x, input_names)
+        x, outputs = self.decoder(x, self.input_names)
         # Do any pooling if desired
         if self.pooling is not None:
             x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
@@ -155,9 +160,9 @@ class MaskFormer(nn.Module):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
             # store info about the input sort field for each input type
-        if self.sorting is not None:
+        if self.sorter is not None:
             outputs["final"][self.input_sort_field] = {}
-            for input_name in input_names:
+            for input_name in self.input_names:
                 outputs["final"][self.input_sort_field][f"{input_name}_{self.input_sort_field}"] = inputs[input_name + "_" + self.input_sort_field]
         return outputs
 
@@ -165,10 +170,11 @@ class MaskFormer(nn.Module):
         """Takes the raw model outputs and produces a set of actual inferences / predictions.
         For example will take output probabilies and apply threshold cuts to prduce boolean predictions.
 
-        Parameters
-        ----------
-        outputs:
-            The outputs produces the forward pass of the model.
+        Args:
+            outputs: The outputs produced by the forward pass of the model.
+
+        Returns:
+            preds: A dictionary containing the predicted values for each task.
         """
         preds: dict[str, dict[str, Any]] = {}
 
@@ -190,17 +196,17 @@ class MaskFormer(nn.Module):
         predictions are then permuted to match this optimal matching, after which the final loss
         between the model and target is computed.
 
-        Parameters
-        ----------
-        outputs:
-            The outputs produces the forward pass of the model.
-        targets:
-            The data containing the targets.
+        Args:
+            outputs: The outputs produced by the forward pass of the model.
+            targets: The data containing the targets.
+
+        Returns:
+            losses: A dictionary containing the computed losses for each task.
         """
         # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
         costs = {}
-        if self.sorting is not None:
-            targets = self.sorting.sort_targets(targets, outputs["final"][self.input_sort_field])
+        if self.sorter is not None:
+            targets = self.sorter.sort_targets(targets, outputs["final"][self.input_sort_field])
 
         batch_idxs = torch.arange(targets[f"{self.target_object}_valid"].shape[0]).unsqueeze(1)
         for layer_name, layer_outputs in outputs.items():
