@@ -34,7 +34,7 @@ class Sorter(nn.Module):
                 elif key == f"key_is_{input_name}":
                     if input_name != "key":
                         continue
-                    # TODO!
+                    # TODO: implement!
                     continue
 
                 else:
