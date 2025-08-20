@@ -94,7 +94,8 @@ class MaskFormerDecoder(nn.Module):
                 x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
 
             if self.local_strided_attn:
-                decoder_mask = self.create_local_strided_window_mask(x["query_embed"], x["key_embed"])
+                assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
+                decoder_mask = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
 
             attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
@@ -174,20 +175,6 @@ class MaskFormerDecoder(nn.Module):
         if self.key_posenc is not None:
             key_posenc = self.key_posenc(x)
         return query_posenc, key_posenc
-
-    def create_local_strided_window_mask(
-        self,
-        query_embed: Tensor,
-        key_embed: Tensor,
-    ):
-        if self.attn_type == "torch":
-            return auto_local_ca_mask(
-                query_embed,
-                key_embed,
-                self.window_size,
-                wrap=self.window_wrap,
-            )
-        return None
 
 
 class MaskFormerDecoderLayer(nn.Module):

@@ -3,7 +3,7 @@ import torch
 
 from hepattn.models.decoder import MaskFormerDecoder, MaskFormerDecoderLayer
 
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 SEQ_LEN = 10
 NUM_QUERIES = 5
 DIM = 64
@@ -75,6 +75,23 @@ class TestMaskFormerDecoder:
         input_names = ["input1", "input2"]
         return x, input_names
 
+    @pytest.fixture
+    def sample_local_strided_decoder_data(self):
+        x = {
+            "query_embed": torch.randn(1, NUM_QUERIES, DIM),
+            "key_embed": torch.randn(1, SEQ_LEN, DIM),
+            "key_posenc": torch.randn(1, SEQ_LEN, DIM),
+            "key_valid": torch.ones(1, SEQ_LEN, dtype=torch.bool),
+            "key_is_input1": torch.zeros(SEQ_LEN, dtype=torch.bool),
+            "key_is_input2": torch.zeros(SEQ_LEN, dtype=torch.bool),
+        }
+        # Set some positions to be input1 and input2
+        x["key_is_input1"][:3] = True
+        x["key_is_input2"][3:6] = True
+
+        input_names = ["input1", "input2"]
+        return x, input_names
+
     def test_initialization(self, decoder, decoder_layer_config):
         """Test that the decoder initializes correctly."""
         assert decoder.num_queries == NUM_QUERIES
@@ -122,9 +139,9 @@ class TestMaskFormerDecoder:
             assert f"layer_{i}" in outputs
             assert isinstance(outputs[f"layer_{i}"], dict)
 
-    def test_forward_local_strided_attn(self, decoder_local_strided_attn, sample_decoder_data):
+    def test_forward_local_strided_attn(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
         """Test forward pass with local_strided_attn=True."""
-        x, input_names = sample_decoder_data
+        x, input_names = sample_local_strided_decoder_data
         decoder_local_strided_attn.tasks = []  # Empty task list
 
         updated_x, outputs = decoder_local_strided_attn(x, input_names)
@@ -132,8 +149,8 @@ class TestMaskFormerDecoder:
         # Check that x was updated with new embeddings
         assert "query_embed" in updated_x
         assert "key_embed" in updated_x
-        assert updated_x["query_embed"].shape == (BATCH_SIZE, NUM_QUERIES, DIM)
-        assert updated_x["key_embed"].shape == (BATCH_SIZE, SEQ_LEN, DIM)
+        assert updated_x["query_embed"].shape == (1, NUM_QUERIES, DIM)
+        assert updated_x["key_embed"].shape == (1, SEQ_LEN, DIM)
 
         # Check outputs structure
         assert len(outputs) == NUM_LAYERS
@@ -143,12 +160,12 @@ class TestMaskFormerDecoder:
             # Check that attention mask was created for local strided attention
             assert "attn_mask" in outputs[f"layer_{i}"]
             attn_mask = outputs[f"layer_{i}"]["attn_mask"]
-            assert attn_mask.shape == (BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
+            assert attn_mask.shape == (1, NUM_QUERIES, SEQ_LEN)
             assert attn_mask.dtype == torch.bool
 
-    def test_create_local_strided_window_mask(self, decoder_local_strided_attn, sample_decoder_data):
+    def test_create_local_strided_window_mask(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
         """Test the create_local_strided_window_mask method."""
-        x, _ = sample_decoder_data
+        x, _ = sample_local_strided_decoder_data
         query_embed = x["query_embed"]
         key_embed = x["key_embed"]
 
@@ -177,9 +194,9 @@ class TestMaskFormerDecoder:
         assert updated_x["query_embed"].shape == original_query_shape
         assert updated_x["key_embed"].shape == original_key_shape
 
-    def test_forward_shapes_local_strided_attn(self, decoder_local_strided_attn, sample_decoder_data):
+    def test_forward_shapes_local_strided_attn(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
         """Test that forward pass maintains correct tensor shapes with local_strided_attn."""
-        x, input_names = sample_decoder_data
+        x, input_names = sample_local_strided_decoder_data
         decoder_local_strided_attn.tasks = []
 
         original_query_shape = x["query_embed"].shape
