@@ -276,7 +276,7 @@ class ObjectHitMaskTask(Task):
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # Produce new task-specific embeddings for the hits and objects
         x_object = self.object_net(x[self.input_object + "_embed"])
-        x_hit = self.hit_net(x[self.input_constituent + "_embed"])
+        x_hit = self.hit_net(x["key_embed"][:, x[f"key_is_{self.input_constituent}"]])
 
         # Object-hit probability is the dot product between the hit and object embedding
         object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", x_object, x_hit)
@@ -685,7 +685,7 @@ class ObjectHitRegressionTask(RegressionTask):
     def latent(self, x: dict[str, Tensor]) -> Tensor:
         # Embed the hits and tracks and reshape so we have a separate embedding for each DoF
         x_obj = self.object_net(x[self.input_object + "_embed"])
-        x_hit = self.hit_net(x[self.input_constituent + "_embed"])
+        x_hit = self.hit_net(x["key_embed"][:, x[f"key_is_{self.input_constituent}"]])
 
         x_obj = x_obj.reshape(x_obj.size()[:-1] + torch.Size((self.ndofs, self.dim_per_dof)))  # Shape BNDE
         x_hit = x_hit.reshape(x_hit.size()[:-1] + torch.Size((self.ndofs, self.dim_per_dof)))  # Shape BMDE
@@ -937,7 +937,7 @@ class IncidenceRegressionTask(Task):
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         x_object = self.net(x[self.input_object + "_embed"])
-        x_hit = self.node_net(x[self.input_constituent + "_embed"])
+        x_hit = self.node_net(x["key_embed"][:, x[f"key_is_{self.input_constituent}"]])
 
         incidence_pred = torch.einsum("bqe,ble->bql", x_object, x_hit)
         incidence_pred = incidence_pred.softmax(dim=1) * x[self.input_constituent + "_valid"].unsqueeze(1).expand_as(incidence_pred)
@@ -1060,7 +1060,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
             )
             if self.use_nodes:
                 valid_mask = x[self.input_constituent + "_valid"].unsqueeze(-1)
-                masked_embed = x[self.input_constituent + "_embed"] * valid_mask
+                masked_embed = x[self.input_constituent + "_embed"] * valid_mask  # using the input embeddings before enc/dec
                 node_feats = torch.bmm(inc, masked_embed)
                 input_data = torch.cat([input_data, node_feats], dim=-1)
         else:
