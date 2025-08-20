@@ -133,7 +133,7 @@ class AttnMaskLogger(Callback):
             layer_index = int(layer_name.split("_")[1])
             attn_mask = current_layer_outputs["attn_mask"]
             # Log first layer (0) and last layer (max layer index)
-            if layer_index in [0, max_layer_index]:
+            if layer_index in {0, max_layer_index}:
                 # Apply the same processing as the original attn_mask_logging function
                 attn_mask_im = attn_mask[0].detach().cpu().clone().int()
 
