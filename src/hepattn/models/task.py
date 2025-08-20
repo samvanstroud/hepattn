@@ -1060,7 +1060,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
             )
             if self.use_nodes:
                 valid_mask = x[self.input_constituent + "_valid"].unsqueeze(-1)
-                masked_embed = x[self.input_constituent + "_embed"] * valid_mask  # using the input embeddings before enc/dec
+                masked_embed = valid_mask * x["key_embed"][:, x[f"key_is_{self.input_constituent}"]]
                 node_feats = torch.bmm(inc, masked_embed)
                 input_data = torch.cat([input_data, node_feats], dim=-1)
         else:
