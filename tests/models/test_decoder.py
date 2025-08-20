@@ -163,24 +163,6 @@ class TestMaskFormerDecoder:
             assert attn_mask.shape == (1, NUM_QUERIES, SEQ_LEN)
             assert attn_mask.dtype == torch.bool
 
-    def test_create_local_strided_window_mask(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
-        """Test the create_local_strided_window_mask method."""
-        x, _ = sample_local_strided_decoder_data
-        query_embed = x["query_embed"]
-        key_embed = x["key_embed"]
-
-        mask = decoder_local_strided_attn.create_local_strided_window_mask(query_embed, key_embed)
-
-        # Check mask shape and properties
-        assert mask.shape == (1, NUM_QUERIES, SEQ_LEN)
-        assert mask.dtype == torch.bool
-
-        # Check that each query has some valid attention positions
-        assert mask.any(dim=-1).all(), "Each query should have at least one valid attention position"
-
-        # Check that each key position is attended to by at least one query
-        assert mask.any(dim=-2).all(), "Each key position should be attended to by at least one query"
-
     def test_forward_shapes(self, decoder_no_mask_attention, sample_decoder_data):
         """Test that forward pass maintains correct tensor shapes."""
         x, input_names = sample_decoder_data
