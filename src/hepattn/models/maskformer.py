@@ -18,7 +18,6 @@ class MaskFormer(nn.Module):
         target_object: str = "particle",
         pooling: nn.Module | None = None,
         matcher: nn.Module | None = None,
-        raw_variables: list[str] | None = None,
         input_sort_field: str | None = None,
         sorter: nn.Module | None = None,
     ):
@@ -34,7 +33,6 @@ class MaskFormer(nn.Module):
             target_object: The target object name which is used to mark valid/invalid objects during matching.
             pooling: An optional pooling module used to aggregate features from the input constituents.
             matcher: A module used to match predictions to targets (e.g., using the Hungarian algorithm) for loss computation.
-            raw_variables: A list of variable names that passed to tasks without embedding.
             input_sort_field: An optional key used to sort the input constituents (e.g., for windowed attention).
             sorter: An optional sorter module used to reorder input constituents before processing.
         """
@@ -53,13 +51,11 @@ class MaskFormer(nn.Module):
         self.target_object = target_object
         self.matcher = matcher
         self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
-        self.raw_variables = raw_variables or []
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
         self.sorter = sorter
         if self.sorter is not None:
-            self.sorter.raw_variables = self.raw_variables
             self.sorter.input_names = self.input_names
 
     @property
@@ -70,13 +66,7 @@ class MaskFormer(nn.Module):
         assert "key" not in self.input_names, "'key' input name is reserved."
         assert "query" not in self.input_names, "'query' input name is reserved."
 
-        x = {}
-
-        for raw_var in self.raw_variables:
-            # If the raw variable is present in the inputs, add it directly to the output
-            # TODO: sort inputs before this so raw variables are automatically sorted too
-            if raw_var in inputs:
-                x[raw_var] = inputs[raw_var]
+        x = {"inputs": inputs}
 
         # Store input positional encodings if we need to preserve them for the decoder
         if self.decoder.preserve_posenc:
@@ -140,6 +130,7 @@ class MaskFormer(nn.Module):
 
         # Pass through decoder layers
         x, outputs = self.decoder(x, self.input_names)
+
         # Do any pooling if desired
         if self.pooling is not None:
             x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
@@ -163,6 +154,7 @@ class MaskFormer(nn.Module):
             sort = self.sorter.input_sort_field
             sort_dict = {f"{name}_{sort}": inputs[f"{name}_{sort}"] for name in self.input_names}
             outputs["final"][sort] = sort_dict
+
         return outputs
 
     def predict(self, outputs: dict) -> dict:

@@ -80,13 +80,6 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 32
-      raw_variables:
-        - "node_e"
-        - "node_pt"
-        - "node_eta"
-        - "node_sinphi"
-        - "node_cosphi"
-        - "node_is_track"
 
       input_nets:
         class_path: torch.nn.ModuleList

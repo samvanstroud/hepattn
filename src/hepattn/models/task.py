@@ -1049,7 +1049,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
         # get the predictions
         if self.use_incidence:
             inc = x["incidence"].detach()
-            proxy_feats, is_charged = self.get_proxy_feats(inc, x, class_probs=x["class_probs"].detach())
+            proxy_feats, is_charged = self.get_proxy_feats(inc, x["inputs"], class_probs=x["class_probs"].detach())
             input_data = torch.cat(
                 [
                     x[self.input_object + "_embed"],
