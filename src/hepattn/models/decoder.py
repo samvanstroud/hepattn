@@ -132,7 +132,6 @@ class MaskFormerDecoder(nn.Module):
                         x["query_mask"] = query_mask
 
             # Construct the full attention mask for MaskAttention decoder
-            attn_mask = None
             if attn_masks and self.mask_attention:
                 attn_mask = torch.full((batch_size, self.num_queries, num_constituents), True, device=x["key_embed"].device)
                 for input_name, task_attn_mask in attn_masks.items():
