@@ -7,6 +7,12 @@ from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 
 
+def extract_input(x: dict[str, Tensor], constituent_name: str) -> Tensor:
+    batch_size = x["key_embed"].shape[0]
+    dim = x["key_embed"].shape[-1]
+    return x["key_embed"][x[f"key_is_{constituent_name}"]].view(batch_size, -1, dim)
+
+
 class MaskFormer(nn.Module):
     def __init__(
         self,
@@ -83,9 +89,12 @@ class MaskFormer(nn.Module):
             # objects after we have merged them all together
             # TODO: Clean this up
             device = inputs[input_name + "_valid"].device
-            x[f"key_is_{input_name}"] = torch.cat(
+            # Create mask for each input type, then add batch dimension
+            mask = torch.cat(
                 [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in self.input_names], dim=-1
             )
+            batch_size = inputs[input_name + "_valid"].shape[0]
+            x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
 
         # Merge the input constituents and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
@@ -120,7 +129,7 @@ class MaskFormer(nn.Module):
         # Unmerge the updated features back into the separate input types
         # These are just views into the tensor that hold all the merged hits
         for input_name in self.input_names:
-            x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
+            x[input_name + "_embed"] = extract_input(x, input_name)
 
         # Generate the queries that represent objects
         x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)

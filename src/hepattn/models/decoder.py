@@ -135,7 +135,7 @@ class MaskFormerDecoder(nn.Module):
             if attn_masks and self.mask_attention:
                 attn_mask = torch.full((batch_size, self.num_queries, num_constituents), True, device=x["key_embed"].device)
                 for input_name, task_attn_mask in attn_masks.items():
-                    attn_mask[..., x[f"key_is_{input_name}"]] = task_attn_mask
+                    attn_mask[x[f"key_is_{input_name}"]] = task_attn_mask
 
             if attn_mask is not None:
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
