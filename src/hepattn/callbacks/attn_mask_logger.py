@@ -32,14 +32,7 @@ class AttnMaskLogger(Callback):
         """Helper method to create and log attention mask figures."""
         fig, ax = plt.subplots(constrained_layout=True, dpi=300)
         cmap = ListedColormap(["#002b7f", "#ffff33"])  # blue for 0, yellow for 1
-        im = ax.imshow(
-            mask.numpy().astype(int),
-            aspect="auto",
-            cmap=cmap,
-            vmin=0,
-            vmax=1,
-            interpolation="nearest",
-        )
+        im = ax.imshow(mask.numpy().astype(int), aspect="auto", cmap=cmap, vmin=0, vmax=1, interpolation="nearest")
         # Flip y-axis so lowest phi is at the bottom
         ax.invert_yaxis()
         # Add colorbar with clear labels
@@ -54,9 +47,7 @@ class AttnMaskLogger(Callback):
         # Log directly to Comet
         logger = getattr(pl_module, "logger", None)
         if logger is not None and hasattr(logger, "experiment"):
-            logger.experiment.log_figure(
-                figure_name=f"{prefix}_step{step}_layer{layer}", figure=fig, step=step
-            )
+            logger.experiment.log_figure(figure_name=f"{prefix}_step{step}_layer{layer}", figure=fig, step=step)
         plt.close(fig)
 
     def _log_attention_stats(self, pl_module, mask, step, layer, prefix="val"):
@@ -70,31 +61,19 @@ class AttnMaskLogger(Callback):
             if logger is not None and hasattr(logger, "experiment"):
                 logger.experiment.log_metrics(
                     {
-                        f"{prefix}/attn_mask_avg_hits_per_query_layer{layer}": float(
-                            avg_hits_per_query
-                        ),
-                        f"{prefix}/attn_mask_max_hits_per_query_layer{layer}": float(
-                            np.max(hits_per_query)
-                        ),
-                        f"{prefix}/attn_mask_min_hits_per_query_layer{layer}": float(
-                            np.min(hits_per_query)
-                        ),
-                        f"{prefix}/attn_mask_std_hits_per_query_layer{layer}": float(
-                            np.std(hits_per_query)
-                        ),
+                        f"{prefix}/attn_mask_avg_hits_per_query_layer{layer}": float(avg_hits_per_query),
+                        f"{prefix}/attn_mask_max_hits_per_query_layer{layer}": float(np.max(hits_per_query)),
+                        f"{prefix}/attn_mask_min_hits_per_query_layer{layer}": float(np.min(hits_per_query)),
+                        f"{prefix}/attn_mask_std_hits_per_query_layer{layer}": float(np.std(hits_per_query)),
                     },
                     step=step,
                 )
             else:
-                print(
-                    f"[AttnMaskLogger] Step {step} Layer {layer} - Avg hits per query: {avg_hits_per_query}"
-                )
+                print(f"[AttnMaskLogger] Step {step} Layer {layer} - Avg hits per query: {avg_hits_per_query}")
         except (ValueError, AttributeError, TypeError) as e:
             print(f"[AttnMaskLogger] Error logging stats: {e}")
 
-    def _process_attention_masks_from_outputs(
-        self, pl_module, outputs, step, is_validation=False
-    ):
+    def _process_attention_masks_from_outputs(self, pl_module, outputs, step, is_validation=False):
         """Process attention masks directly from the outputs dictionary."""
         prefix_suffix = "_val" if is_validation else "train"
 
@@ -108,61 +87,40 @@ class AttnMaskLogger(Callback):
             return
 
         # Get all layer outputs (excluding loss)
-        layer_outputs = {
+        layer_outputs_with_mask = {
             k: v for k, v in outputs.items() if k != "loss" and "attn_mask" in v
         }
-        layer_indices = sorted([int(k.split("_")[1]) for k in layer_outputs])
-
+        layer_indices = sorted([int(k.split("_")[1]) for k in layer_outputs_with_mask])
         if not layer_indices:
             return
-
+        max_layer_index = layer_indices[-1]
         # Process decoder layer outputs
-        for layer_name, layer_outputs in outputs.items():
-            if layer_name != "loss" and "attn_mask" in layer_outputs:
-                layer_index = int(layer_name.split("_")[1])
-                attn_mask = layer_outputs["attn_mask"]
-
-                # Log first layer (0) and last layer (max layer index)
-                if layer_index == 0 or layer_index == max(layer_indices):
+        for layer_name, current_layer_outputs in layer_outputs_with_mask.items():
+            layer_index = int(layer_name.split("_")[1])
+            attn_mask = current_layer_outputs["attn_mask"]
+            # Log first layer (0) and last layer (max layer index)
+            if layer_index == 0 or layer_index == max_layer_index:
                     # Apply the same processing as the original attn_mask_logging function
                     attn_mask_im = attn_mask[0].detach().cpu().clone().int()
 
                     # Log the attention mask
-                    self._log_attention_mask(
-                        pl_module,
-                        attn_mask_im,
-                        step,
-                        layer_index,
-                        f"local_ma_mask_{prefix_suffix}",
-                    )
+                    self._log_attention_mask(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
 
                     # Log stats if enabled
                     if self.log_stats:
-                        self._log_attention_stats(
-                            pl_module,
-                            attn_mask_im,
-                            step,
-                            layer_index,
-                            f"local_ma_mask_{prefix_suffix}",
-                        )
+                        self._log_attention_stats(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
 
         # Mark this step as logged
         self.logged_steps.add(step)
 
-    def on_validation_batch_end(
-        self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0
-    ):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.log_val:
             return
         # Process attention masks from outputs
-        self._process_attention_masks_from_outputs(
-            pl_module, outputs, trainer.global_step, is_validation=True
-        )
+        self._process_attention_masks_from_outputs(pl_module, outputs, trainer.global_step, is_validation=True)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if not self.log_train:
             return
         # Process attention masks from outputs
-        self._process_attention_masks_from_outputs(
-            pl_module, outputs, trainer.global_step, is_validation=False
-        )
+        self._process_attention_masks_from_outputs(pl_module, outputs, trainer.global_step, is_validation=False)
