@@ -21,12 +21,6 @@ REGRESSION_LOSS_FNS = {
 RegressionLossType = Literal["l1", "l2", "smooth_l1"]
 
 
-def extract_input(x: dict[str, Tensor], constituent_name: str) -> Tensor:
-    batch_size = x["key_embed"].shape[0]
-    dim = x["key_embed"].shape[-1]
-    return x["key_embed"][x[f"key_is_{constituent_name}"]].view(batch_size, -1, dim)
-
-
 class Task(nn.Module, ABC):
     """Abstract base class for all tasks.
 
@@ -282,12 +276,12 @@ class ObjectHitMaskTask(Task):
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # Produce new task-specific embeddings for the hits and objects
         x_object = self.object_net(x[self.input_object + "_embed"])
-        x_hit = self.hit_net(extract_input(x, self.input_constituent))
+        x_hit = self.hit_net(x[self.input_constituent + "_embed"])
 
         # Object-hit probability is the dot product between the hit and object embedding
         object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", x_object, x_hit)
 
-        # Zero out entries for any hit slots that are not valid
+        # Zero out entries for any padded input constituents
         object_hit_logit[~x[self.input_constituent + "_valid"].unsqueeze(-2).expand_as(object_hit_logit)] = torch.finfo(object_hit_logit.dtype).min
 
         return {self.output_object_hit + "_logit": object_hit_logit}
@@ -298,8 +292,8 @@ class ObjectHitMaskTask(Task):
 
         attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= threshold
 
-        # If the attn mask is completely padded for a given entry, unpad it - tested and is required (?)
-        # TODO: See if the query masking stops this from being necessary
+        # if a input constituent does not attend to any queries, let it attend to all
+        # TODO: looks flipped, check it and see see if this is really necessary
         attn_mask[torch.where(torch.all(attn_mask, dim=-1))] = False
 
         return {self.input_constituent: attn_mask}
@@ -691,7 +685,7 @@ class ObjectHitRegressionTask(RegressionTask):
     def latent(self, x: dict[str, Tensor]) -> Tensor:
         # Embed the hits and tracks and reshape so we have a separate embedding for each DoF
         x_obj = self.object_net(x[self.input_object + "_embed"])
-        x_hit = self.hit_net(extract_input(x, self.input_constituent))
+        x_hit = self.hit_net(x[self.input_constituent + "_embed"])
 
         x_obj = x_obj.reshape(x_obj.size()[:-1] + torch.Size((self.ndofs, self.dim_per_dof)))  # Shape BNDE
         x_hit = x_hit.reshape(x_hit.size()[:-1] + torch.Size((self.ndofs, self.dim_per_dof)))  # Shape BMDE
@@ -943,7 +937,7 @@ class IncidenceRegressionTask(Task):
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         x_object = self.net(x[self.input_object + "_embed"])
-        x_hit = self.node_net(extract_input(x, self.input_constituent))
+        x_hit = self.node_net(x[self.input_constituent + "_embed"])
 
         incidence_pred = torch.einsum("bqe,ble->bql", x_object, x_hit)
         incidence_pred = incidence_pred.softmax(dim=1) * x[self.input_constituent + "_valid"].unsqueeze(1).expand_as(incidence_pred)
@@ -1066,7 +1060,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
             )
             if self.use_nodes:
                 valid_mask = x[self.input_constituent + "_valid"].unsqueeze(-1)
-                masked_embed = valid_mask * extract_input(x, self.input_constituent)
+                masked_embed = valid_mask * x[self.input_constituent + "_embed"]
                 node_feats = torch.bmm(inc, masked_embed)
                 input_data = torch.cat([input_data, node_feats], dim=-1)
         else:
