@@ -1,11 +1,14 @@
+from collections import defaultdict
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 from .performance import Performance
 from .style_sheet import FIG_DPI, FIG_H_1ROW, FIG_W
-from .utils import custom_hist_v1, custom_hist_v2
+from .utils import custom_hist
 
 DEFAULT_PT_BINS = np.array([0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200])
+DEFAULT_N_DIGITS = 3
 
 
 class PlotEventHelper:
@@ -24,10 +27,15 @@ class PlotEventHelper:
         evt_vars = ["met", "ht", "nconst_ch", "nconst_neut"]
         xlabel_dict = {
             "met": r"$(p_T^{\text{miss}, \text{reco}} - p_T^{\text{miss}, \text{truth}}) / p_T^{\text{miss}, \text{truth}}$",
+            "p_tot": r"$p^\text{reco} / p^\text{truth}$",
             "ht": r"$(H_T^\text{reco} - H_T^\text{truth}) / H_T^\text{truth}$",
             "nconst_ch": r"$\Delta$ number of charged constituents",
             "nconst_neut": r"$\Delta$ number of neutral constituents",
         }
+        n_digits_dict = defaultdict(lambda: DEFAULT_N_DIGITS)
+        n_digits_dict["met"] = 2
+        n_digits_dict["nconst_ch"] = 1
+        n_digits_dict["nconst_neut"] = 1
 
         figs = []
         for v_i, var in enumerate(evt_vars):
@@ -44,21 +52,33 @@ class PlotEventHelper:
                     min_percent, max_percent = 2, 98
                 case "ht":
                     min_percent, max_percent = 2, 98
+                case "p_tot":
+                    min_percent, max_percent = 2, 95
                 case "nconst_ch" | "nconst_neut":
                     min_percent, max_percent = 2, 98
             min_, max_ = np.percentile(comb, min_percent), np.percentile(comb, max_percent)
             abs_max = max(abs(min_), abs(max_))
-            bins = np.linspace(-abs_max, abs_max, 50)
-            if var in {"nconst_ch", "nconst_neut"}:
-                bins = np.linspace(-abs_max - 0.5, abs_max + 0.5, int(2 * abs_max) + 2)
+            match var:
+                case "met":
+                    bins = np.linspace(-2, abs_max, 50)
+                case "nconst_ch" | "nconst_neut":
+                    bins = np.linspace(-abs_max - 0.5, abs_max + 0.5, int(2 * abs_max) + 2)
+                case "p_tot":
+                    bins = np.linspace(-1, abs_max, 50)
+                case _:
+                    bins = np.linspace(-abs_max, abs_max, 50)
             for name in self.perf.network_names:
-                custom_hist_v1(
+                custom_hist(
                     ax,
                     self.perf.data[name][var + "_res"],
                     bins=bins,
                     label=self.labels[name],
+                    n_digits=n_digits_dict[var],
+                    metrics="median iqr",
                     **self.style_dict[name],
                 )
+            if var == "p_tot":
+                ax.set_yscale("log")
             ax.set_xlabel(xlabel_dict[var])
             ax.minorticks_on()
             ax.tick_params(which="both", direction="in", top=True, left=True, right=True)
@@ -77,10 +97,13 @@ class PlotEventHelper:
             "e": r"Jet $E^\text{reco} - E^\text{truth}$ [GeV]",
             "e_rel": r"Jet $(E^\text{reco} - E^\text{truth})/E^\text{truth}$",
             "eta": r"Jet $\eta^\text{reco} - \eta^\text{truth}$",
+            "theta": r"Jet $\theta^\text{reco} - \theta^\text{truth}$",
             "phi": r"Jet $\phi^\text{reco} - \phi^\text{truth}$",
             "dR": r"Jet $\Delta R \left(\text{truth}, \; \text{reco} \right)$",
             "nconst": r"$\Delta$ number of jet constituents",
         }
+        n_digits_dict = defaultdict(lambda: DEFAULT_N_DIGITS)
+        n_digits_dict["nconst"] = 1
 
         jet_vars = ["pt", "e_rel", "nconst", "dR"]  # 'eta', 'phi']
         if pt_relative:
@@ -108,23 +131,19 @@ class PlotEventHelper:
 
             for name in self.perf.network_names:
                 res = self.perf.data[name]["jet_residuals"]
+                metrics = "median iqr"
                 if var == "dR":
-                    ax.hist(
-                        np.clip(res[var], bins[0], bins[-1]),
-                        bins=bins,
-                        label=self.labels[name],
-                        **self.style_dict[name],
-                    )
-                else:
-                    custom_hist_v2(
-                        ax,
-                        res[var],
-                        metrics="mean std iqr",
-                        f=res["f_matched"],
-                        bins=bins,
-                        label=self.labels[name],
-                        **self.style_dict[name],
-                    )
+                    metrics = "iqr"
+                custom_hist(
+                    ax,
+                    res[var],
+                    metrics=metrics,
+                    bins=bins,
+                    label=self.labels[name],
+                    f=res["f_matched"],
+                    n_digits=n_digits_dict[var],
+                    **self.style_dict[name],
+                )
             ax.set_xlabel(xlabel_dict[var])
             ax.set_ylabel("Jets")
             ax.grid(color="k", linestyle="-", linewidth=0.5, alpha=0.2, zorder=0)

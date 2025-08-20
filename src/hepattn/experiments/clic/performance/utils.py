@@ -37,35 +37,32 @@ def gaussian(x, amplitude, mean, stddev):
     return amplitude * np.exp(-(((x - mean) / stddev) ** 2) / 2)
 
 
-def custom_hist_v1(ax, vals, label_length=-1, metrics="mean std iqr", f=None, **hist_kwargs):  # noqa: ARG001
+def custom_hist(ax, vals, label_length=-1, metrics="median std iqr", f=None, n_digits=3, **hist_kwargs):
     bins = hist_kwargs["bins"]
     vals = np.clip(vals, bins[0], bins[-1])
 
     if label_length != -1:
         hist_kwargs["label"] = hist_kwargs["label"].ljust(label_length)
 
-    hist_kwargs["label"] += f" (M={np.nanmedian(vals):+.3f},".replace("+", " ")
-    iqr = np.nanpercentile(vals, 75) - np.nanpercentile(vals, 25)
-    hist_kwargs["label"] += f" IQR={iqr:.3f}"
-    if f is not None:
-        hist_kwargs["label"] += f", $f$={f:.3f})"
-    else:
-        hist_kwargs["label"] += ")"
-
-    ax.hist(vals, **hist_kwargs)
-
-
-def custom_hist_v2(ax, vals, label_length=-1, metrics="mean std iqr", f=None, **hist_kwargs):  # noqa: ARG001
-    bins = hist_kwargs["bins"]
-    vals = np.clip(vals, bins[0], bins[-1])
-
-    hist_kwargs["label"] += f" (M={np.nanmedian(vals):+.3f},".replace("+", " ")
-    iqr = np.nanpercentile(vals, 75) - np.nanpercentile(vals, 25)
-    hist_kwargs["label"] += f" IQR={iqr:.3f}"
-    # if f is not None and False:
-    #    hist_kwargs["label"] += f", $f$={f:.3f}"
-    hist_kwargs["label"] += ")"
-
+    stats_parts = []
+    for metric in metrics.split():
+        match metric:
+            case "mean":
+                stats_parts.append(f"M={np.nanmean(vals):+.{n_digits}f}".replace("+", " "))
+            case "std":
+                stats_parts.append(f"\\sigma$={np.nanstd(vals):+.{n_digits}f}".replace("+", " "))
+            case "median":
+                stats_parts.append(f"M={np.nanmedian(vals):+.{n_digits}f}".replace("+", " "))
+            case "iqr":
+                iqr = np.nanpercentile(vals, 75) - np.nanpercentile(vals, 25)
+                stats_parts.append(f"IQR={iqr:.{n_digits}f}")
+            case "f":
+                if f is not None:
+                    stats_parts.append(f"$f$={f:.{n_digits}f}")
+            case _:
+                raise ValueError(f"Unknown metric: {metric}")
+    if stats_parts:
+        hist_kwargs["label"] += f" ({', '.join(stats_parts)})"
     ax.hist(vals, **hist_kwargs)
 
 

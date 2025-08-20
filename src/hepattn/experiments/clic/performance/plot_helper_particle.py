@@ -3,7 +3,7 @@ import numpy as np
 
 from .performance import Performance
 from .style_sheet import FIG_H_1ROW, FIG_W
-from .utils import custom_hist_v2
+from .utils import custom_hist
 
 FIG_H_1ROW = 4  # noqa: F811
 FIG_DPI = 200
@@ -74,11 +74,11 @@ class PlotParticleHelper:
                 for v_i, var in enumerate(["pt", "eta", "phi"]):
                     ax = axs[cl_i][v_i]
                     bins = np.linspace(-abs_max_dict[cl_name][var], abs_max_dict[cl_name][var], 50)
-                    custom_hist_v2(
+                    custom_hist(
                         ax,
                         res_dict[var][cl_mask],
                         label_length=-1,
-                        metrics="mean std iqr",
+                        metrics="median iqr",
                         bins=bins,
                         label=self.labels[name],
                         **self.style_dict[name],
@@ -167,11 +167,11 @@ class PlotParticleHelper:
                 for v_i, var in enumerate(["pt", "eta", "phi"]):
                     ax = axs[cl_i][v_i]
                     bins = np.linspace(-abs_max_dict[cl_name][var], abs_max_dict[cl_name][var], 50)
-                    custom_hist_v2(
+                    custom_hist(
                         ax,
                         res_dict[var][cl_mask],
                         label_length=-1,
-                        metrics="mean std iqr",
+                        metrics="median iqr",
                         f=res_dict["f"][cl_name],
                         bins=bins,
                         label=self.labels[name],
