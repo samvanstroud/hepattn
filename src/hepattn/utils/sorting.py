@@ -17,7 +17,7 @@ class Sorter(nn.Module):
             sort_idxs[input_name] = sort_idx
 
             for key, x in inputs.items():
-                if x is None or input_name not in key:
+                if x is None or input_name not in key or "key_is_" in key:  # TODO: implement key_is_ sort!
                     continue
 
                 # embeddings
@@ -31,14 +31,13 @@ class Sorter(nn.Module):
                     this_sort_idx = sort_idx
 
                 # input type masks
-                elif key == f"key_is_{input_name}":
-                    if input_name != "key":
-                        continue
-                    # TODO: implement!
-                    continue
+                # elif key == f"key_is_{input_name}":
+                #    if input_name != "key":
+                #        continue
+                #    continue
 
                 else:
-                    raise ValueError(f"Unexpected key {key} for input hit {input_name}")
+                    raise ValueError(f"Unexpected key {key} for input type {input_name}")
 
                 shape_before = x.shape
                 inputs[key] = torch.gather(x, sort_dim, this_sort_idx)
