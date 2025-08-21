@@ -68,11 +68,6 @@ class MaskFormer(nn.Module):
         batch_size = inputs[self.input_names[0] + "_valid"].shape[0]
         x = {"inputs": inputs}
 
-        # Store input positional encodings if we need to preserve them for the decoder
-        if self.decoder.preserve_posenc:
-            assert all(input_net.posenc is not None for input_net in self.input_nets)
-            x["key_posenc"] = torch.concatenate([input_net.posenc(inputs) for input_net in self.input_nets], dim=-2)
-
         # Embed the input constituents
         for input_net in self.input_nets:
             input_name = input_net.input_name
@@ -110,9 +105,8 @@ class MaskFormer(nn.Module):
             x = self.sorter.sort_inputs(x)
 
         # Pass merged input constituents through the encoder
-        if self.encoder is not None:
-            x_sort_value = x.get(f"key_{self.input_sort_field}") if self.sorter is None else None
-            x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
+        x_sort_value = x.get(f"key_{self.input_sort_field}") if self.sorter is None else None
+        x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
 
         # Unmerge the updated features back into the separate input types
         x = unmerge_inputs(x, self.input_names)

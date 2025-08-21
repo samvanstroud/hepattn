@@ -161,7 +161,7 @@ class Encoder(nn.Module):
             dim: Dimension of the embeddings at each layer.
             attn_type: Type of attention to use.
             window_size: Window size for the sliding window.
-            window_wrap: Whether to wrap the window.
+            window_wrap: Whether to wrap the window by wrapping the input sequence or the mask, depending on the attn_type.
             score_mod: Score modification function.
             value_residual: Add a residual connection from the initial layer values.
             num_register_tokens: Number of register tokens to add at the beginning of the sequence. If None, no register tokens are added.
