@@ -17,7 +17,7 @@ class Sorter(nn.Module):
             sort_idxs[input_name] = sort_idx
 
             for key, x in inputs.items():
-                if input_name not in key:
+                if x is None or input_name not in key:
                     continue
 
                 # embeddings
