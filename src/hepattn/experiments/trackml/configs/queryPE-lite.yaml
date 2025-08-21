@@ -175,14 +175,8 @@ model:
           mask_attention: true
           preserve_posenc: true
           posenc:
-              class_path: hepattn.models.PositionEncoder
-              init_args:
-                input_name: query
-                fields: [phi]
-                sym_fields: [phi]
-                dim: *dim
-                alpha: 2
-                base: 50000
+            alpha: 2
+            base: 50000
 
       encoder:
         class_path: hepattn.models.Encoder
