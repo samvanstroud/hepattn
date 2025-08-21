@@ -11,6 +11,7 @@ from torch import Tensor, nn
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
+from hepattn.models.posenc import pos_enc_symmetric
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.local_ca import auto_local_ca_mask
 from hepattn.utils.model_utils import unmerge_inputs
@@ -24,7 +25,7 @@ class MaskFormerDecoder(nn.Module):
         num_decoder_layers: int,
         mask_attention: bool = True,
         use_query_masks: bool = False,
-        posenc: nn.Module | None = None,
+        posenc: dict[str, float] | None = None,
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
@@ -49,6 +50,7 @@ class MaskFormerDecoder(nn.Module):
         decoder_layer_config["mask_attention"] = mask_attention
 
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
+        self.dim = self.decoder_layers[0].dim
         self.tasks: list | None = None  # Will be set by MaskFormer
         self.num_queries = num_queries
         self.mask_attention = mask_attention
@@ -159,13 +161,9 @@ class MaskFormerDecoder(nn.Module):
         return x["query_embed"], x["key_embed"]
 
     def generate_positional_encodings(self, x: dict):
-        query_posenc = None
-        key_posenc = None
-        if self.query_posenc is not None:
-            x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
-            query_posenc = self.query_posenc(x)
-        if self.key_posenc is not None:
-            key_posenc = self.key_posenc(x)
+        x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+        query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
+        key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
 
 
