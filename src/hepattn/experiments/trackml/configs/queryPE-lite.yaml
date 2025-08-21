@@ -173,7 +173,6 @@ model:
             hybrid_norm: true
           num_queries: *num_objects
           mask_attention: true
-          preserve_posenc: true
           posenc:
             alpha: 2
             base: 50000
