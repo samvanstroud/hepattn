@@ -49,7 +49,7 @@ class MockMatcher(nn.Module):
     def forward(self, costs, object_valid_mask=None):
         # Return identity permutation for simplicity
         batch_size, num_pred, _ = costs.shape
-        return torch.arange(num_pred).expand(-1, batch_size, -1)
+        return torch.arange(num_pred).unsqueeze(0).expand(batch_size, -1)
 
 
 class TestMaskFormerSorting:
