@@ -13,6 +13,7 @@ from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.local_ca import auto_local_ca_mask
+from hepattn.utils.model_utils import unmerge_inputs
 
 
 class MaskFormerDecoder(nn.Module):
@@ -63,6 +64,8 @@ class MaskFormerDecoder(nn.Module):
         self.attn_type = decoder_layer_config.get("attn_type", "torch")
         self.window_size = window_size
         self.window_wrap = window_wrap
+        self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
+
         if self.local_strided_attn:
             assert self.attn_type == "torch", f"Invalid attention type when local_strided_attn is True: {self.attn_type}, must be 'torch'"
         assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
@@ -77,8 +80,12 @@ class MaskFormerDecoder(nn.Module):
         Returns:
             Tuple containing updated embeddings and outputs from each decoder layer and final outputs.
         """
-        batch_size = x["query_embed"].shape[0]
+        batch_size = x["key_embed"].shape[0]
         num_constituents = x["key_embed"].shape[-2]
+
+        # Generate the queries that represent objects
+        x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
+        x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
 
         if (self.key_posenc is not None) or (self.query_posenc is not None):
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
@@ -116,7 +123,7 @@ class MaskFormerDecoder(nn.Module):
 
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
-                # Collect attention masks from tasks
+                # Collect attention masks from different tasks
                 task_attn_masks = task.attn_mask(task_outputs)
                 for input_name, attn_mask in task_attn_masks.items():
                     if input_name in attn_masks:
@@ -133,9 +140,9 @@ class MaskFormerDecoder(nn.Module):
 
             # Construct the full attention mask for MaskAttention decoder
             if attn_masks and self.mask_attention:
-                attn_mask = torch.full((batch_size, self.num_queries, num_constituents), True, device=x["key_embed"].device)
+                attn_mask = torch.full((batch_size, self.num_queries, num_constituents), False, device=x["key_embed"].device)
                 for input_name, task_attn_mask in attn_masks.items():
-                    attn_mask[..., x[f"key_is_{input_name}"]] = task_attn_mask
+                    attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
 
             if attn_mask is not None:
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
@@ -149,9 +156,8 @@ class MaskFormerDecoder(nn.Module):
                 kv_mask=x.get("key_valid"),
             )
 
-            # Unmerge the updated features back into separate input types for intermediate tasks
-            for input_name in input_names:
-                x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
+            # update the individual input constituent representations
+            x = unmerge_inputs(x, input_names)
 
         return x, outputs
 

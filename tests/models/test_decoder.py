@@ -12,6 +12,35 @@ NUM_HEADS = 8
 HEAD_DIM = DIM // NUM_HEADS
 
 
+class MockTask1:
+    has_intermediate_loss = True
+    name = "task1"
+
+    def __call__(self, x):
+        return None
+
+    def attn_mask(self, x):
+        mask = {"input1": torch.zeros(BATCH_SIZE, NUM_QUERIES, 4, dtype=torch.bool)}
+        mask["input1"][0, 1, 1] = True
+        mask["input1"][1, 2, 3] = True
+        return mask
+
+
+class MockTask2:
+    has_intermediate_loss = True
+    name = "task2"
+
+    def __call__(self, x):
+        return None
+
+    def attn_mask(self, x):
+        mask = {"input2": torch.zeros(BATCH_SIZE, NUM_QUERIES, 6, dtype=torch.bool)}
+        mask["input2"][0, 1, 2] = True
+        mask["input2"][1, 3, 3] = True
+        mask["input2"][1, 4, 4] = True
+        return mask
+
+
 class TestMaskFormerDecoder:
     @pytest.fixture
     def decoder_layer_config(self):
@@ -65,12 +94,12 @@ class TestMaskFormerDecoder:
             "key_embed": torch.randn(BATCH_SIZE, SEQ_LEN, DIM),
             "key_posenc": torch.randn(BATCH_SIZE, SEQ_LEN, DIM),
             "key_valid": torch.ones(BATCH_SIZE, SEQ_LEN, dtype=torch.bool),
-            "key_is_input1": torch.zeros(SEQ_LEN, dtype=torch.bool),
-            "key_is_input2": torch.zeros(SEQ_LEN, dtype=torch.bool),
+            "key_is_input1": torch.zeros(BATCH_SIZE, SEQ_LEN, dtype=torch.bool),
+            "key_is_input2": torch.zeros(BATCH_SIZE, SEQ_LEN, dtype=torch.bool),
         }
-        # Set some positions to be input1 and input2
-        x["key_is_input1"][:3] = True
-        x["key_is_input2"][3:6] = True
+
+        x["key_is_input1"][:, :4] = True
+        x["key_is_input2"][:, 4:] = True
 
         input_names = ["input1", "input2"]
         return x, input_names
@@ -82,12 +111,12 @@ class TestMaskFormerDecoder:
             "key_embed": torch.randn(1, SEQ_LEN, DIM),
             "key_posenc": torch.randn(1, SEQ_LEN, DIM),
             "key_valid": torch.ones(1, SEQ_LEN, dtype=torch.bool),
-            "key_is_input1": torch.zeros(SEQ_LEN, dtype=torch.bool),
-            "key_is_input2": torch.zeros(SEQ_LEN, dtype=torch.bool),
+            "key_is_input1": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
+            "key_is_input2": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
         }
-        # Set some positions to be input1 and input2
-        x["key_is_input1"][:3] = True
-        x["key_is_input2"][3:6] = True
+
+        x["key_is_input1"][:, :4] = True
+        x["key_is_input2"][:, 4:] = True
 
         input_names = ["input1", "input2"]
         return x, input_names
@@ -211,6 +240,37 @@ class TestMaskFormerDecoder:
         assert torch.equal(updated_query, original_query)
         assert torch.equal(updated_key, original_key)
 
+    def test_attn_mask_construction(self, decoder, sample_decoder_data):
+        """Test that attention mask is constructed correctly."""
+        x, input_names = sample_decoder_data
+        x["key_valid"] = torch.ones(BATCH_SIZE, SEQ_LEN, dtype=torch.bool)
+
+        decoder.tasks = [MockTask1(), MockTask2()]
+
+        _, outputs = decoder(x, input_names)
+
+        for layer in outputs.values():
+            assert "attn_mask" in layer
+            attn_mask = layer["attn_mask"]
+            assert attn_mask.shape == (BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
+            assert attn_mask.dtype == torch.bool
+
+            # check the values
+            assert attn_mask.sum() == 5
+            assert attn_mask[0, 1, 1]
+            assert attn_mask[1, 2, 3]
+            assert attn_mask[0, 1, 6]
+            assert attn_mask[1, 3, 7]
+            assert attn_mask[1, 4, 8]
+
+            # test some false entries
+            assert not attn_mask[0, 0, 0]
+            assert not attn_mask[0, 1, 0]
+            assert not attn_mask[0, 0, 1]
+            assert not attn_mask[1, 0, 1]
+            assert not attn_mask[0, 1, 3]
+            assert not attn_mask[1, 4, 5]
+
 
 class TestMaskFormerDecoderLayer:
     @pytest.fixture
@@ -279,15 +339,3 @@ class TestMaskFormerDecoderLayer:
         assert new_q.shape == q.shape
         # Without bidirectional, kv should remain unchanged
         assert new_kv is kv
-
-    def test_attn_mask_all_invalid(self, decoder_layer, sample_data):
-        """Test behavior when attn_mask is all True for a query."""
-        q, kv, attn_mask, kv_mask = sample_data
-        # Set one query's mask to all True (invalid)
-        attn_mask[0, 0, :] = True
-
-        # Should not raise an error because the code handles this case
-        _, _ = decoder_layer(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
-
-        # We'd need to check that the mask was modified correctly
-        # In real testing, you might want to verify this, but we'll skip for simplicity

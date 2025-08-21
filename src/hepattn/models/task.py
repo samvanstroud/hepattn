@@ -281,7 +281,7 @@ class ObjectHitMaskTask(Task):
         # Object-hit probability is the dot product between the hit and object embedding
         object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", x_object, x_hit)
 
-        # Zero out entries for any hit slots that are not valid
+        # Zero out entries for any padded input constituents
         object_hit_logit[~x[self.input_constituent + "_valid"].unsqueeze(-2).expand_as(object_hit_logit)] = torch.finfo(object_hit_logit.dtype).min
 
         return {self.output_object_hit + "_logit": object_hit_logit}
@@ -292,8 +292,8 @@ class ObjectHitMaskTask(Task):
 
         attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= threshold
 
-        # If the attn mask is completely padded for a given entry, unpad it - tested and is required (?)
-        # TODO: See if the query masking stops this from being necessary
+        # if a input constituent does not attend to any queries, let it attend to all
+        # TODO: looks flipped, check it and see see if this is really necessary
         attn_mask[torch.where(torch.all(attn_mask, dim=-1))] = False
 
         return {self.input_constituent: attn_mask}
@@ -1060,7 +1060,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
             )
             if self.use_nodes:
                 valid_mask = x[self.input_constituent + "_valid"].unsqueeze(-1)
-                masked_embed = x[self.input_constituent + "_embed"] * valid_mask
+                masked_embed = valid_mask * x[self.input_constituent + "_embed"]
                 node_feats = torch.bmm(inc, masked_embed)
                 input_data = torch.cat([input_data, node_feats], dim=-1)
         else:
