@@ -80,7 +80,7 @@ class MaskFormerDecoder(nn.Module):
         Returns:
             Tuple containing updated embeddings and outputs from each decoder layer and final outputs.
         """
-        batch_size = x["query_embed"].shape[0]
+        batch_size = x["key_embed"].shape[0]
         num_constituents = x["key_embed"].shape[-2]
 
         # Generate the queries that represent objects
