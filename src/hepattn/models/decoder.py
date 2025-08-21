@@ -50,7 +50,7 @@ class MaskFormerDecoder(nn.Module):
         decoder_layer_config["mask_attention"] = mask_attention
 
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
-        self.dim = self.decoder_layers[0].dim
+        self.dim = decoder_layer_config["dim"]
         self.tasks: list | None = None  # Will be set by MaskFormer
         self.num_queries = num_queries
         self.mask_attention = mask_attention
