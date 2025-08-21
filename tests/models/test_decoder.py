@@ -128,8 +128,7 @@ class TestMaskFormerDecoder:
         assert decoder.use_query_masks is False
         assert len(decoder.decoder_layers) == NUM_LAYERS
         assert decoder.tasks is None
-        assert decoder.query_posenc is None
-        assert decoder.preserve_posenc is False
+        assert decoder.posenc is None
 
         # Check that decoder layers are initialized correctly
         for layer in decoder.decoder_layers:
