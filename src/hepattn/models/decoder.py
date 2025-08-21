@@ -193,6 +193,7 @@ class MaskFormerDecoderLayer(nn.Module):
         """
         super().__init__()
 
+        self.dim = dim
         self.mask_attention = mask_attention
         self.bidirectional_ca = bidirectional_ca
 
