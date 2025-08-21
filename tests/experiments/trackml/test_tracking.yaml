@@ -113,7 +113,7 @@ model:
     init_args:
       dim: &dim 32
       sorter:
-        class_path: hepattn.utils.sorting.Sorter
+        class_path: hepattn.utils.sorter.Sorter
         init_args:
           input_sort_field: phi
       input_nets:

@@ -7,7 +7,7 @@ from torch import nn
 from hepattn.models import Encoder
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.maskformer import MaskFormer
-from hepattn.utils.sorting import Sorter
+from hepattn.utils.sorter import Sorter
 
 
 class MockInputNet(nn.Module):
