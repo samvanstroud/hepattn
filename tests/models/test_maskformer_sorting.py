@@ -170,8 +170,7 @@ class TestMaskFormerSorting:
             ),
         )
 
-        original = sample_inputs
-        inputs = deepcopy(sample_inputs)
+        inputs = sample_inputs
 
         # Test target sorting with multiple target fields
         # Create targets with known unsorted values to make sorting obvious
