@@ -11,10 +11,12 @@ This general approach has been applied to various reconstruction tasks and detec
 - **Primary vertexing** - *Interested in working on this? Get in touch!*
 - **Secondary vertexing** - Delphes [[EPJC][vertexing]]
 - **Particle flow** - [WIP]
+- **End-to-end reconstruction** - CLD [[ML4Jets][ml4jets]]
 
 [tide]: https://indico.cern.ch/event/1550297/contributions/6559827/
 [trackml]: https://arxiv.org/abs/2411.07149
 [vertexing]: https://link.springer.com/article/10.1140/epjc/s10052-024-13374-5
+[ml4jets]: https://indico.cern.ch/event/1526677/timetable/?view=standard#18-maskformers-for-reconstruct
 
 ## ✨ Key Features
 
@@ -108,8 +110,8 @@ To ensure clarity and consistency throughout this project, we use the following 
 
 - **constituent** - input entities that go into the encoder/decoder, e.g. inner detector hits
 - **object** - reconstructed outputs from the decoder, e.g. reconstructed charged particle tracks
-- **input** - (also `input_object`) generic term for any input to a module (could be constituents, objects, or other data)
-- **output** - generic term for any output from a module (could be objects, predictions, or intermediate representations)
+- **input** - (also `input_object`) generic term for any input to a module (could be constituents, objects, etc)
+- **output** - generic term for any output from a module (could be objects, predictions, or intermediates)
 
 ## 🤝 Contributing
 
