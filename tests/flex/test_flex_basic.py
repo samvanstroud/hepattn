@@ -16,24 +16,11 @@ def qkv():
     return [torch.randn(B, H, S, D, device=device, dtype=data_type, requires_grad=True) for _ in range(3)]
 
 
-def causal_fa2(qkv):
-    return F.scaled_dot_product_attention(*qkv, is_causal=False)
-
-
-def sdpa_mask(qkv):
-    return F.scaled_dot_product_attention(*qkv)
-
-
 def flex_attention_call(qkv):
     flexattn = torch.compile(flex_attention, dynamic=False)
     return flexattn(*qkv)
 
 
 @pytest.mark.gpu
-def test_causal_fa2(qkv):
-    assert torch.allclose(causal_fa2(qkv), flex_attention_call(qkv), atol=1e-3)
-
-
-@pytest.mark.gpu
-def test_sdpa_mask(qkv):
-    assert torch.allclose(sdpa_mask(qkv), flex_attention_call(qkv), atol=1e-3)
+def test_flex_basic(qkv):
+    assert torch.allclose(F.scaled_dot_product_attention(*qkv), flex_attention_call(qkv), atol=1e-3)
