@@ -95,8 +95,10 @@ class MaskFormerDecoder(nn.Module):
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
             outputs[f"layer_{layer_index}"] = {}
 
-            if self.posenc:
-                x["query_embed"], x["key_embed"] = self.add_positional_encodings(x)
+            # if maskattention, PE should be added before generating the mask
+            if self.posenc and self.mask_attention:
+                x["query_embed"] = x["query_embed"] + x["query_posenc"]
+                x["key_embed"] = x["key_embed"] + x["key_posenc"]
 
             attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
@@ -148,6 +150,8 @@ class MaskFormerDecoder(nn.Module):
                 attn_mask=attn_mask,
                 q_mask=x.get("query_mask"),
                 kv_mask=x.get("key_valid"),
+                query_posenc=x["query_posenc"] if (self.posenc and not self.mask_attention) else None,
+                key_posenc=x["key_posenc"] if (self.posenc and not self.mask_attention) else None,
             )
 
             # update the individual input constituent representations
@@ -155,13 +159,8 @@ class MaskFormerDecoder(nn.Module):
 
         return x, outputs
 
-    def add_positional_encodings(self, x: dict):
-        x["query_embed"] += x["query_posenc"]
-        x["key_embed"] += x["key_posenc"]
-        return x["query_embed"], x["key_embed"]
-
     def generate_positional_encodings(self, x: dict):
-        x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+        x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
         query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
@@ -217,7 +216,14 @@ class MaskFormerDecoderLayer(nn.Module):
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(
-        self, q: Tensor, kv: Tensor, attn_mask: Tensor | None = None, q_mask: Tensor | None = None, kv_mask: Tensor | None = None
+        self,
+        q: Tensor,
+        kv: Tensor,
+        attn_mask: Tensor | None = None,
+        q_mask: Tensor | None = None,
+        kv_mask: Tensor | None = None,
+        query_posenc: Tensor | None = None,
+        key_posenc: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         """Forward pass for the decoder layer.
 
@@ -227,6 +233,8 @@ class MaskFormerDecoderLayer(nn.Module):
             attn_mask: Optional attention mask.
             q_mask: Optional query mask.
             kv_mask: Optional key/value mask.
+            query_posenc: Optional query positional encoding.
+            key_posenc: Optional key positional encoding.
 
         Returns:
             Tuple of updated query and key/value embeddings.
@@ -240,6 +248,11 @@ class MaskFormerDecoderLayer(nn.Module):
         else:
             attn_mask = None
 
+        if query_posenc is not None:
+            q = q + query_posenc
+        if key_posenc is not None:
+            kv = kv + key_posenc
+
         # Update query/object embeddings with the key/constituent embeddings
         q = self.q_ca(q, kv=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         q = self.q_sa(q, q_mask=q_mask)
@@ -250,6 +263,11 @@ class MaskFormerDecoderLayer(nn.Module):
             if attn_mask is not None:
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask.transpose(-2, -1)
+
+            if query_posenc is not None:
+                q = q + query_posenc
+            if key_posenc is not None:
+                kv = kv + key_posenc
 
             kv = self.kv_ca(kv, kv=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
             kv = self.kv_dense(kv)
