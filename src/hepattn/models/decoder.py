@@ -43,6 +43,7 @@ class MaskFormerDecoder(nn.Module):
             local_strided_attn: If True, uses local strided window attention.
             window_size: The size of the window for local strided window attention.
             window_wrap: If True, wraps the window for local strided window attention.
+            shift_phi: If True, shifts the phi values for positional encoding.
         """
         super().__init__()
 
