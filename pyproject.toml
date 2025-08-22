@@ -37,6 +37,7 @@ dependencies = [
     "onnxruntime>=1.22.0",
     "einops>=0.8.1,<0.9",
     "atlas-ftag-tools",
+    "ty>=0.0.1a19,<0.0.1a20",
 ]
 
 [dependency-groups]
@@ -109,6 +110,10 @@ pydocstyle.convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = ["E501"]
+
+[tool.ty.rules]
+missing-argument = "ignore"
+
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:.*distutils Version classes are deprecated. Use packaging.version instead.*:DeprecationWarning"]
