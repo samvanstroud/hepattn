@@ -29,6 +29,7 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
+        shift: bool = True,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -61,6 +62,7 @@ class MaskFormerDecoder(nn.Module):
         self.window_size = window_size
         self.window_wrap = window_wrap
         self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
+        self.shift = shift
 
         if self.local_strided_attn:
             assert self.attn_type == "torch", f"Invalid attention type when local_strided_attn is True: {self.attn_type}, must be 'torch'"
@@ -156,12 +158,15 @@ class MaskFormerDecoder(nn.Module):
         return x, outputs
 
     def add_positional_encodings(self, x: dict):
-        x["query_embed"] += x["query_posenc"]
-        x["key_embed"] += x["key_posenc"]
+        x["query_embed"] = x["query_embed"] + x["query_posenc"]
+        x["key_embed"] = x["key_embed"] + x["key_posenc"]
         return x["query_embed"], x["key_embed"]
 
     def generate_positional_encodings(self, x: dict):
-        x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+        if self.shift:
+            x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
+        else:
+            x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
         query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
