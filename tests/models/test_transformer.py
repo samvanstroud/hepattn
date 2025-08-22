@@ -6,7 +6,7 @@ from hepattn.models import DropPath, Encoder, EncoderLayer, LayerScale, Residual
 from hepattn.models.encoder import change_attn_backends
 
 HAS_GPU = torch.cuda.is_available()
-ATTN_TYPES_GPU = {"flash", "flash-varlen"}
+ATTN_TYPES_GPU = {"flex", "flash", "flash-varlen"}
 DEVICE = "cuda" if HAS_GPU else "cpu"
 
 
