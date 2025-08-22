@@ -226,7 +226,7 @@ class TestMaskFormerDecoder:
             mask_attention=True,
             posenc={"alpha": 1.0, "base": 2.0},
         )
-        dec.tasks = [MockTask1(), MockTask2()]
+        dec.tasks: list = [MockTask1(), MockTask2()]
         x["key_phi"] = torch.randn(BATCH_SIZE, SEQ_LEN)
         key_embed = x["key_embed"]
         query_embed = x["query_embed"]
