@@ -107,7 +107,7 @@ def test_flex_nested():
     sdpa_outs += [query.grad, key.grad, value.grad]
 
     flex_outs.append(out_flex)
-    out_flex.backward(grad_out.unsqueeze(0))  # ty: ignore[possibly-unbound-attribute]
+    out_flex.backward(grad_out._values.unsqueeze(0))  # ty: ignore[unresolved-attribute,possibly-unbound-attribute]  # noqa: SLF001
     flex_outs += [query_values.grad, key_values.grad, value_values.grad]
 
     for flex, sdpa in zip(flex_outs, sdpa_outs, strict=False):
