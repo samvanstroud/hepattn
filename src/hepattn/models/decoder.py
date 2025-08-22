@@ -102,7 +102,8 @@ class MaskFormerDecoder(nn.Module):
             outputs[f"layer_{layer_index}"] = {}
 
             if self.posenc and self.mask_attention:
-                x["query_embed"], x["key_embed"] = x["query_embed"] + x["query_posenc"], x["key_embed"] + x["key_posenc"]
+                x["query_embed"] = x["query_embed"] + x["query_posenc"]
+                x["key_embed"] = x["key_embed"] + x["key_posenc"]
 
             attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
