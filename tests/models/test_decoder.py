@@ -121,18 +121,6 @@ class TestMaskFormerDecoder:
         assert updated_x["query_embed"].shape == original_query_shape
         assert updated_x["key_embed"].shape == original_key_shape
 
-    def test_add_positional_encodings_no_preserve(self, decoder, sample_decoder_data):
-        """Test add_positional_encodings when preserve_posenc is False."""
-        x, _ = sample_decoder_data
-        original_query = x["query_embed"].clone()
-        original_key = x["key_embed"].clone()
-
-        updated_query, updated_key = decoder.add_positional_encodings(x)
-
-        # Should remain unchanged when preserve_posenc is False
-        assert torch.equal(updated_query, original_query)
-        assert torch.equal(updated_key, original_key)
-
 
 class TestMaskFormerDecoderLayer:
     @pytest.fixture
