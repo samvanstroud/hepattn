@@ -1160,7 +1160,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
     ) -> tuple[Tensor, Tensor]:
         proxy_feats = torch.cat(
             [inputs[self.input_constituent + "_" + field].unsqueeze(-1) for field in self.fields],
-            axis=-1,
+            dim=-1,
         )
 
         charged_inc = incidence * inputs[self.input_constituent + "_is_track"].unsqueeze(1)

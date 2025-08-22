@@ -4,16 +4,16 @@ import torch.nn.functional as F
 # resolve flash attention import
 try:
     # FA3 (from source)
-    from flash_attn_interface import flash_attn_func, flash_attn_varlen_func
+    from flash_attn_interface import flash_attn_func, flash_attn_varlen_func  # ty: ignore [unresolved-import]
 except ImportError:
     try:
         # FA2 (from wheel)
-        from flash_attn import flash_attn_func, flash_attn_varlen_func
+        from flash_attn import flash_attn_func, flash_attn_varlen_func  # ty: ignore [unresolved-import]
     except ImportError:
         flash_attn_func = None
         flash_attn_varlen_func = None
 
-from torch import BoolTensor, Size, Tensor, nn
+from torch import Size, Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention
 from torch.nn.functional import scaled_dot_product_attention
 
@@ -39,8 +39,8 @@ FLASH_ATTN_TYPES = ["flash", "flash-varlen"]
 
 
 def merge_masks(
-    q_mask: BoolTensor | None, kv_mask: BoolTensor | None, attn_mask: BoolTensor | None, q_shape: Size, k_shape: Size, device: torch.device
-) -> BoolTensor:
+    q_mask: Tensor | None, kv_mask: Tensor | None, attn_mask: Tensor | None, q_shape: Size, k_shape: Size, device: torch.device
+) -> Tensor | None:
     """Create a full attention mask which incoporates the padding information.
     Modified from https://gitlab.cern.ch/atlas-flavor-tagging-tools/algorithms/salt/-/blob/main/salt/models/attention.py?ref_type=heads
     to use the convention that true slots are involved in computation / not masked out.
@@ -76,7 +76,7 @@ def repad_from_flash_varlen(x: Tensor, batch_size: int, seq_len: int, indices: T
     return pad_input(x.squeeze(0), indices, batch_size, seq_len)
 
 
-def projection_packed(q: Tensor, kv: Tensor | None, weight: Tensor, bias: Tensor | None = None) -> tuple[Tensor, Tensor, Tensor]:
+def projection_packed(q: Tensor, kv: Tensor | None, weight: Tensor, bias: Tensor | None = None) -> tuple[Tensor, ...]:
     """Efficient input projection for MHA when using a single linear layer.
 
     Essentially the same as torch.nn.functional._in_projection_packed.
@@ -212,7 +212,7 @@ class Attention(nn.Module):
         else:
             if kv is None:
                 kv = q
-            q, k, v = F._in_projection_packed(q, kv, kv, self.in_proj_weight, self.in_proj_bias)  # noqa: SLF001
+            q, k, v = F._in_projection_packed(q, kv, kv, self.in_proj_weight, self.in_proj_bias)  # noqa: SLF001  # ty: ignore [unresolved-attribute]
 
         # Normalize queries, keys, and values
         if self.qkv_norm:
@@ -230,6 +230,7 @@ class Attention(nn.Module):
             if self.is_first_layer:
                 initial_values["v"] = v
             else:
+                assert mix is not None
                 v = v * mix + initial_values["v"] * (1.0 - mix)
 
         return q, k, v
@@ -245,9 +246,9 @@ class Attention(nn.Module):
         self,
         q: Tensor,
         kv: Tensor | None = None,
-        q_mask: BoolTensor | None = None,
-        kv_mask: BoolTensor | None = None,
-        attn_mask: BlockMask | BoolTensor | None = None,
+        q_mask: Tensor | None = None,
+        kv_mask: Tensor | None = None,
+        attn_mask: BlockMask | Tensor | None = None,
         attn_bias: Tensor | None = None,
         score_mod: _score_mod_signature | None = None,
         initial_values: dict | None = None,
@@ -261,15 +262,15 @@ class Attention(nn.Module):
             Queries tensor of shape (B, N, D).
         kv : Tensor, optional
             Keys tensor of shape (B, M, D). If None, defaults to q.
-        q_mask : BoolTensor, optional
+        q_mask : Tensor, optional
             Query mask to apply. If None, no mask is applied.
             True values indicate that a value is not padded and should partake in computation.
             Note: For flash-varlen, this is ignored as unpadding is handled by the encoder.
-        kv_mask : BoolTensor, optional
+        kv_mask : Tensor, optional
             Key/value mask to apply. If None, no mask is applied.
             True values indicate that a value is not padded and should partake in computation.
             Note: For flash-varlen, this is ignored as unpadding is handled by the encoder.
-        attn_mask : BlockMask | BoolTensor, optional
+        attn_mask : BlockMask | Tensor, optional
             Attention mask to apply. If None, no mask is applied.
             True values indicate that an attention slot should partake in computation.
             Expected shape is (B, M, M).
@@ -326,6 +327,7 @@ class Attention(nn.Module):
 
         # Standard torch attention
         elif self.attn_type == "torch":
+            assert not isinstance(attn_mask, BlockMask)  # Should be handled by flex attention if needed
             attn_mask = merge_masks(q_mask, kv_mask, attn_mask, q_shape, kv_shape, q.device)
             # Have to expand the attention mask so that it is broadcasted over the head dimension
             if attn_mask is not None and attn_mask.dim() == 3:

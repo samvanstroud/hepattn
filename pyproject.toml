@@ -112,7 +112,7 @@ pydocstyle.convention = "google"
 "*.ipynb" = ["E501"]
 
 [tool.ty.rules]
-missing-argument = "ignore"
+missing-argument = "ignore" # for now as kwarg unpacking is not supported
 
 
 [tool.pytest.ini_options]

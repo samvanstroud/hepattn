@@ -41,7 +41,7 @@ def mask_from_indices(indices: Tensor, num_masks: int | None = None) -> Tensor:
     """
     assert indices.ndim in {1, 2}, "indices must be 1D for single sample or 2D for batch"
     if num_masks is None:
-        num_masks = indices.max() + 1
+        num_masks = indices.max().item() + 1
     else:
         assert num_masks > indices.max(), "num_masks must be greater than the maximum value in indices"
 
@@ -302,6 +302,6 @@ def topk_attn(attn_scores: Tensor, k: int, dim: int = -1) -> Tensor:
         Tensor: A boolean mask with `True` for the top-k scores.
     """
     _, topk_indices = attn_scores.topk(k, dim=dim)
-    zeros = torch.zeros_like(attn_scores, dtype=bool)
-    src = torch.ones_like(topk_indices, dtype=bool).expand_as(topk_indices)
+    zeros = torch.zeros_like(attn_scores, dtype=torch.bool)
+    src = torch.ones_like(topk_indices, dtype=torch.bool).expand_as(topk_indices)
     return torch.scatter(zeros, dim=dim, index=topk_indices, src=src)

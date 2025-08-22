@@ -131,8 +131,8 @@ class FourierPositionEncoder(nn.Module):
         self.B = torch.nn.parameter.Buffer(scale * torch.randn((len(fields), dim // 2)))
         self.pi = torch.tensor(math.pi)
 
-    def forward(self, xs: dict[str, Tensor]) -> Tensor:
-        xs = torch.cat([xs[f"{self.input_name}_{field}"].unsqueeze(-1) for field in self.fields], dim=-1)
+    def forward(self, inputs: dict[str, Tensor]) -> Tensor:
+        xs = torch.cat([inputs[f"{self.input_name}_{field}"].unsqueeze(-1) for field in self.fields], dim=-1)
         xs = 2 * self.pi * xs
         xs @= self.B
         return torch.cat([torch.sin(xs), torch.cos(xs)], dim=-1)
