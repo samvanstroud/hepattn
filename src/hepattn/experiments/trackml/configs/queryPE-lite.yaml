@@ -182,9 +182,9 @@ model:
         init_args:
           num_layers: 10
           dim: *dim
-          attn_type: torch
-          # window_size: 512
-          # window_wrap: true
+          attn_type: flash
+          window_size: 512
+          window_wrap: true
           hybrid_norm: true
           norm: RMSNorm
 
