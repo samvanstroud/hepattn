@@ -38,3 +38,7 @@ jobs:
       - name: Run ty
         run: |
           pixi run -e ci ty check src/hepattn/models
+          pixi run -e ci ty check src/hepattn/utils
+          pixi run -e ci ty check src/hepattn/flex
+          pixi run -e ci ty check tests/
+
