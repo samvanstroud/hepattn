@@ -42,10 +42,7 @@ class MaskFormer(nn.Module):
         self.input_nets = input_nets
         self.encoder = encoder
         self.decoder = decoder
-
-        # Set tasks as a member of the decoder and extract num_queries
         self.decoder.tasks = tasks
-
         self.pooling = pooling
         self.tasks = tasks
         self.target_object = target_object
@@ -59,6 +56,7 @@ class MaskFormer(nn.Module):
 
         assert "key" not in self.input_names, "'key' input name is reserved."
         assert "query" not in self.input_names, "'query' input name is reserved."
+        assert not any("_" in name for name in self.input_names), "Input names cannot contain underscores."
 
     @property
     def input_names(self) -> list[str]:
@@ -101,7 +99,8 @@ class MaskFormer(nn.Module):
                 [inputs[input_name + "_" + self.sorter.input_sort_field] for input_name in self.input_names], dim=-1
             )
             for input_name in self.input_names:
-                x[input_name + "_" + self.sorter.input_sort_field] = inputs[input_name + "_" + self.sorter.input_sort_field]
+                field = f"{input_name}_{self.sorter.input_sort_field}"
+                x[field] = inputs[field]
             x = self.sorter.sort_inputs(x)
 
         # Pass merged input constituents through the encoder
