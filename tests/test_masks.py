@@ -71,7 +71,7 @@ def test_indices_from_mask_empty():
         [False, False],
         [False, False],
         [False, False],
-    ], dtype=torch.bool)
+    ])
     indices = indices_from_mask(mask)
     print(mask)
     print(indices)
