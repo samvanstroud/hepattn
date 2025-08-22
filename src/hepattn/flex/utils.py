@@ -14,7 +14,7 @@ from torch.nn.attention.flex_attention import (
 try:
     from torch._dynamo._trace_wrapped_higher_order_op import TransformGetItemToIndex
 except ImportError:
-    from torch._higher_order_ops.flex_attention import TransformGetItemToIndex  # noqa: PLC2701
+    from torch._higher_order_ops.flex_attention import TransformGetItemToIndex  # noqa: PLC2701  # ty: ignore[unresolved-import]
 from contextlib import nullcontext
 
 Tensor = torch.Tensor
@@ -42,6 +42,7 @@ def create_score_mod(
 
     with ctx:
         mod_fn = score_mod if type_ == _ModificationType.SCORE_MOD else mask_mod
+        assert mod_fn is not None, "mod_fn should not be None"
         prefix = (0,) if type_ == _ModificationType.SCORE_MOD else ()
         mod = _vmap_for_bhqkv(mod_fn, prefix=prefix)
         scores = query @ key.transpose(-2, -1)

@@ -5,7 +5,7 @@ from multiprocessing.pool import ThreadPool as Pool
 import numpy as np
 import scipy
 import torch
-from torch import nn, Tensor
+from torch import Tensor, nn
 
 from hepattn.utils.import_utils import check_import_safe
 
