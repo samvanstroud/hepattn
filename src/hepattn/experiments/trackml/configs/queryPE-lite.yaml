@@ -167,7 +167,6 @@ model:
         class_path: hepattn.models.decoder.MaskFormerDecoder
         init_args:
           num_decoder_layers: 4
-          shift: True
           decoder_layer_config:
             dim: *dim
             norm: RMSNorm
