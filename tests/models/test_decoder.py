@@ -226,10 +226,13 @@ class TestMaskFormerDecoder:
             mask_attention=True,
             posenc={"alpha": 1.0, "base": 2.0},
         )
-        query_embed = torch.randn(BATCH_SIZE, NUM_QUERIES, DIM)
-        key_embed = torch.randn(BATCH_SIZE, SEQ_LEN, DIM)
-        x = {"key_phi": torch.randn(BATCH_SIZE, SEQ_LEN), "query_embed": query_embed.clone(), "key_embed": key_embed.clone()}
+        dec.tasks = [MockTask1(), MockTask2()]
+        x["key_phi"] = torch.randn(BATCH_SIZE, SEQ_LEN)
+        key_embed = x["key_embed"]
+        query_embed = x["query_embed"]
         x["query_posenc"], x["key_posenc"] = dec.generate_positional_encodings(x)
+        assert x["query_posenc"] is not None
+        assert x["key_posenc"] is not None
         updated_x, _ = dec(x, input_names)
         assert not torch.allclose(updated_x["query_embed"], query_embed)
         assert not torch.allclose(updated_x["key_embed"], key_embed)
