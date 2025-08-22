@@ -51,8 +51,8 @@ class TestMaskFormerDecoder:
             "key_embed": torch.randn(BATCH_SIZE, SEQ_LEN, DIM),
             "key_posenc": torch.randn(BATCH_SIZE, SEQ_LEN, DIM),
             "key_valid": torch.ones(BATCH_SIZE, SEQ_LEN, dtype=torch.bool),
-            "key_is_input1": torch.zeros(SEQ_LEN, dtype=torch.bool),
-            "key_is_input2": torch.zeros(SEQ_LEN, dtype=torch.bool),
+            "key_is_input1": torch.zeros(BATCH_SIZE, SEQ_LEN, dtype=torch.bool),
+            "key_is_input2": torch.zeros(BATCH_SIZE, SEQ_LEN, dtype=torch.bool),
         }
         # Set some positions to be input1 and input2
         x["key_is_input1"][:3] = True
