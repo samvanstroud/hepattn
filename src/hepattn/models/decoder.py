@@ -167,10 +167,10 @@ class MaskFormerDecoder(nn.Module):
         return x, outputs
 
     def generate_positional_encodings(self, x: dict):
-        if self.shift_phi:
-            x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
-        else:
-            x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+        phi_range = torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
+        if not self.shift_phi:
+            phi_range -= 0.5
+        x["query_phi"] = 2 * torch.pi * phi_range
         query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
