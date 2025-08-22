@@ -198,8 +198,10 @@ def test_self_attention(batch_size, seq_len, dim, num_heads, bias, attn_type):
 
 
 @pytest.mark.parametrize("attn_type", ["torch", "flash", "flex"])
-@pytest.mark.gpu
 def test_cross_attention(attn_type):
+    if not HAS_GPU and attn_type in ATTN_TYPES_GPU:
+        pytest.skip(f"Skipping {attn_type} test as GPU is not available")
+
     # Generate random input tensors
     q = torch.randn(1, 128, 128, dtype=torch.float16, device=DEVICE)
     kv = torch.randn(1, 256, 128, dtype=torch.float16, device=DEVICE)
@@ -216,8 +218,9 @@ def test_cross_attention(attn_type):
 
 @pytest.mark.parametrize("attn_type", ["torch", "flash", "flex", "flash-varlen"])
 @pytest.mark.parametrize("attn_type_new", ["torch", "flash", "flex", "flash-varlen"])
-@pytest.mark.gpu
 def test_attention_change_backend(attn_type, attn_type_new):
+    if not HAS_GPU and (attn_type in ATTN_TYPES_GPU or attn_type_new in ATTN_TYPES_GPU):
+        pytest.skip("Skipping GPU-specific test on CPU-only environment")
     # Generate random input tensors
     q = torch.randn(1, 128, 128, dtype=torch.float16, device=DEVICE)
     kv = torch.randn(1, 128, 128, dtype=torch.float16, device=DEVICE)
