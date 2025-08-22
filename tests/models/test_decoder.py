@@ -217,6 +217,21 @@ class TestMaskFormerDecoder:
         assert updated_x["query_embed"].shape == original_query_shape
         assert updated_x["key_embed"].shape == original_key_shape
 
+    def test_decoder_posenc(self, decoder_layer_config):
+        dec = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=True,
+            posenc={"alpha": 1.0, "base": 2.0},
+        )
+        query_embed = torch.randn(BATCH_SIZE, NUM_QUERIES, DIM)
+        key_embed = torch.randn(BATCH_SIZE, SEQ_LEN, DIM)
+        x = {"key_phi": torch.randn(BATCH_SIZE, SEQ_LEN), "query_embed": query_embed.clone(), "key_embed": key_embed.clone()}
+        x["query_posenc"], x["key_posenc"] = dec.generate_positional_encodings(x)
+        assert not torch.allclose(x["query_embed"], query_embed)
+        assert not torch.allclose(x["key_embed"], key_embed)
+
     def test_attn_mask_construction(self, decoder, sample_decoder_data):
         """Test that attention mask is constructed correctly."""
         x, input_names = sample_decoder_data
