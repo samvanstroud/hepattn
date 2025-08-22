@@ -1,8 +1,11 @@
-import pytest
 import torch
 from torch import nn
 
 from hepattn.models import Dense  # Update the import to match your module's filename
+
+HAS_GPU = torch.cuda.is_available()
+ATTN_TYPES_GPU = {"flex", "flash", "flash-varlen"}
+DEVICE = "cuda" if HAS_GPU else "cpu"
 
 
 def test_dense_default_parameters():
@@ -49,25 +52,21 @@ def test_nested_jagged_tensor():
     assert torch.all(output != 0), "Output should not be all zeros"
 
 
-@pytest.mark.gpu
-def test_compile_gpu():
-    model = Dense(input_size=10)
-    model.cuda()
+def test_compile():
+    model = Dense(input_size=10).to(DEVICE)
     model = torch.compile(model)
 
-    x = torch.randn(5, 10).cuda()
+    x = torch.randn(5, 10, device=DEVICE)
     output = model(x)
     assert output.shape == (5, 10), "Output shape should match batch size and output size"
     assert torch.all(output != 0), "Output should not be all zeros"
 
 
-@pytest.mark.gpu
 def test_compile_gpu_nested_jagged_tensor():
     nt = torch.nested.nested_tensor(
-        [torch.arange(12).reshape(2, 6), torch.arange(18).reshape(3, 6)], dtype=torch.float, layout=torch.jagged, device="cuda"
+        [torch.arange(12).reshape(2, 6), torch.arange(18).reshape(3, 6)], dtype=torch.float, layout=torch.jagged, device=DEVICE
     )
-    model = Dense(input_size=6, output_size=6, hidden_layers=[12, 8])
-    model.cuda()
+    model = Dense(input_size=6, output_size=6, hidden_layers=[12, 8]).to(DEVICE)
     model = torch.compile(model)
 
     output = model(nt)
