@@ -7,6 +7,7 @@ from functools import partial
 
 import torch
 from torch import Tensor, nn
+import math
 
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
@@ -29,7 +30,10 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
-        shift: bool = True,
+        align_phi: bool = False,
+        align_phi_contiguos: bool = False,
+        combine_and: bool = False,
+        combine_or: bool = False,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -62,11 +66,14 @@ class MaskFormerDecoder(nn.Module):
         self.window_size = window_size
         self.window_wrap = window_wrap
         self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
-        self.shift = shift
+        self.align_phi = align_phi
+        self.align_phi_contiguos = align_phi_contiguos
+        self.combine_and = combine_and
+        self.combine_or = combine_or
 
         if self.local_strided_attn:
             assert self.attn_type == "torch", f"Invalid attention type when local_strided_attn is True: {self.attn_type}, must be 'torch'"
-        assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
+        # assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -91,7 +98,7 @@ class MaskFormerDecoder(nn.Module):
         attn_mask = None
         if self.local_strided_attn:
             assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
-            attn_mask = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
+            decoder_mask = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -139,6 +146,13 @@ class MaskFormerDecoder(nn.Module):
                 attn_mask = torch.full((batch_size, self.num_queries, num_constituents), False, device=x["key_embed"].device)
                 for input_name, task_attn_mask in attn_masks.items():
                     attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
+            if self.local_strided_attn:
+                if self.combine_and:
+                    attn_mask = attn_mask & decoder_mask
+                elif self.combine_or:
+                    attn_mask = attn_mask | decoder_mask
+                else:
+                    attn_mask = decoder_mask
 
             if attn_mask is not None:
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
@@ -162,14 +176,157 @@ class MaskFormerDecoder(nn.Module):
         x["key_embed"] = x["key_embed"] + x["key_posenc"]
         return x["query_embed"], x["key_embed"]
 
+    def align_queries_to_keys(self, key_phi, Q):
+        device = key_phi.device
+        K = key_phi.numel()
+
+        # --- 1) Quantile bin edges so each bin has ~K/Q keys
+        qs = torch.linspace(0.0, 1.0, Q + 1, device=device)
+        edges = torch.quantile(key_phi.float(), qs.clamp(0, 1))
+
+        # Handle potential duplicate edges (flat regions)
+        eps = torch.finfo(key_phi.dtype).eps
+        edges = torch.maximum(edges, edges.clone().roll(1))
+        edges[0] -= eps
+        edges[-1] += eps
+
+        # --- 2) Assign each key to a bin
+        bin_ids = torch.bucketize(key_phi, edges) - 1    # in [0, Q-1]
+        bin_ids.clamp_(0, Q - 1)
+
+        # --- 3) Per-bin query φ as **median** of member keys (fallback = bin midpoint if empty)
+        query_phi = torch.empty(Q, device=device, dtype=key_phi.dtype)
+        for b in range(Q):
+            mask = (bin_ids == b)
+            if mask.any():
+                query_phi[b] = key_phi[mask].median() + torch.pi
+            else:
+                # empty bin: place at the middle of its edges
+                query_phi[b] = 0.5 * (edges[b] + edges[b + 1]) + torch.pi
+
+        return query_phi
+
     def generate_positional_encodings(self, x: dict):
-        if self.shift:
-            x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
+        if self.align_phi:
+            key_phi = x["key_phi"]
+            x["query_phi"] = self.align_queries_to_keys(key_phi, self.num_queries)
+        # elif self.align_phi_contiguos:
+        #     key_phi = x["key_phi"]
+        #     x["query_phi"] = hybrid_queries_group_then_fill(key_phi, self.num_queries, target_per_group=3, tau=None, return_assign=False)
         else:
-            x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - 0.5)
+            x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
         query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
+
+
+# def ang_diff(a, b):
+#     # signed shortest diff a-b in (-pi, pi]
+#     return torch.atan2(torch.sin(a-b), torch.cos(a-b))
+
+# def circ_mean(phi):
+#     # do trig in fp32 (autocast-safe), cast back
+#     x = phi.to(torch.float32)
+#     s = torch.sin(x).mean()
+#     c = torch.cos(x).mean()
+#     return torch.atan2(s, c).to(phi.dtype)
+
+# @torch.no_grad()
+# def hybrid_queries_group_then_fill(phi, Q, target_per_group=3, tau=None, return_assign=False):
+#     """
+#     1) Make contiguous groups of keys on the circle (sort -> cut at largest gap -> sweep).
+#     2) If number of data-driven groups G < Q, fill remaining (Q-G) queries with
+#        evenly spaced angles across [0, 2π).
+#     3) Return query phis sorted by increasing angle. (Keys remain assigned only to the data-driven groups.)
+
+#     Args:
+#       phi: 1-D tensor of key angles (radians), device/dtype preserved for outputs
+#       Q:   total number of queries desired
+#       target_per_group: approx size for each data-driven group
+#       tau: optional max within-group spread (radians); if set, groups won’t exceed this much spread (greedy)
+#       return_assign: if True, also returns per-key group ids for data-driven groups (synthetic fill slots get id = -1)
+
+#     Returns:
+#       centers: (Q,) tensor of query angles in increasing order
+#       assign (optional): (K,) long tensor, mapping each key -> query id in [0..Q-1] (or -1 for synthetic slots)
+#     """
+#     device, dtype = phi.device, phi.dtype
+#     K = int(phi.numel())
+#     if K == 0:
+#         centers = torch.linspace(0, 2*math.pi, steps=Q, device=device, dtype=dtype, endpoint=False)
+#         return (centers, torch.empty(0, device=device, dtype=torch.long)) if return_assign else centers
+
+#     Q = int(Q)
+#     assert Q >= 1
+
+#     # ---- A) Sort and cut after largest gap to linearize the circle
+    # phi_sorted, idx_sorted = torch.sort(phi)
+    # gaps = torch.cat([phi_sorted[1:] - phi_sorted[:-1],
+    #                   phi_sorted[:1] + 2*torch.pi - phi_sorted[-1:]], dim=0)
+    # cut = gaps.argmax().item()
+    # phi_lin = torch.roll(phi_sorted, shifts=-(cut + 1), dims=0)
+    # idx_lin = torch.roll(idx_sorted,  shifts=-(cut + 1), dims=0)
+
+    # # ---- B) Sweep to make contiguous groups near target_per_group, respecting tau if given
+    # groups = []
+    # start = 0
+    # while start < K:
+    #     # start with ~target size
+    #     end = min(K, start + int(target_per_group))
+    #     if end <= start:
+    #         end = start + 1
+    #     # greedily extend while within spread tolerance (if tau set)
+    #     if tau is not None and tau > 0:
+    #         while end < K and torch.abs(ang_diff(phi_lin[end-1], phi_lin[start])) <= tau:
+    #             end += 1
+    #     groups.append((start, end))
+    #     start = end
+
+    # # centers for data-driven groups
+    # centers_data = []
+    # for (a, b) in groups:
+    #     seg = phi_lin[a:b]
+    #     centers_data.append(circ_mean(seg))
+    # centers_data = torch.stack(centers_data, dim=0) if groups else torch.empty(0, device=device, dtype=dtype)
+
+    # # ---- C) If we have fewer groups than Q, fill remaining uniformly across [0, 2π)
+    # G = int(centers_data.numel())
+    # if G >= Q:
+    #     centers_all = centers_data[:Q]  # if you ever want to trim
+    #     fill_ids = torch.empty(0, dtype=torch.long, device=device)
+    # else:
+    #     M = Q - G
+    #     # Evenly spaced fill grid; choose a phase that is as far from data-centers as possible
+    #     grid = torch.linspace(0, 2*math.pi, steps=M, device=device, dtype=dtype, endpoint=False)
+
+    #     if G == 0:
+    #         fill = grid  # no data centers; just uniform
+    #     else:
+    #         # choose offset among M candidates to maximize minimum distance to data centers
+    #         # offsets: 0, Δ, 2Δ, ..., (M-1)Δ where Δ=2π/M
+    #         delta = 2*math.pi / M
+    #         offsets = torch.arange(M, device=device, dtype=dtype) * delta
+    #         best_idx = 0
+    #         best_score = -1.0
+    #         for i in range(M):
+    #             cand = (grid + offsets[i]).remainder(2*math.pi)
+    #             # distance to nearest data center (on circle)
+    #             d = torch.min(torch.abs(ang_diff(cand[:, None], centers_data[None, :])), dim=1).values
+    #             score = d.min()  # maximize worst-case separation
+    #             if score > best_score:
+    #                 best_score = score
+    #                 best_idx = i
+    #         fill = (grid + offsets[best_idx]).remainder(2*math.pi)
+
+    #     centers_all = torch.cat([centers_data.remainder(2*math.pi), fill], dim=0)
+
+    # # ---- D) Sort centers by increasing angle in [0, 2π), then map back to (-π, π] if you prefer
+    # two_pi = 2 * math.pi
+    # c_norm = torch.remainder(centers_all, two_pi)
+    # perm = torch.argsort(c_norm)
+    # centers_sorted = centers_all[perm]
+
+    # return centers_sorted
 
 
 class MaskFormerDecoderLayer(nn.Module):
