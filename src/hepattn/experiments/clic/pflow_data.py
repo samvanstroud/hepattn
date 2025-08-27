@@ -421,10 +421,10 @@ class CLICDataset(Dataset):
             val = do_padding(val, self.num_objects)
             particle_data[key] = val
 
-        has_track = torch.zeros(self.num_objects, dtype=bool)
+        has_track = torch.zeros(self.num_objects, dtype=torch.bool)
         has_track[:n_particles] = ~trackless_particle_mask
 
-        node_q_mask = torch.zeros(self.max_nodes, dtype=bool)
+        node_q_mask = torch.zeros(self.max_nodes, dtype=torch.bool)
         node_q_mask[:n_nodes] = True
 
         incidence_matrix = np.zeros((self.num_objects, n_nodes))

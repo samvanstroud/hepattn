@@ -122,7 +122,7 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       sorter:
-        class_path: hepattn.utils.sorting.Sorter
+        class_path: hepattn.utils.sorter.Sorter
         init_args:
           input_sort_field: phi
       dim: &dim 256
@@ -173,26 +173,9 @@ model:
             hybrid_norm: true
           num_queries: *num_objects
           mask_attention: true
-          preserve_posenc: true
-          query_posenc:
-              class_path: hepattn.models.PositionEncoder
-              init_args:
-                input_name: query
-                fields:
-                  - phi
-                dim: *dim
-                alpha: 2
-                base: 50000
-          key_posenc:
-              class_path: hepattn.models.PositionEncoder
-              init_args:
-                input_name: key
-                fields:
-                  - phi
-                dim: *dim
-                alpha: 2
-                base: 50000
-
+          posenc:
+            alpha: 2
+            base: 50000
 
       encoder:
         class_path: hepattn.models.Encoder

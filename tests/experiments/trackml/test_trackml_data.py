@@ -66,7 +66,7 @@ class TestTrackMLEvent:
         input_dir = Path("data/trackml/raw/")
         output_dir = Path("data/trackml/prepped")
         output_dir.mkdir(exist_ok=True, parents=True)
-        preprocess(input_dir, output_dir, False)
+        preprocess(str(input_dir), str(output_dir), False)
 
     def test_trackml_event_masks(self, trackml_event):
         _inputs, targets = trackml_event

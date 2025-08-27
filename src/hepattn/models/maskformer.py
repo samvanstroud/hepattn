@@ -5,6 +5,7 @@ from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
+from hepattn.utils.model_utils import unmerge_inputs
 
 
 class MaskFormer(nn.Module):
@@ -41,16 +42,11 @@ class MaskFormer(nn.Module):
         self.input_nets = input_nets
         self.encoder = encoder
         self.decoder = decoder
-
-        # Set tasks as a member of the decoder and extract num_queries
         self.decoder.tasks = tasks
-        self.num_queries = decoder.num_queries
-
         self.pooling = pooling
         self.tasks = tasks
         self.target_object = target_object
         self.matcher = matcher
-        self.query_initial = nn.Parameter(torch.randn(self.num_queries, dim))
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
@@ -60,18 +56,15 @@ class MaskFormer(nn.Module):
 
         assert "key" not in self.input_names, "'key' input name is reserved."
         assert "query" not in self.input_names, "'query' input name is reserved."
+        assert not any("_" in name for name in self.input_names), "Input names cannot contain underscores."
 
     @property
     def input_names(self) -> list[str]:
         return [input_net.input_name for input_net in self.input_nets]
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
+        batch_size = inputs[self.input_names[0] + "_valid"].shape[0]
         x = {"inputs": inputs}
-
-        # Store input positional encodings if we need to preserve them for the decoder
-        if self.decoder.preserve_posenc:
-            assert all(input_net.posenc is not None for input_net in self.input_nets)
-            x["key_posenc"] = torch.concatenate([input_net.posenc(inputs) for input_net in self.input_nets], dim=-2)
 
         # Embed the input constituents
         for input_net in self.input_nets:
@@ -83,16 +76,14 @@ class MaskFormer(nn.Module):
             # objects after we have merged them all together
             # TODO: Clean this up
             device = inputs[input_name + "_valid"].device
-            x[f"key_is_{input_name}"] = torch.cat(
-                [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device, dtype=torch.bool) for i in self.input_names], dim=-1
-            )
+            mask = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1)
+            x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
 
         # Merge the input constituents and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in self.input_names], dim=-1)
 
         # if all key_valid are true, then we can just set it to None
-        batch_size = x["key_valid"].shape[0]
         if batch_size == 1 and x["key_valid"].all():
             x["key_valid"] = None
 
@@ -108,23 +99,16 @@ class MaskFormer(nn.Module):
                 [inputs[input_name + "_" + self.sorter.input_sort_field] for input_name in self.input_names], dim=-1
             )
             for input_name in self.input_names:
-                x[input_name + "_" + self.sorter.input_sort_field] = inputs[input_name + "_" + self.sorter.input_sort_field]
+                field = f"{input_name}_{self.sorter.input_sort_field}"
+                x[field] = inputs[field]
             x = self.sorter.sort_inputs(x)
 
         # Pass merged input constituents through the encoder
-        if self.encoder is not None:
-            # Note that a padded feature is a feature that is not valid!
-            x_sort_value = x.get(f"key_{self.input_sort_field}") if self.sorter is None else None
-            x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
+        x_sort_value = x.get(f"key_{self.input_sort_field}") if self.sorter is None else None
+        x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
 
         # Unmerge the updated features back into the separate input types
-        # These are just views into the tensor that hold all the merged hits
-        for input_name in self.input_names:
-            x[input_name + "_embed"] = x["key_embed"][..., x[f"key_is_{input_name}"], :]
-
-        # Generate the queries that represent objects
-        x["query_embed"] = self.query_initial.expand(batch_size, -1, -1)
-        x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
+        x = unmerge_inputs(x, self.input_names)
 
         # Pass through decoder layers
         x, outputs = self.decoder(x, self.input_names)

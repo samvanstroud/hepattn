@@ -17,7 +17,7 @@ def create_block_mask_cached(score_mod, B, H, M, N, device="cuda"):  # noqa: N80
 
 
 # Compile the flex_attention function
-flex_attention = torch.compile(flex_attention, dynamic=False)
+flex_attention = torch.compile(flex_attention, dynamic=False)  # ty: ignore [invalid-assignment]
 torch.manual_seed(0)
 
 
@@ -34,8 +34,8 @@ def prepare_qkv_values(tensor):
 
 
 def build_seq_idx(tensor: torch.Tensor):
-    offsets = tensor.offsets()
-    total_length = tensor.offsets()[-1].item()
+    offsets = tensor.offsets()  # ty: ignore[unresolved-attribute]
+    total_length = tensor.offsets()[-1].item()  # ty: ignore[unresolved-attribute]
     # Create a range tensor from 0 to total_length
     range_tensor = torch.arange(total_length, device="cuda", dtype=torch.int32)
 
@@ -74,7 +74,7 @@ def test_flex_nested():
     value = torch.nested.nested_tensor(ragged_tensors, layout=torch.jagged, requires_grad=True)
 
     # Build the seq_idx lookup table for
-    offsets = query.offsets()
+    offsets = query.offsets()  # ty: ignore[unresolved-attribute]
     seq_idx = build_seq_idx(query)
 
     causal_score_mod_njt = create_njt_wrapper(causal_mask, offsets, seq_idx)
@@ -107,7 +107,7 @@ def test_flex_nested():
     sdpa_outs += [query.grad, key.grad, value.grad]
 
     flex_outs.append(out_flex)
-    out_flex.backward(grad_out._values.unsqueeze(0))  # noqa: SLF001
+    out_flex.backward(grad_out._values.unsqueeze(0))  # ty: ignore[unresolved-attribute,possibly-unbound-attribute]  # noqa: SLF001
     flex_outs += [query_values.grad, key_values.grad, value_values.grad]
 
     for flex, sdpa in zip(flex_outs, sdpa_outs, strict=False):

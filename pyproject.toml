@@ -36,10 +36,12 @@ dependencies = [
     "onnx>=1.18.0",
     "onnxruntime>=1.22.0",
     "einops>=0.8.1,<0.9",
+    "atlas-ftag-tools",
+    "ty>=0.0.1a19,<0.0.1a20",
 ]
 
 [dependency-groups]
-clic = ["pathos", "vector", "fastjet", "atlas-ftag-tools", "energyflow"] # has problems on isambard
+clic = ["pathos", "vector", "fastjet", "energyflow"] # has problems on isambard
 tide = ["numba>=0.61.2"] # has problems on isambard
 fa2 = ["flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiTRUE-cp312-cp312-linux_x86_64.whl",]
 
@@ -108,6 +110,10 @@ pydocstyle.convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = ["E501"]
+
+[tool.ty.rules]
+missing-argument = "ignore" # for now as kwarg unpacking is not supported
+
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:.*distutils Version classes are deprecated. Use packaging.version instead.*:DeprecationWarning"]

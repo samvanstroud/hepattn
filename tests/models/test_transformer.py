@@ -5,6 +5,10 @@ from torch import Tensor, nn
 from hepattn.models import DropPath, Encoder, EncoderLayer, LayerScale, Residual
 from hepattn.models.encoder import change_attn_backends
 
+HAS_GPU = torch.cuda.is_available()
+ATTN_TYPES_GPU = {"flex", "flash", "flash-varlen"}
+DEVICE = "cuda" if HAS_GPU else "cpu"
+
 
 # Fixtures for common inputs
 @pytest.fixture
@@ -149,11 +153,12 @@ def test_register_tokens_with_varlen():
         ("torch", "flash-varlen"),
     ],
 )
-@pytest.mark.gpu
 def test_encoder_change_backends(attn_type, attn_type_new):
-    model = Encoder(num_layers=3, dim=128, attn_type=attn_type).cuda().half()
-    x_a = x_b = torch.randn(8, 128, 128, device="cuda").half()
-    kv_mask = torch.full((8, x_a.shape[-2]), True, dtype=torch.bool, device="cuda")
+    if not HAS_GPU and (attn_type in ATTN_TYPES_GPU or attn_type_new in ATTN_TYPES_GPU):
+        pytest.skip("Skipping GPU-specific test on CPU-only environment")
+    model = Encoder(num_layers=3, dim=128, attn_type=attn_type).to(DEVICE).half()
+    x_a = x_b = torch.randn(8, 128, 128, device=DEVICE).half()
+    kv_mask = torch.full((8, x_a.shape[-2]), True, dtype=torch.bool, device=DEVICE)
 
     with torch.no_grad():
         out = model(x_a, kv_mask=kv_mask if attn_type == "flash-varlen" else None)

@@ -21,5 +21,24 @@ jobs:
       - name: Run ruff format
         run: ruff format --check
 
-      #- name: Run pyright
-      #  run: uv run pyright
+  type_check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pixi
+        uses: prefix-dev/setup-pixi@v0.8.14
+        with:
+          pixi-version: v0.50.2
+          cache: true
+          locked: true
+          environments: ci
+
+      - name: Run ty
+        run: |
+          pixi run -e ci ty check src/hepattn/models
+          pixi run -e ci ty check src/hepattn/utils
+          pixi run -e ci ty check src/hepattn/flex
+          pixi run -e ci ty check tests/
+

@@ -64,7 +64,7 @@ class HitFilter(nn.Module):
             preds["final"][task.name] = task.predict(outputs["final"][task.name])
         return preds
 
-    def loss(self, outputs: dict, targets: dict) -> dict:
+    def loss(self, outputs: dict, targets: dict) -> tuple[dict, dict]:
         losses = {"final": {}}
         for task in self.tasks:
             losses["final"][task.name] = task.loss(outputs["final"][task.name], targets)

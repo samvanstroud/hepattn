@@ -5,7 +5,7 @@ from multiprocessing.pool import ThreadPool as Pool
 import numpy as np
 import scipy
 import torch
-from torch import nn
+from torch import Tensor, nn
 
 from hepattn.utils.import_utils import check_import_safe
 
@@ -42,7 +42,7 @@ else:
     )
 
 
-def match_individual(solver_fn, cost: np.ndarray, default_idx: np.ndarray) -> np.ndarray:
+def match_individual(solver_fn, cost: np.ndarray, default_idx: Tensor) -> np.ndarray:
     pred_idx = solver_fn(cost)
     if solver_fn == SOLVERS["scipy"]:
         pred_idx = np.concatenate([pred_idx, default_idx[~np.isin(default_idx, pred_idx)]])
@@ -104,7 +104,7 @@ class Matcher(nn.Module):
 
     def compute_matching(self, costs, object_valid_mask=None):
         if object_valid_mask is None:
-            object_valid_mask = torch.ones((costs.shape[0], costs.shape[1]), dtype=bool)
+            object_valid_mask = torch.ones((costs.shape[0], costs.shape[1]), dtype=torch.bool)
 
         object_valid_mask = object_valid_mask.detach().bool()
         batch_obj_lengths = torch.sum(object_valid_mask, dim=1).unsqueeze(-1)

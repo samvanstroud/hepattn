@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import pytest
 import torch
 from torch import nn
@@ -5,7 +7,7 @@ from torch import nn
 from hepattn.models import Encoder
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.models.maskformer import MaskFormer
-from hepattn.utils.sorting import Sorter
+from hepattn.utils.sorter import Sorter
 
 
 class MockInputNet(nn.Module):
@@ -90,14 +92,14 @@ class TestMaskFormerSorting:
             "input1_phi": torch.tensor([
                 [3.0, 1.0, 4.0, 2.0, 5.0, 0.0, 6.0, 7.0, 8.0, 9.0],
                 [3.0, 1.0, 4.0, 2.0, 5.0, 0.0, 6.0, 7.0, 8.0, 9.0],
-            ]),  # Specific unsorted values
+            ]),
             "input2_x": torch.randn(2, 15),
             "input2_y": torch.randn(2, 15),
             "input2_valid": torch.ones(2, 15, dtype=torch.bool),
             "input2_phi": torch.tensor([
                 [15.0, 11.0, 14.0, 12.0, 13.0, 10.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0],
                 [15.0, 11.0, 14.0, 12.0, 13.0, 10.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0],
-            ]),  # Specific unsorted values
+            ]),
         }
 
     def test_sorter_sort_indices_persistence(self, input_nets, encoder, decoder, tasks, sample_inputs):
@@ -168,16 +170,25 @@ class TestMaskFormerSorting:
             ),
         )
 
+        inputs = sample_inputs
+
         # Test target sorting with multiple target fields
         # Create targets with known unsorted values to make sorting obvious
-        original_input1_phi = sample_inputs["input1_phi"].clone()
-        original_input2_phi = sample_inputs["input2_phi"].clone()
+        original_input1_phi = inputs["input1_phi"].clone()
+        original_input2_phi = inputs["input2_phi"].clone()
+
+        # Get the sort indices that were used for the input phi values
+        input1_sort_idx = torch.argsort(original_input1_phi, dim=-1)
+        input2_sort_idx = torch.argsort(original_input2_phi, dim=-1)
 
         # Run forward pass
-        outputs = model(sample_inputs)
+        outputs = model(inputs)
 
+        # check that sort variable is correctly added to outputs for later sorting of targets
         assert outputs["final"]["phi"]["input1_phi"] is not None
         assert outputs["final"]["phi"]["input2_phi"] is not None
+        assert torch.allclose(inputs["input1_phi"], outputs["final"]["phi"]["input1_phi"])
+        assert torch.allclose(inputs["input2_phi"], outputs["final"]["phi"]["input2_phi"])
 
         # Create random boolean tensors for target masks
         original_particle_input1_valid = torch.randint(0, 2, (2, 5, 10), dtype=torch.bool)
@@ -192,18 +203,17 @@ class TestMaskFormerSorting:
         }
 
         # Run loss computation which should sort targets
-        _, sorted_targets = model.loss(outputs, targets)
+        _, sorted_targets = model.loss(outputs, deepcopy(targets))
 
-        # Get the sort indices that were used for the input phi values
-        input1_sort_idx = torch.argsort(original_input1_phi)
-        input2_sort_idx = torch.argsort(original_input2_phi)
+        # check that particle valid is unchanged
+        assert torch.allclose(sorted_targets["particle_valid"], targets["particle_valid"])
 
         # Check that the targets are sorted by verifying they're different from the original
         # (since we're using unsorted values, sorting should change the order)
         assert not torch.allclose(sorted_targets["particle_input1_valid"], original_particle_input1_valid)
         assert not torch.allclose(sorted_targets["particle_input2_valid"], original_particle_input2_valid)
 
-        # Verify that the valid tensors are reordered according to the phi sorting
+        # Verify that the mask valid tensors are reordered according to the phi sorting
         # The valid tensors should be reordered using the same indices that sort the phi values
         expected_input1_valid = torch.gather(
             original_particle_input1_valid, 2, input1_sort_idx.unsqueeze(1).expand_as(original_particle_input1_valid)
@@ -215,3 +225,11 @@ class TestMaskFormerSorting:
         # Verify that the sorted targets are actually sorted
         assert torch.allclose(sorted_targets["particle_input1_valid"], expected_input1_valid)
         assert torch.allclose(sorted_targets["particle_input2_valid"], expected_input2_valid)
+
+        # also for the target variables
+        assert "input1_target" in sorted_targets
+        assert "input2_target" in sorted_targets
+        assert sorted_targets["input1_target"].shape == (2, 10)
+        assert sorted_targets["input2_target"].shape == (2, 15)
+        assert torch.allclose(sorted_targets["input1_target"], torch.gather(targets["input1_target"], -1, input1_sort_idx))
+        assert torch.allclose(sorted_targets["input2_target"], torch.gather(targets["input2_target"], -1, input2_sort_idx))

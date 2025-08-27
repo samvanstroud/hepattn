@@ -1,5 +1,5 @@
 import torch
-from torch import BoolTensor, Tensor, nn
+from torch import Tensor, nn
 
 from hepattn.models.dense import Dense
 
@@ -28,7 +28,7 @@ class Pooling(nn.Module):
         self.weight_net = Dense(dim, 1)
         self.pool_net = pool_net
 
-    def forward(self, x: Tensor, x_valid: BoolTensor) -> Tensor:
+    def forward(self, x: Tensor, x_valid: Tensor) -> Tensor:
         if self.pool_net is not None:
             x = self.pool_net(x)  # (..., N, E) -> (..., N, E)
         # Calculate a weight that will be used to pool the new embeddings (..., N, E) -> (..., N, 1)

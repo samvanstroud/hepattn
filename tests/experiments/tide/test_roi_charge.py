@@ -31,7 +31,7 @@ class TestROIDataModule:
         input_dir = Path("data/tide/raw/")
         output_dir = Path("data/tide/prepped/")
         output_dir.mkdir(exist_ok=True, parents=True)
-        preprocess_files(input_dir, output_dir, False)
+        preprocess_files(str(input_dir), str(output_dir), False)
 
     def test_roi_data(self, roi_datamodule):
         dataloader = roi_datamodule.test_dataloader()
