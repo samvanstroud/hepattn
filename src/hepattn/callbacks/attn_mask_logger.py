@@ -10,13 +10,11 @@ class AttnMaskLogger(Callback):
         log_train: bool = True,
         log_val: bool = True,
         log_stats: bool = False,
-        use_optimizer_steps: bool = False,  # if False, use batches (per-event with bs=1)
     ):
         super().__init__()
         self.log_train = log_train
         self.log_val = log_val
         self.log_stats = log_stats
-        self.use_optimizer_steps = use_optimizer_steps
 
     def _log_attention_mask(self, pl_module, mask, step, layer, prefix="local_ca_mask"):
         """Helper method to create and log attention mask figures."""
@@ -91,14 +89,12 @@ class AttnMaskLogger(Callback):
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.log_val:
             return
-        step = trainer.global_step if self.use_optimizer_steps else batch_idx
-        self._process_attention_masks_from_outputs(pl_module, outputs, step, is_validation=True)
+        self._process_attention_masks_from_outputs(pl_module, outputs, batch_idx, is_validation=True)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if not self.log_train:
             return
         # only process if this batch is selected by the sampler
-        step = trainer.global_step if self.use_optimizer_steps else batch_idx
-        if step % 1000 != 0:
+        if batch_idx % 1000 != 0:
             return
-        self._process_attention_masks_from_outputs(pl_module, outputs, step, is_validation=False)
+        self._process_attention_masks_from_outputs(pl_module, outputs, batch_idx, is_validation=False)
