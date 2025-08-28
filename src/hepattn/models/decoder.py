@@ -116,7 +116,9 @@ class MaskFormerDecoder(nn.Module):
                 if self.window_wrap:
                     # For wrapping, we need the sequence length (kv_len) as a tensor
                     mask_mod = sliding_window_mask_strided_wrapped(
-                        self.window_size, stride=torch.tensor([1], device=self.device), kv_len=torch.tensor([1], device=self.device)
+                        self.window_size,
+                        stride=torch.tensor([1], device=self.device),
+                        kv_len=torch.tensor([1], device=self.device),  # TODO need to change stride back once I check this is working
                     )
                 else:
                     mask_mod = sliding_window_mask_strided(self.window_size, stride=stride)
