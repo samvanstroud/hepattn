@@ -121,11 +121,11 @@ class MaskFormerDecoder(nn.Module):
 
                 # Collect attention masks from different tasks
                 task_attn_masks = task.attn_mask(task_outputs)
-                for input_name, attn_mask in task_attn_masks.items():
+                for input_name, task_attn_mask in task_attn_masks.items():
                     if input_name in attn_masks:
-                        attn_masks[input_name] |= attn_mask
+                        attn_masks[input_name] |= task_attn_mask
                     else:
-                        attn_masks[input_name] = attn_mask
+                        attn_masks[input_name] = task_attn_mask
 
                 # Collect query masks
                 if self.use_query_masks:
