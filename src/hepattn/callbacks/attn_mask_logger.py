@@ -254,7 +254,7 @@ class AttnMaskLogger(Callback):
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.log_val:
             return
-        self._process_attention_masks_from_outputs(pl_module, outputs, trainer.global_step, is_validation=True)
+        self._process_attention_masks_from_outputs(pl_module, outputs, batch_idx, is_validation=True)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if not self.log_train:
