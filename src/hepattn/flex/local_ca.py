@@ -12,7 +12,6 @@ def sliding_window_mask_strided(
 
     def mask_mod(b, h, q_idx, kv_idx):
         dev = q_idx.device
-
         # Create tensors explicitly to avoid reuse issues
         half_val = window_size // 2
         half = torch.tensor(half_val, device=dev)
@@ -21,9 +20,7 @@ def sliding_window_mask_strided(
         if torch.is_floating_point(q_center):
             q_center = torch.round(q_center)
 
-        diagonal = (kv_idx - q_center).abs() <= half
-        wrap = (kv_idx - q_center).abs() <= half
-        return diagonal | wrap
+        return (kv_idx - q_center).abs() <= half
 
     return mask_mod
 

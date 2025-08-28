@@ -7,7 +7,9 @@ from functools import partial
 
 import torch
 from torch import Tensor, nn
+from torch.nn.attention.flex_attention import create_block_mask
 
+from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
@@ -15,6 +17,8 @@ from hepattn.models.posenc import pos_enc_symmetric
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.local_ca import auto_local_ca_mask
 from hepattn.utils.model_utils import unmerge_inputs
+
+create_block_mask = torch.compile(create_block_mask, dynamic=True)
 
 
 class MaskFormerDecoder(nn.Module):
@@ -29,6 +33,7 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
+        attn_type: str = "torch",
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -61,6 +66,7 @@ class MaskFormerDecoder(nn.Module):
         self.window_size = window_size
         self.window_wrap = window_wrap
         self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
+        self.attn_type = attn_type
 
         if self.local_strided_attn:
             assert self.attn_type == "torch", f"Invalid attention type when local_strided_attn is True: {self.attn_type}, must be 'torch'"
@@ -88,8 +94,41 @@ class MaskFormerDecoder(nn.Module):
 
         attn_mask = None
         if self.local_strided_attn:
-            assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
-            attn_mask = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
+            if self.attn_type == "torch":
+                assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
+                attn_mask = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
+            elif self.attn_type == "flex":
+                # Calculate stride based on the ratio of key length to query length
+                q_len = x["query_embed"].shape[-2]
+                kv_len = x["key_embed"].shape[-2]
+                stride = kv_len / q_len
+                # Make stride a tensor on the right device (no .item())
+                if torch.is_tensor(stride):
+                    stride = stride.to(device=self.device)
+                else:
+                    # pick a float dtype already in use if any; else default dtype
+                    # Fix for TorchDynamo: avoid generator expression in next()
+                    base_float = torch.get_default_dtype()
+                    if torch.is_floating_point(x["query_embed"]):
+                        base_float = x["query_embed"].dtype
+                    stride = torch.tensor(stride, device=self.device, dtype=base_float)
+                # Create the mask_mod function based on whether wrapping is enabled
+                if self.window_wrap:
+                    # For wrapping, we need the sequence length (kv_len) as a tensor
+                    mask_mod = sliding_window_mask_strided_wrapped(
+                        self.window_size, stride=torch.tensor([1], device=self.device), kv_len=torch.tensor([1], device=self.device)
+                    )
+                else:
+                    mask_mod = sliding_window_mask_strided(self.window_size, stride=stride)
+                # Create the block mask
+                attn_mask = create_block_mask(
+                    mask_mod,
+                    B=None,
+                    H=None,
+                    Q_LEN=q_len,
+                    KV_LEN=kv_len,
+                    device=self.device,
+                )
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -121,11 +160,11 @@ class MaskFormerDecoder(nn.Module):
 
                 # Collect attention masks from different tasks
                 task_attn_masks = task.attn_mask(task_outputs)
-                for input_name, attn_mask in task_attn_masks.items():
+                for input_name, task_attn_mask in task_attn_masks.items():
                     if input_name in attn_masks:
-                        attn_masks[input_name] |= attn_mask
+                        attn_masks[input_name] |= task_attn_mask
                     else:
-                        attn_masks[input_name] = attn_mask
+                        attn_masks[input_name] = task_attn_mask
 
                 # Collect query masks
                 if self.use_query_masks:
