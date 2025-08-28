@@ -49,23 +49,26 @@ class AttnMaskLogger(Callback):
 
     def _log_attention_stats(self, pl_module, mask, step, layer, prefix="val"):
         """Log basic attention mask statistics."""
-        # mask: shape [num_queries, num_constituents], dtype=bool or int
-        hits_per_query = mask.sum(dim=1).cpu().numpy()  # shape: [num_queries]
-        avg_hits_per_query = hits_per_query.mean()
+        try:
+            # mask: shape [num_queries, num_constituents], dtype=bool or int
+            hits_per_query = mask.sum(dim=1).cpu().numpy()  # shape: [num_queries]
+            avg_hits_per_query = hits_per_query.mean()
 
-        logger = getattr(pl_module, "logger", None)
-        if logger is not None and hasattr(logger, "experiment"):
-            logger.experiment.log_metrics(
-                {
-                    f"{prefix}/attn_mask_avg_hits_per_query_layer{layer}": float(avg_hits_per_query),
-                    f"{prefix}/attn_mask_max_hits_per_query_layer{layer}": float(np.max(hits_per_query)),
-                    f"{prefix}/attn_mask_min_hits_per_query_layer{layer}": float(np.min(hits_per_query)),
-                    f"{prefix}/attn_mask_std_hits_per_query_layer{layer}": float(np.std(hits_per_query)),
-                },
-                step=step,
-            )
-        else:
-            print(f"[AttnMaskLogger] Step {step} Layer {layer} - Avg hits per query: {avg_hits_per_query}")
+            logger = getattr(pl_module, "logger", None)
+            if logger is not None and hasattr(logger, "experiment"):
+                logger.experiment.log_metrics(
+                    {
+                        f"{prefix}/attn_mask_avg_hits_per_query_layer{layer}": float(avg_hits_per_query),
+                        f"{prefix}/attn_mask_max_hits_per_query_layer{layer}": float(np.max(hits_per_query)),
+                        f"{prefix}/attn_mask_min_hits_per_query_layer{layer}": float(np.min(hits_per_query)),
+                        f"{prefix}/attn_mask_std_hits_per_query_layer{layer}": float(np.std(hits_per_query)),
+                    },
+                    step=step,
+                )
+            else:
+                print(f"[AttnMaskLogger] Step {step} Layer {layer} - Avg hits per query: {avg_hits_per_query}")
+        except (ValueError, AttributeError, TypeError) as e:
+            print(f"[AttnMaskLogger] Error logging attention stats: {e}")
 
     def _calculate_multi_lca_comparison_metrics(self, ma_mask):
         """Calculate LCA comparison metrics for multiple window sizes using dummy embeddings."""
