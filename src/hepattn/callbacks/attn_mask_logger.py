@@ -1,7 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from lightning.pytorch.callbacks import Callback
 from matplotlib.colors import ListedColormap
+
+from hepattn.utils.local_ca import auto_local_ca_mask
 
 
 class AttnMaskLogger(Callback):
@@ -10,11 +13,17 @@ class AttnMaskLogger(Callback):
         log_train: bool = True,
         log_val: bool = True,
         log_stats: bool = False,
+        log_every_n_batches: int = 1000,
+        lca_window_sizes: list[int] | None = None,
+        log_diagonal_metrics: bool = True,
     ):
         super().__init__()
         self.log_train = log_train
         self.log_val = log_val
         self.log_stats = log_stats
+        self.log_every_n_batches = log_every_n_batches
+        self.lca_window_sizes = lca_window_sizes if lca_window_sizes is not None else [32, 64, 128, 512, 1024, 2048]
+        self.log_diagonal_metrics = log_diagonal_metrics
 
     def _log_attention_mask(self, pl_module, mask, step, layer, prefix="local_ca_mask"):
         """Helper method to create and log attention mask figures."""
@@ -40,26 +49,151 @@ class AttnMaskLogger(Callback):
 
     def _log_attention_stats(self, pl_module, mask, step, layer, prefix="val"):
         """Log basic attention mask statistics."""
-        try:
-            # mask: shape [num_queries, num_constituents], dtype=bool or int
-            hits_per_query = mask.sum(dim=1).cpu().numpy()  # shape: [num_queries]
-            avg_hits_per_query = hits_per_query.mean()
+        # mask: shape [num_queries, num_constituents], dtype=bool or int
+        hits_per_query = mask.sum(dim=1).cpu().numpy()  # shape: [num_queries]
+        avg_hits_per_query = hits_per_query.mean()
 
-            logger = getattr(pl_module, "logger", None)
-            if logger is not None and hasattr(logger, "experiment"):
-                logger.experiment.log_metrics(
-                    {
-                        f"{prefix}/attn_mask_avg_hits_per_query_layer{layer}": float(avg_hits_per_query),
-                        f"{prefix}/attn_mask_max_hits_per_query_layer{layer}": float(np.max(hits_per_query)),
-                        f"{prefix}/attn_mask_min_hits_per_query_layer{layer}": float(np.min(hits_per_query)),
-                        f"{prefix}/attn_mask_std_hits_per_query_layer{layer}": float(np.std(hits_per_query)),
-                    },
-                    step=step,
-                )
-            else:
-                print(f"[AttnMaskLogger] Step {step} Layer {layer} - Avg hits per query: {avg_hits_per_query}")
-        except (ValueError, AttributeError, TypeError) as e:
-            print(f"[AttnMaskLogger] Error logging stats: {e}")
+        logger = getattr(pl_module, "logger", None)
+        if logger is not None and hasattr(logger, "experiment"):
+            logger.experiment.log_metrics(
+                {
+                    f"{prefix}/attn_mask_avg_hits_per_query_layer{layer}": float(avg_hits_per_query),
+                    f"{prefix}/attn_mask_max_hits_per_query_layer{layer}": float(np.max(hits_per_query)),
+                    f"{prefix}/attn_mask_min_hits_per_query_layer{layer}": float(np.min(hits_per_query)),
+                    f"{prefix}/attn_mask_std_hits_per_query_layer{layer}": float(np.std(hits_per_query)),
+                },
+                step=step,
+            )
+        else:
+            print(f"[AttnMaskLogger] Step {step} Layer {layer} - Avg hits per query: {avg_hits_per_query}")
+
+    def _calculate_multi_lca_comparison_metrics(self, ma_mask):
+        """Calculate LCA comparison metrics for multiple window sizes using dummy embeddings."""
+        all_metrics = {}
+
+        # Extract dimensions from the attention mask
+        num_queries, num_hits = ma_mask.shape
+        device = ma_mask.device
+
+        # Create dummy embeddings with correct shapes
+        # We use any tensor with the right shape - the values don't matter for LCA mask generation
+        dummy_q_embed = torch.zeros(1, num_queries, 64, device=device)  # batch_size=1, num_queries, embedding_dim=64
+        dummy_kv_embed = torch.zeros(1, num_hits, 64, device=device)  # batch_size=1, num_hits, embedding_dim=64
+
+        for window_size in self.lca_window_sizes:
+            # Generate LCA mask for this window size
+            lca_mask = auto_local_ca_mask(dummy_q_embed, dummy_kv_embed, window_size, wrap=True)
+            lca_mask = lca_mask.squeeze(0)  # Remove batch dimension
+
+            # Ensure masks are on same device and have same shape
+            ma_mask = ma_mask.to(lca_mask.device)
+
+            # Calculate efficiency: fraction of MA mask positions that are in LCA mask
+            # Efficiency = (MA ∩ LCA) / MA
+            ma_positions = ma_mask.sum()
+            intersection = (ma_mask & lca_mask).sum()
+            efficiency = float(intersection / ma_positions) if ma_positions > 0 else 0.0
+
+            # Calculate purity: fraction of LCA mask positions that are in MA mask
+            # Purity = (MA ∩ LCA) / LCA
+            lca_positions = lca_mask.sum()
+            purity = float(intersection / lca_positions) if lca_positions > 0 else 0.0
+
+            # Store metrics with window size suffix
+            window_suffix = f"_w{window_size}"
+            all_metrics.update({
+                f"attn_mask_lca_efficiency{window_suffix}": efficiency,
+                f"attn_mask_lca_purity{window_suffix}": purity,
+                f"attn_mask_intersection{window_suffix}": float(intersection),
+            })
+
+        return all_metrics
+
+    def _calculate_distance_from_diagonal(self, mask):
+        """Calculate how close the attention pattern is to a diagonal band."""
+        # Convert to numpy for easier processing
+        mask_np = mask.cpu().numpy().astype(bool)
+        num_queries, num_hits = mask_np.shape
+        stride = num_hits / num_queries
+
+        # For each query, calculate the average distance from the diagonal
+        diagonal_distances = []
+        for i in range(num_queries):
+            attended_hits = np.where(mask_np[i])[0]
+            strided_i = round(i * stride)
+            if len(attended_hits) > 0:
+                # Calculate distance from the diagonal (query i should attend to hit i)
+                distances = np.abs(attended_hits - strided_i)
+                avg_distance = np.mean(distances)
+                diagonal_distances.append(avg_distance)
+
+        # Convert to efficiency score (lower distance = higher efficiency)
+        if diagonal_distances:
+            avg_diagonal_distance = np.mean(diagonal_distances)
+            # Normalize by the maximum possible distance (num_hits/2)
+            max_distance = num_hits / 2
+            return float(avg_diagonal_distance / max_distance)
+        return 0.0
+
+    def _calculate_diagonal_band_width(self, mask):
+        """Calculate the average width of the diagonal band in the attention mask."""
+        # Convert to numpy for easier processing
+        mask_np = mask.cpu().numpy().astype(bool)
+        num_queries, _ = mask_np.shape
+
+        # For each query, find the range of hits it attends to
+        band_widths = []
+        for i in range(num_queries):
+            attended_hits = np.where(mask_np[i])[0]
+            if len(attended_hits) > 0:
+                # Calculate the width of the attended region
+                width = attended_hits.max() - attended_hits.min() + 1
+                band_widths.append(width)
+
+        # Return average band width
+        return float(np.mean(band_widths)) if band_widths else 0.0
+
+    def _calculate_attention_consistency(self, mask):
+        """Calculate how consistent the attention pattern is across queries."""
+        # Convert to numpy for easier processing
+        mask_np = mask.cpu().numpy().astype(bool)
+
+        # Calculate the number of hits each query attends to
+        hits_per_query = mask_np.sum(axis=1)
+
+        # Calculate consistency as 1 - coefficient of variation
+        if len(hits_per_query) > 1:
+            mean_hits = np.mean(hits_per_query)
+            std_hits = np.std(hits_per_query)
+            if mean_hits > 0:
+                cv = std_hits / mean_hits
+                consistency = max(0.0, 1.0 - cv)
+                return float(consistency)
+
+        return 1.0  # If all queries attend to the same number of hits
+
+    def _log_diagonal_metrics(self, pl_module, ma_mask, step, layer, prefix="val"):
+        """Log metrics comparing MA mask to LCA mask to measure diagonal consistency."""
+        # Calculate basic metrics based on MA mask structure
+        diagonal_distance = self._calculate_distance_from_diagonal(ma_mask)
+        ma_positions = ma_mask.sum()
+        diagonal_band_width = self._calculate_diagonal_band_width(ma_mask)
+        consistency = self._calculate_attention_consistency(ma_mask)
+
+        metrics = {
+            f"{prefix}/attn_mask_distance_from_diagonal_layer{layer}": diagonal_distance,
+            f"{prefix}/attn_mask_diagonal_band_width_layer{layer}": diagonal_band_width,
+            f"{prefix}/attn_mask_consistency_layer{layer}": consistency,
+            f"{prefix}/attn_mask_ma_positions_layer{layer}": float(ma_positions),
+        }
+
+        # Calculate LCA comparison metrics for all window sizes using dummy embeddings
+        lca_metrics = self._calculate_multi_lca_comparison_metrics(ma_mask)
+        metrics.update(lca_metrics)
+
+        logger = getattr(pl_module, "logger", None)
+        if logger is not None and hasattr(logger, "experiment"):
+            logger.experiment.log_metrics(metrics, step=step)
 
     def _process_attention_masks_from_outputs(self, pl_module, outputs, step, is_validation=False):
         """Process attention masks directly from the outputs dictionary."""
@@ -78,7 +212,7 @@ class AttnMaskLogger(Callback):
             if layer_name != "loss" and "attn_mask" in l_out:
                 layer_index = int(layer_name.split("_")[1])
 
-                # log only first and last layer
+                # log only last layer
                 if layer_index == max(layer_indices):
                     attn_mask = l_out["attn_mask"]
                     attn_mask_im = attn_mask[0].detach().cpu().clone().int()
@@ -86,15 +220,19 @@ class AttnMaskLogger(Callback):
                     if self.log_stats:
                         self._log_attention_stats(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
 
+                    # Log diagonal metrics if enabled
+                    if self.log_diagonal_metrics:
+                        self._log_diagonal_metrics(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.log_val:
             return
-        self._process_attention_masks_from_outputs(pl_module, outputs, batch_idx, is_validation=True)
+        self._process_attention_masks_from_outputs(pl_module, outputs, trainer.global_step, is_validation=True)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if not self.log_train:
             return
         # only process if this batch is selected by the sampler
-        if batch_idx % 1000 != 0:
+        if batch_idx % self.log_every_n_batches != 0:
             return
         self._process_attention_masks_from_outputs(pl_module, outputs, batch_idx, is_validation=False)
