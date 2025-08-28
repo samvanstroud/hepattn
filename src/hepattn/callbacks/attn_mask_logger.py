@@ -79,9 +79,9 @@ class AttnMaskLogger(Callback):
         device = ma_mask.device
 
         # Create dummy embeddings with correct shapes
-        # We use any tensor with the right shape - the values don't matter for LCA mask generation
-        dummy_q_embed = torch.zeros(1, num_queries, 64, device=device)  # batch_size=1, num_queries, embedding_dim=64
-        dummy_kv_embed = torch.zeros(1, num_hits, 64, device=device)  # batch_size=1, num_hits, embedding_dim=64
+        # We use any tensor with the right shape[1] - the values don't matter for LCA mask generation
+        dummy_q_embed = torch.zeros(1, num_queries, device=device)  # batch_size=1, num_queries
+        dummy_kv_embed = torch.zeros(1, num_hits, device=device)  # batch_size=1, num_hits
 
         for window_size in self.lca_window_sizes:
             # Generate LCA mask for this window size
