@@ -85,9 +85,6 @@ class AttnMaskLogger(Callback):
             lca_mask = auto_local_ca_mask(dummy_q_embed, dummy_kv_embed, window_size, wrap=True)
             lca_mask = lca_mask.squeeze(0)  # Remove batch dimension
 
-            # Ensure masks are on same device and have same shape
-            ma_mask = ma_mask.to(lca_mask.device)
-
             # Calculate efficiency: fraction of MA mask positions that are in LCA mask
             # Efficiency = (MA ∩ LCA) / MA
             ma_positions = ma_mask.sum()
@@ -111,47 +108,74 @@ class AttnMaskLogger(Callback):
 
     def _calculate_distance_from_diagonal(self, mask):
         """Calculate how close the attention pattern is to a diagonal band."""
-        # Convert to numpy for easier processing
-        mask_np = mask.cpu().numpy().astype(bool)
-        num_queries, num_hits = mask_np.shape
+        # Using a vectorized PyTorch implementation for performance.
+        num_queries, num_hits = mask.shape
+        if num_queries == 0:
+            return 0.0
+
         stride = num_hits / num_queries
 
-        # For each query, calculate the average distance from the diagonal
-        diagonal_distances = []
-        for i in range(num_queries):
-            attended_hits = np.where(mask_np[i])[0]
-            strided_i = round(i * stride)
-            if len(attended_hits) > 0:
-                # Calculate distance from the diagonal (query i should attend to hit i)
-                distances = np.abs(attended_hits - strided_i)
-                avg_distance = np.mean(distances)
-                diagonal_distances.append(avg_distance)
+        # Get indices of attended hits
+        query_indices, hit_indices = torch.where(mask.bool())
+        if query_indices.numel() == 0:
+            return 0.0
 
-        # Convert to efficiency score (lower distance = higher efficiency)
-        if diagonal_distances:
-            avg_diagonal_distance = np.mean(diagonal_distances)
-            # Normalize by the maximum possible distance (num_hits/2)
-            max_distance = num_hits / 2
-            return float(avg_diagonal_distance / max_distance)
-        return 0.0
+        # Calculate expected diagonal hit index for each attended hit
+        strided_query_indices = torch.round(query_indices.float() * stride)
+
+        # Calculate distances
+        distances = torch.abs(hit_indices.float() - strided_query_indices)
+
+        # To calculate mean of means, we sum distances per query and divide by hits per query
+        sum_distances_per_query = torch.zeros(num_queries, device=mask.device, dtype=torch.float)
+        sum_distances_per_query.scatter_add_(0, query_indices, distances)
+
+        hits_per_query = mask.sum(dim=1).float()
+
+        # Queries with hits
+        has_hits_mask = hits_per_query > 0
+        if not has_hits_mask.any():
+            return 0.0
+
+        # Calculate average distance per query, avoiding division by zero
+        avg_distance_per_query = torch.zeros_like(hits_per_query)
+        avg_distance_per_query[has_hits_mask] = sum_distances_per_query[has_hits_mask] / hits_per_query[has_hits_mask]
+
+        # Average of these averages
+        avg_diagonal_distance = avg_distance_per_query[has_hits_mask].mean()
+
+        # Normalize
+        max_distance = num_hits / 2
+        if max_distance == 0:
+            return 0.0
+        return float(avg_diagonal_distance / max_distance)
 
     def _calculate_diagonal_band_width(self, mask):
         """Calculate the average width of the diagonal band in the attention mask."""
-        # Convert to numpy for easier processing
-        mask_np = mask.cpu().numpy().astype(bool)
-        num_queries, _ = mask_np.shape
+        # Using a vectorized PyTorch implementation for performance.
+        num_queries, num_hits = mask.shape
+        if num_queries == 0:
+            return 0.0
 
-        # For each query, find the range of hits it attends to
-        band_widths = []
-        for i in range(num_queries):
-            attended_hits = np.where(mask_np[i])[0]
-            if len(attended_hits) > 0:
-                # Calculate the width of the attended region
-                width = attended_hits.max() - attended_hits.min() + 1
-                band_widths.append(width)
+        has_hits = mask.any(dim=1)
+        if not has_hits.any():
+            return 0.0
 
-        # Return average band width
-        return float(np.mean(band_widths)) if band_widths else 0.0
+        col_indices = torch.arange(num_hits, device=mask.device)
+        masked_indices = col_indices.expand_as(mask)
+
+        # For min, set non-attended to a large value
+        first_hits = torch.where(mask.bool(), masked_indices, num_hits)
+        min_attended_indices = torch.min(first_hits, dim=1).values[has_hits]
+
+        # For max, set non-attended to a small value
+        last_hits = torch.where(mask.bool(), masked_indices, -1)
+        max_attended_indices = torch.max(last_hits, dim=1).values[has_hits]
+
+        # Calculate widths
+        widths = max_attended_indices - min_attended_indices + 1
+
+        return float(widths.float().mean())
 
     def _calculate_attention_consistency(self, mask):
         """Calculate how consistent the attention pattern is across queries."""
