@@ -10,12 +10,13 @@ This general approach has been applied to various reconstruction tasks and detec
 - **Tracking** - TrackML [[arXiv][trackml]], ATLAS [[Internal][tide]]
 - **Primary vertexing** - *Interested in working on this? Get in touch!*
 - **Secondary vertexing** - Delphes [[EPJC][vertexing]]
-- **Particle flow** - [WIP]
+- **Particle flow** - CLIC [[arXiv][glow]]
 - **End-to-end reconstruction** - CLD [[ML4Jets][ml4jets]]
 
 [tide]: https://indico.cern.ch/event/1550297/contributions/6559827/
 [trackml]: https://arxiv.org/abs/2411.07149
 [vertexing]: https://link.springer.com/article/10.1140/epjc/s10052-024-13374-5
+[glow]: https://arxiv.org/abs/2508.20092
 [ml4jets]: https://indico.cern.ch/event/1526677/contributions/6530938/
 
 ## ✨ Key Features
