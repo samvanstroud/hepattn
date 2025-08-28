@@ -69,7 +69,9 @@ class MaskFormerDecoder(nn.Module):
         self.attn_type = attn_type
 
         if self.local_strided_attn:
-            assert self.attn_type == "torch", f"Invalid attention type when local_strided_attn is True: {self.attn_type}, must be 'torch'"
+            assert self.attn_type in {"torch", "flex"}, (
+                f"Invalid attention type when local_strided_attn is True: {self.attn_type}, must be 'torch' or 'flex'"
+            )
         assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
@@ -98,39 +100,7 @@ class MaskFormerDecoder(nn.Module):
                 assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
                 attn_mask = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
             elif self.attn_type == "flex":
-                # Calculate stride based on the ratio of key length to query length
-                q_len = x["query_embed"].shape[-2]
-                kv_len = x["key_embed"].shape[-2]
-                stride = kv_len / q_len
-                # Make stride a tensor on the right device (no .item())
-                if torch.is_tensor(stride):
-                    stride = stride.to(device=self.device)
-                else:
-                    # pick a float dtype already in use if any; else default dtype
-                    # Fix for TorchDynamo: avoid generator expression in next()
-                    base_float = torch.get_default_dtype()
-                    if torch.is_floating_point(x["query_embed"]):
-                        base_float = x["query_embed"].dtype
-                    stride = torch.tensor(stride, device=self.device, dtype=base_float)
-                # Create the mask_mod function based on whether wrapping is enabled
-                if self.window_wrap:
-                    # For wrapping, we need the sequence length (kv_len) as a tensor
-                    mask_mod = sliding_window_mask_strided_wrapped(
-                        self.window_size,
-                        stride=torch.tensor([1], device=self.device),
-                        kv_len=torch.tensor([1], device=self.device),  # TODO need to change stride back once I check this is working
-                    )
-                else:
-                    mask_mod = sliding_window_mask_strided(self.window_size, stride=stride)
-                # Create the block mask
-                attn_mask = create_block_mask(
-                    mask_mod,
-                    B=None,
-                    H=None,
-                    Q_LEN=q_len,
-                    KV_LEN=kv_len,
-                    device=self.device,
-                )
+                attn_mask = self.flex_local_ca_mask(x)
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -181,8 +151,8 @@ class MaskFormerDecoder(nn.Module):
                 for input_name, task_attn_mask in attn_masks.items():
                     attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
 
-            if attn_mask is not None:
-                outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
+                if attn_mask is not None:
+                    outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
@@ -199,6 +169,27 @@ class MaskFormerDecoder(nn.Module):
             x = unmerge_inputs(x, input_names)
 
         return x, outputs
+
+    def flex_local_ca_mask(self, x):
+        # Calculate stride based on the ratio of key length to query length
+        device = x["query_embed"].device
+        q_len = x["query_embed"].shape[1]
+        kv_len = x["key_embed"].shape[1]
+        stride = torch.tensor((kv_len / q_len), device=device)
+        window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
+        mask_mod = window_mask_func(
+            self.window_size,
+            stride=stride,
+            kv_len=torch.tensor(kv_len, device=device),
+        )
+        return create_block_mask(
+            mask_mod,
+            B=None,
+            H=None,
+            Q_LEN=q_len,
+            KV_LEN=kv_len,
+            device=device,
+        )
 
     def generate_positional_encodings(self, x: dict):
         x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
