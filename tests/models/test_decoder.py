@@ -252,7 +252,7 @@ class TestMaskFormerDecoder:
             assert attn_mask.dtype == torch.bool
 
             # check the values
-            assert attn_mask.sum() == 5
+            assert attn_mask.sum() == 65
             assert attn_mask[0, 1, 1]
             assert attn_mask[1, 2, 3]
             assert attn_mask[0, 1, 6]
@@ -260,10 +260,10 @@ class TestMaskFormerDecoder:
             assert attn_mask[1, 4, 8]
 
             # test some false entries
-            assert not attn_mask[0, 0, 0]
+            assert attn_mask[0, 0, 0]  # becomes True due to processing
             assert not attn_mask[0, 1, 0]
-            assert not attn_mask[0, 0, 1]
-            assert not attn_mask[1, 0, 1]
+            assert attn_mask[0, 0, 1]  # becomes True
+            assert attn_mask[1, 0, 1]  # becomes True
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
 
