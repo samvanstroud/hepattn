@@ -227,7 +227,6 @@ class MaskFormerDecoderLayer(nn.Module):
 
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
-        self.local_strided_attn = local_strided_attn
 
         # handle hybridnorm
         qkv_norm = hybrid_norm
