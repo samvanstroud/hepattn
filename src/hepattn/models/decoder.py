@@ -33,7 +33,6 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
-        attn_type: str = "torch",
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
