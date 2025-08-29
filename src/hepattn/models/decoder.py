@@ -45,10 +45,6 @@ class MaskFormerDecoder(nn.Module):
         """
         super().__init__()
 
-        # Ensure mask_attention is passed to decoder layers
-        decoder_layer_config = decoder_layer_config.copy()
-        decoder_layer_config["mask_attention"] = mask_attention
-
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
         self.dim = decoder_layer_config["dim"]
         self.tasks: list | None = None  # Will be set by MaskFormer
@@ -140,6 +136,11 @@ class MaskFormerDecoder(nn.Module):
                 for input_name, task_attn_mask in attn_masks.items():
                     attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
 
+                attn_mask = attn_mask.detach()
+                # True values indicate a slot will be included in the attention computation, while False will be ignored.
+                # If the attn mask is completely invalid for a given query, allow it to attend everywhere
+                attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
+
             if attn_mask is not None:
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
@@ -174,7 +175,6 @@ class MaskFormerDecoderLayer(nn.Module):
         depth: int = 0,
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
-        mask_attention: bool = True,
         bidirectional_ca: bool = True,
         hybrid_norm: bool = False,
     ) -> None:
@@ -186,14 +186,12 @@ class MaskFormerDecoderLayer(nn.Module):
             depth: Layer depth index.
             dense_kwargs: Optional arguments for Dense layers.
             attn_kwargs: Optional arguments for Attention layers.
-            mask_attention: If True, enables mask attention.
             bidirectional_ca: If True, enables bidirectional cross-attention.
             hybrid_norm: If True, enables hybrid normalization.
         """
         super().__init__()
 
         self.dim = dim
-        self.mask_attention = mask_attention
         self.bidirectional_ca = bidirectional_ca
 
         # handle hybridnorm
@@ -239,15 +237,6 @@ class MaskFormerDecoderLayer(nn.Module):
         Returns:
             Tuple of updated query and key/value embeddings.
         """
-        if self.mask_attention:
-            assert attn_mask is not None, "attn_mask must be provided for mask attention"
-            attn_mask = attn_mask.detach()
-            # True values indicate a slot will be included in the attention computation, while False will be ignored.
-            # If the attn mask is completely invalid for a given query, allow it to attend everywhere
-            attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
-        else:
-            attn_mask = None
-
         if query_posenc is not None:
             q = q + query_posenc
         if key_posenc is not None:
