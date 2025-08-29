@@ -62,11 +62,10 @@ class MaskFormerDecoder(nn.Module):
         self.use_query_masks = use_query_masks
         self.posenc = posenc
         self.local_strided_attn = local_strided_attn
-        self.attn_type = decoder_layer_config.get("attn_type", "torch")
+        self.attn_type = decoder_layer_config.get("attn_kwargs", {}).get("attn_type", "torch")
         self.window_size = window_size
         self.window_wrap = window_wrap
         self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
-        self.attn_type = attn_type
 
         if self.local_strided_attn:
             assert self.attn_type in {"torch", "flex"}, (
