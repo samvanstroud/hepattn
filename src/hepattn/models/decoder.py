@@ -244,7 +244,7 @@ class MaskFormerDecoderLayer(nn.Module):
             Tuple of updated query and key/value embeddings.
         """
         if self.mask_attention or self.local_strided_attn:
-            assert attn_mask is not None, "attn_mask must be provided for mask attention"
+            assert attn_mask is not None, "attn_mask must be provided for mask attention or local strided attention"
             attn_mask = attn_mask.detach()
             # True values indicate a slot will be included in the attention computation, while False will be ignored.
             # If the attn mask is completely invalid for a given query, allow it to attend everywhere
