@@ -26,7 +26,7 @@ ATTN_TYPES = {"torch": scaled_dot_product_attention, "flex": flex_attention, "fl
 VARLEN_ATTN_TYPES = ["torch", "flash-varlen"]
 
 # Which attention types support attention masking
-ATTN_MASK_ATTN_TYPES = ["torch"]
+ATTN_MASK_ATTN_TYPES = ["torch", "flex"]
 
 # Which attention types support attention biasing
 ATTN_BIAS_ATTN_TYPES = ["torch"]
