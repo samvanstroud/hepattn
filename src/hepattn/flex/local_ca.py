@@ -34,7 +34,8 @@ def sliding_window_mask_strided_wrapped(window_size: int, stride, kv_len=None) -
         window = torch.tensor(window_size // 2, device=dev)
 
         kvl = torch.tensor([1], device=dev) if kv_len is None else kv_len.to(device=dev)
-        off = kvl.reshape(())  # offset should be equal to number of hits
+        # 'off' represents the effective key-value sequence length, used for wrap-around in the sliding window mask.
+        off = kvl.reshape(())
 
         q_center = torch.round(q_idx * stride.reshape(()))
 
