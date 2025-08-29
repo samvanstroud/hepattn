@@ -48,6 +48,7 @@ class MaskFormerDecoder(nn.Module):
         # Ensure mask_attention is passed to decoder layers
         decoder_layer_config = decoder_layer_config.copy()
         decoder_layer_config["mask_attention"] = mask_attention
+        decoder_layer_config["local_strided_attn"] = local_strided_attn
 
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
         self.dim = decoder_layer_config["dim"]
@@ -175,6 +176,7 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
         mask_attention: bool = True,
+        local_strided_attn: bool = False,
         bidirectional_ca: bool = True,
         hybrid_norm: bool = False,
     ) -> None:
@@ -187,6 +189,7 @@ class MaskFormerDecoderLayer(nn.Module):
             dense_kwargs: Optional arguments for Dense layers.
             attn_kwargs: Optional arguments for Attention layers.
             mask_attention: If True, enables mask attention.
+            local_strided_attn: If True, enables local strided attention.
             bidirectional_ca: If True, enables bidirectional cross-attention.
             hybrid_norm: If True, enables hybrid normalization.
         """
@@ -195,6 +198,7 @@ class MaskFormerDecoderLayer(nn.Module):
         self.dim = dim
         self.mask_attention = mask_attention
         self.bidirectional_ca = bidirectional_ca
+        self.local_strided_attn = local_strided_attn
 
         # handle hybridnorm
         qkv_norm = hybrid_norm
@@ -239,7 +243,7 @@ class MaskFormerDecoderLayer(nn.Module):
         Returns:
             Tuple of updated query and key/value embeddings.
         """
-        if self.mask_attention:
+        if self.mask_attention or self.local_strided_attn:
             assert attn_mask is not None, "attn_mask must be provided for mask attention"
             attn_mask = attn_mask.detach()
             # True values indicate a slot will be included in the attention computation, while False will be ignored.
