@@ -133,7 +133,6 @@ class TestMaskFormerDecoder:
         # Check that decoder layers are initialized correctly
         for layer in decoder.decoder_layers:
             assert isinstance(layer, MaskFormerDecoderLayer)
-            assert layer.mask_attention is True
 
     def test_initialization_with_options(self, decoder_layer_config):
         """Test initialization with various options."""
@@ -253,7 +252,7 @@ class TestMaskFormerDecoder:
             assert attn_mask.dtype == torch.bool
 
             # check the values
-            assert attn_mask.sum() == 5
+            assert attn_mask.sum() == 65
             assert attn_mask[0, 1, 1]
             assert attn_mask[1, 2, 3]
             assert attn_mask[0, 1, 6]
@@ -261,10 +260,10 @@ class TestMaskFormerDecoder:
             assert attn_mask[1, 4, 8]
 
             # test some false entries
-            assert not attn_mask[0, 0, 0]
+            assert attn_mask[0, 0, 0]  # becomes True due to processing
             assert not attn_mask[0, 1, 0]
-            assert not attn_mask[0, 0, 1]
-            assert not attn_mask[1, 0, 1]
+            assert attn_mask[0, 0, 1]  # becomes True
+            assert attn_mask[1, 0, 1]  # becomes True
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
 
@@ -272,7 +271,7 @@ class TestMaskFormerDecoder:
 class TestMaskFormerDecoderLayer:
     @pytest.fixture
     def decoder_layer(self):
-        return MaskFormerDecoderLayer(dim=DIM, mask_attention=True, bidirectional_ca=True)
+        return MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=True)
 
     @pytest.fixture
     def sample_data(self):
@@ -284,7 +283,6 @@ class TestMaskFormerDecoderLayer:
 
     def test_initialization(self, decoder_layer):
         """Test that the decoder layer initializes correctly."""
-        assert decoder_layer.mask_attention is True
         assert decoder_layer.bidirectional_ca is True
         assert hasattr(decoder_layer, "q_ca")
         assert hasattr(decoder_layer, "q_sa")
@@ -294,12 +292,12 @@ class TestMaskFormerDecoderLayer:
 
     def test_initialization_no_bidirectional(self):
         """Test initialization with bidirectional_ca=False."""
-        layer = MaskFormerDecoderLayer(dim=DIM, mask_attention=True, bidirectional_ca=False)
+        layer = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=False)
         assert not hasattr(layer, "kv_ca")
         assert not hasattr(layer, "kv_dense")
 
-    def test_forward_with_mask_attention(self, decoder_layer, sample_data):
-        """Test forward pass with mask_attention=True."""
+    def test_forward_with_attn_mask(self, decoder_layer, sample_data):
+        """Test forward pass with attention mask."""
         q, kv, attn_mask, kv_mask = sample_data
         new_q, new_kv = decoder_layer(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
 
@@ -307,18 +305,12 @@ class TestMaskFormerDecoderLayer:
         assert new_q.shape == q.shape
         assert new_kv.shape == kv.shape
 
-    def test_forward_mask_attention_no_mask(self, decoder_layer, sample_data):
-        """Test that mask_attention=True requires an attn_mask."""
+    def test_forward_no_attn_mask(self, sample_data):
+        """Test forward pass without attention mask."""
         q, kv, _, kv_mask = sample_data
-        with pytest.raises(AssertionError, match="attn_mask must be provided for mask attention"):
-            decoder_layer(q, kv, attn_mask=None, kv_mask=kv_mask)
+        layer = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=True)
 
-    def test_forward_no_mask_attention(self, sample_data):
-        """Test forward pass with mask_attention=False."""
-        q, kv, _, kv_mask = sample_data
-        layer = MaskFormerDecoderLayer(dim=DIM, mask_attention=False, bidirectional_ca=True)
-
-        # Should not raise an assertion error even with no attn_mask
+        # Should work fine with no attn_mask
         new_q, new_kv = layer(q, kv, attn_mask=None, kv_mask=kv_mask)
 
         # Check output shapes
@@ -328,7 +320,7 @@ class TestMaskFormerDecoderLayer:
     def test_forward_no_bidirectional(self, sample_data):
         """Test forward pass with bidirectional_ca=False."""
         q, kv, attn_mask, kv_mask = sample_data
-        layer = MaskFormerDecoderLayer(dim=DIM, mask_attention=True, bidirectional_ca=False)
+        layer = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=False)
 
         new_q, new_kv = layer(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
 

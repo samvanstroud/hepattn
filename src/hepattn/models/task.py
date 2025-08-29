@@ -291,11 +291,6 @@ class ObjectHitMaskTask(Task):
             return {}
 
         attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= threshold
-
-        # if a input constituent does not attend to any queries, let it attend to all
-        # TODO: looks flipped, check it and see see if this is really necessary
-        attn_mask[torch.where(torch.all(attn_mask, dim=-1))] = False
-
         return {self.input_constituent: attn_mask}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
