@@ -7,7 +7,7 @@ from functools import partial
 
 import torch
 from torch import Tensor, nn
-from torch.nn.attention.flex_attention import create_block_mask
+from torch.nn.attention.flex_attention import BlockMask, create_block_mask
 
 from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped
 from hepattn.models.attention import Attention
@@ -49,11 +49,6 @@ class MaskFormerDecoder(nn.Module):
         """
         super().__init__()
 
-        # Ensure mask_attention is passed to decoder layers
-        decoder_layer_config = decoder_layer_config.copy()
-        decoder_layer_config["mask_attention"] = mask_attention
-        decoder_layer_config["local_strided_attn"] = local_strided_attn
-
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
         self.dim = decoder_layer_config["dim"]
         self.tasks: list | None = None  # Will be set by MaskFormer
@@ -94,7 +89,7 @@ class MaskFormerDecoder(nn.Module):
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
 
         attn_mask = None
-        attn_transpose = None
+        attn_mask_transpose = None
         if self.local_strided_attn:
             if self.attn_type == "torch":
                 assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
@@ -155,8 +150,13 @@ class MaskFormerDecoder(nn.Module):
                 for input_name, task_attn_mask in attn_masks.items():
                     attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
 
-                # if attn_mask is not None:
-                #     outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
+                attn_mask = attn_mask.detach()
+                # True values indicate a slot will be included in the attention computation, while False will be ignored.
+                # If the attn mask is completely invalid for a given query, allow it to attend everywhere
+                attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
+
+            if attn_mask is not None and not isinstance(attn_mask, BlockMask):
+                outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
@@ -167,7 +167,7 @@ class MaskFormerDecoder(nn.Module):
                 kv_mask=x.get("key_valid"),
                 query_posenc=x["query_posenc"] if (self.posenc and not self.mask_attention) else None,
                 key_posenc=x["key_posenc"] if (self.posenc and not self.mask_attention) else None,
-                attn_mask_transpose=attn_transpose,
+                attn_mask_transpose=attn_mask_transpose,
             )
 
             # update the individual input constituent representations
@@ -208,11 +208,9 @@ class MaskFormerDecoderLayer(nn.Module):
         depth: int = 0,
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
-        mask_attention: bool = True,
         local_strided_attn: bool = False,
         bidirectional_ca: bool = True,
         hybrid_norm: bool = False,
-        bidirectional_posenc: bool = True,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
 
@@ -222,18 +220,14 @@ class MaskFormerDecoderLayer(nn.Module):
             depth: Layer depth index.
             dense_kwargs: Optional arguments for Dense layers.
             attn_kwargs: Optional arguments for Attention layers.
-            mask_attention: If True, enables mask attention.
             bidirectional_ca: If True, enables bidirectional cross-attention.
             hybrid_norm: If True, enables hybrid normalization.
         """
         super().__init__()
 
         self.dim = dim
-        self.mask_attention = mask_attention
         self.bidirectional_ca = bidirectional_ca
-        self.bidirectional_posenc = bidirectional_posenc
         self.local_strided_attn = local_strided_attn
-
 
         # handle hybridnorm
         qkv_norm = hybrid_norm
@@ -244,7 +238,6 @@ class MaskFormerDecoderLayer(nn.Module):
 
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
-        self.attn_type = attn_kwargs.get("attn_type", "torch")
 
         residual = partial(Residual, dim=dim, norm=norm)
         self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
@@ -276,21 +269,11 @@ class MaskFormerDecoderLayer(nn.Module):
             kv_mask: Optional key/value mask.
             query_posenc: Optional query positional encoding.
             key_posenc: Optional key positional encoding.
+            attn_mask_transpose: Optional transposed attention mask.
 
         Returns:
             Tuple of updated query and key/value embeddings.
         """
-        
-        if self.mask_attention or self.local_strided_attn:
-            assert attn_mask is not None, "attn_mask must be provided for mask attention"
-            if self.attn_type != "flex":
-                attn_mask = attn_mask.detach()
-                # True values indicate a slot will be included in the attention computation, while False will be ignored.
-                # If the attn mask is completely invalid for a given query, allow it to attend everywhere
-                attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
-        else:
-            attn_mask = None
-
         if query_posenc is not None:
             q = q + query_posenc
         if key_posenc is not None:
@@ -304,17 +287,15 @@ class MaskFormerDecoderLayer(nn.Module):
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
             if attn_mask is not None:
+                if isinstance(attn_mask, BlockMask):
+                    assert attn_mask_transpose is not None, "attn_mask_transpose must be provided for flex attention"
                 # Index from the back so we are batch shape agnostic
-                if self.attn_type =="flex":
-                    attn_mask = attn_mask_transpose
-                else:
-                    attn_mask = attn_mask.transpose(-2, -1)
+                attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)
 
-            if self.bidirectional_posenc:
-                if query_posenc is not None:
-                    q = q + query_posenc
-                if key_posenc is not None:
-                    kv = kv + key_posenc
+            if query_posenc is not None:
+                q = q + query_posenc
+            if key_posenc is not None:
+                kv = kv + key_posenc
 
             kv = self.kv_ca(kv, kv=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
             kv = self.kv_dense(kv)
