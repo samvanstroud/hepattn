@@ -13,10 +13,9 @@ def sliding_window_mask_strided(
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
-    stride = kv_len / q_len
 
     def mask_mod(b, h, q_idx, kv_idx):
-        stride = torch.tensor(stride, device=q_idx.device).reshape(())
+        stride = torch.tensor((stride), device=q_idx.device).reshape(())
         q_center = torch.round(q_idx * stride)
         return (kv_idx - q_center).abs() <= window_size // 2
 
@@ -26,7 +25,6 @@ def sliding_window_mask_strided(
 def sliding_window_mask_strided_wrapped(window_size: int, stride: float, q_len: Tensor, kv_len: Tensor) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
-    stride = kv_len / q_len
 
     def mask_mod(b, h, q_idx, kv_idx):
         # b = 0, h = 0 here

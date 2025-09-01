@@ -225,7 +225,7 @@ class MaskFormerDecoderLayer(nn.Module):
         attn_norm = norm if not hybrid_norm else None
         dense_post_norm = not hybrid_norm
 
-        self.attn_kwargs = attn_kwargs or {"attn_type": "torch"}
+        self.attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim, norm=norm)
@@ -276,7 +276,7 @@ class MaskFormerDecoderLayer(nn.Module):
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
             if attn_mask is not None:
-                if self.attn_kwargs["attn_type"] == "flex":
+                if self.attn_kwargs.get("attn_type", "torch") == "flex":
                     assert attn_mask_transpose is not None, "attn_mask_transpose must be provided for flex attention"
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)
