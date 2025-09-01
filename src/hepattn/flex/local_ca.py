@@ -18,9 +18,7 @@ def sliding_window_mask_strided(window_size: int, stride: float, q_len: Tensor, 
 
         q_center = torch.round(q_idx * stride_val)
 
-        diagonal = (kv_idx - q_center).abs() <= window_size // 2
-
-        return diagonal
+        return (kv_idx - q_center).abs() <= window_size // 2
 
     return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=dev)
 
@@ -37,7 +35,6 @@ def sliding_window_mask_strided_wrapped(window_size: int, stride: float, q_len: 
             raise TypeError("kv_len must be a Tensor")
 
         off = kv_len.reshape(()).to(device=dev)  # offset should be equal to number of hits
-        # Use scalar multiplication directly to avoid tensor creation issues
         q_center = torch.round(q_idx * stride_val)
 
         diagonal = (kv_idx - q_center).abs() <= window_size // 2
