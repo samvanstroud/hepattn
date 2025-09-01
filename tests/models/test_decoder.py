@@ -1,8 +1,7 @@
 import pytest
 import torch
-from torch.nn.flex_attention import create_mask
+from torch.nn.attention.flex_attention import create_mask
 
-from hepattn.flex.local_ca import sliding_window_mask_strided_wrapped
 from hepattn.models.decoder import MaskFormerDecoder, MaskFormerDecoderLayer
 from hepattn.utils.local_ca import auto_local_ca_mask
 
@@ -272,7 +271,6 @@ class TestMaskFormerDecoder:
 
     def test_flex_local_ca_mask_equivalence(self):
         """Test that flex_local_ca_mask produces equivalent masks to torch.nn.attention.flex_attention.create_mask."""
-
         # Test configuration
         window_size = 8
         q_len = 10
