@@ -182,6 +182,7 @@ class MaskFormerDecoder(nn.Module):
             stride=stride,
             q_len=torch.tensor(q_len, device=device),
             kv_len=torch.tensor(kv_len, device=device),
+            dev=device
         )
 
     def generate_positional_encodings(self, x: dict):
