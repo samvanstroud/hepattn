@@ -7,7 +7,6 @@ from functools import partial
 
 import torch
 from torch import Tensor, nn
-from torch.nn.attention.flex_attention import BlockMask, create_block_mask
 
 from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped
 from hepattn.models.attention import Attention
@@ -17,8 +16,6 @@ from hepattn.models.posenc import pos_enc_symmetric
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.local_ca import auto_local_ca_mask
 from hepattn.utils.model_utils import unmerge_inputs
-
-create_block_mask = torch.compile(create_block_mask, dynamic=True)
 
 
 class MaskFormerDecoder(nn.Module):
@@ -91,8 +88,8 @@ class MaskFormerDecoder(nn.Module):
         attn_mask = None
         attn_mask_transpose = None
         if self.local_strided_attn:
+            assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
             if self.attn_type == "torch":
-                assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
                 attn_mask = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
             elif self.attn_type == "flex":
                 device = x["query_embed"].device
@@ -156,7 +153,7 @@ class MaskFormerDecoder(nn.Module):
                 # TODO: check and see see if this is really necessary
                 attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
 
-            if attn_mask is not None and not isinstance(attn_mask, BlockMask):
+            if attn_mask is not None and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
             # Update the keys and queries
@@ -178,20 +175,13 @@ class MaskFormerDecoder(nn.Module):
 
     def flex_local_ca_mask(self, q_len: int, kv_len: int, device):
         # Calculate stride based on the ratio of key length to query length
-        stride = torch.tensor((kv_len / q_len), device=device)
+        stride = kv_len / q_len
         window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
-        mask_mod = window_mask_func(
+        return window_mask_func(
             self.window_size,
             stride=stride,
+            q_len=torch.tensor(q_len, device=device),
             kv_len=torch.tensor(kv_len, device=device),
-        )
-        return create_block_mask(
-            mask_mod,
-            B=None,
-            H=None,
-            Q_LEN=q_len,
-            KV_LEN=kv_len,
-            device=device,
         )
 
     def generate_positional_encodings(self, x: dict):
@@ -235,16 +225,16 @@ class MaskFormerDecoderLayer(nn.Module):
         attn_norm = norm if not hybrid_norm else None
         dense_post_norm = not hybrid_norm
 
-        attn_kwargs = attn_kwargs or {}
+        self.attn_kwargs = attn_kwargs or {"attn_type": "torch"}
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim, norm=norm)
-        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
-        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **self.attn_kwargs), norm=attn_norm)
+        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **self.attn_kwargs), norm=attn_norm)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         if self.bidirectional_ca:
-            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **self.attn_kwargs), norm=attn_norm)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(
@@ -286,7 +276,7 @@ class MaskFormerDecoderLayer(nn.Module):
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
             if attn_mask is not None:
-                if isinstance(attn_mask, BlockMask):
+                if self.attn_kwargs["attn_type"] == "flex":
                     assert attn_mask_transpose is not None, "attn_mask_transpose must be provided for flex attention"
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)
