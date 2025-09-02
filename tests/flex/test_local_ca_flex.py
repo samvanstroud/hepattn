@@ -4,9 +4,9 @@ import pytest
 import torch
 from torch.nn.attention.flex_attention import create_mask
 
+from hepattn.flex.local_ca import transpose_blockmask
 from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.utils.local_ca import auto_local_ca_mask
-from hepattn.flex.local_ca import transpose_blockmask
 
 
 @pytest.mark.skipif(os.environ.get("TORCH_COMPILE") == "1", reason="Fails with torch.compile/Inductor due to dynamic shapes")
@@ -95,12 +95,7 @@ def test_flex_local_ca_mask_transpose_consistency():
     block_mask = decoder.flex_local_ca_mask(q_len, kv_len, device)
     forward_mask = create_mask(block_mask.mask_mod, 1, 1, q_len, kv_len, device)
 
-    transpose_block_mask = transpose_blockmask(
-        block_mask,
-        q_tokens=q_len,
-        kv_tokens=kv_len,
-        device=device
-    )
+    transpose_block_mask = transpose_blockmask(block_mask, q_tokens=q_len, kv_tokens=kv_len, device=device)
     transpose_mask = create_mask(transpose_block_mask.mask_mod, 1, 1, kv_len, q_len, device)
 
     assert torch.equal(transpose_mask, forward_mask.transpose(-2, -1))

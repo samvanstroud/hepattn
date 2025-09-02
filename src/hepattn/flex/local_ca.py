@@ -3,7 +3,7 @@ from torch.nn.attention.flex_attention import BlockMask, _mask_mod_signature, cr
 
 
 @torch.compile(dynamic=True)
-def sliding_window_mask_strided(window_size: int, stride: float, q_len: int, kv_len: int, dev) -> _mask_mod_signature:  # noqa: ARG001
+def sliding_window_mask_strided(window_size: int, stride: float, q_len: int, kv_len: int, dev) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
 
@@ -40,6 +40,7 @@ def sliding_window_mask_strided_wrapped(window_size: int, stride: float, q_len: 
 
 def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int, device=None) -> BlockMask:
     """Exact transpose of a FlexAttention BlockMask by transposing the mask function.
+
     Args:
         bm: forward BlockMask (built with Q_LEN=q_tokens, KV_LEN=kv_tokens)
         q_tokens: original forward Q token length
@@ -50,12 +51,12 @@ def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int, device=
     dev = device if device is not None else getattr(bm, "device", "cpu")
 
     # New queries are old keys; new keys are old queries.
-    def mask_mod_T(b, h, q_idx, kv_idx):  # noqa: ARG001
+    def mask_mod_t(b, h, q_idx, kv_idx):
         # Call the original predicate with swapped indices.
         return orig_mod(b, h, kv_idx, q_idx)
 
     return create_block_mask(
-        mask_mod_T,
+        mask_mod_t,
         B=None,
         H=None,
         Q_LEN=kv_tokens,  # new queries = old KV tokens
