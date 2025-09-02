@@ -13,7 +13,7 @@ def test_flex_local_ca_mask_equivalence():
     window_size = 32  # Increased from 16 to ensure coverage with stride 10
     q_len = 100
     kv_len = 1000
-    device = torch.device("cpu")
+    device = "cpu"
     dim = 64
 
     # dummy query and keys embeds with correct shape[1]
@@ -40,16 +40,21 @@ def test_flex_local_ca_mask_equivalence():
         window_wrap=False,
     )
 
-    # Test non-wrapped version
-    decoder.window_wrap = False
-
     attn_mask_torch = auto_local_ca_mask(query_embed, key_embed, decoder.window_size, wrap=decoder.window_wrap)
     # Get mask from decoder's flex_local_ca_mask method using create_mask
     decoder_mask_flex = create_mask(decoder.flex_local_ca_mask(q_len, kv_len, device).mask_mod, 1, 1, q_len, kv_len, device)
     assert torch.allclose(attn_mask_torch, decoder_mask_flex)
 
     # Test wrapped version
-    decoder.window_wrap = True
+    decoder = MaskFormerDecoder(
+        num_queries=q_len,
+        decoder_layer_config=decoder_layer_config,
+        num_decoder_layers=1,
+        mask_attention=False,
+        local_strided_attn=True,
+        window_size=window_size,
+        window_wrap=True,
+    )
     attn_mask_torch = auto_local_ca_mask(query_embed, key_embed, decoder.window_size, wrap=decoder.window_wrap)
     # Get mask from decoder's flex_local_ca_mask method using create_mask
     decoder_mask_flex = create_mask(decoder.flex_local_ca_mask(q_len, kv_len, device).mask_mod, 1, 1, q_len, kv_len, device)
