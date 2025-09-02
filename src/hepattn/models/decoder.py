@@ -180,8 +180,8 @@ class MaskFormerDecoder(nn.Module):
         return window_mask_func(
             self.window_size,
             stride=stride,
-            q_len=torch.tensor(q_len, device=device),
-            kv_len=torch.tensor(kv_len, device=device),
+            q_len=q_len,
+            kv_len=kv_len,
             dev=device
         )
 
