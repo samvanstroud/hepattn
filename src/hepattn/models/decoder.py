@@ -8,7 +8,7 @@ from functools import partial
 import torch
 from torch import Tensor, nn
 
-from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped
+from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped, transpose_blockmask
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
@@ -96,7 +96,10 @@ class MaskFormerDecoder(nn.Module):
                 q_len = x["query_embed"].shape[1]
                 kv_len = x["key_embed"].shape[1]
                 attn_mask = self.flex_local_ca_mask(q_len, kv_len, device)
-                attn_mask_transpose = self.flex_local_ca_mask(kv_len, q_len, device)
+                attn_mask_transpose = transpose_blockmask(attn_mask,
+                                                          q_tokens=q_len,
+                                                          kv_tokens=kv_len,
+                                                          device=device)
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
