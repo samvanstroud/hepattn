@@ -43,6 +43,7 @@ class MaskFormerDecoder(nn.Module):
             local_strided_attn: If True, uses local strided window attention.
             window_size: The size of the window for local strided window attention.
             window_wrap: If True, wraps the window for local strided window attention.
+            attn_type: The attention type to use (e.g., 'torch', 'flex').
         """
         super().__init__()
 
@@ -96,10 +97,7 @@ class MaskFormerDecoder(nn.Module):
                 q_len = x["query_embed"].shape[1]
                 kv_len = x["key_embed"].shape[1]
                 attn_mask = self.flex_local_ca_mask(q_len, kv_len, device)
-                attn_mask_transpose = transpose_blockmask(attn_mask,
-                                                          q_tokens=q_len,
-                                                          kv_tokens=kv_len,
-                                                          device=device)
+                attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, device=device)
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -180,13 +178,7 @@ class MaskFormerDecoder(nn.Module):
         # Calculate stride based on the ratio of key length to query length
         stride = kv_len / q_len
         window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
-        return window_mask_func(
-            self.window_size,
-            stride=stride,
-            q_len=q_len,
-            kv_len=kv_len,
-            dev=device
-        )
+        return window_mask_func(self.window_size, stride=stride, q_len=q_len, kv_len=kv_len, dev=device)
 
     def generate_positional_encodings(self, x: dict):
         x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
