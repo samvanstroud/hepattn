@@ -1,8 +1,8 @@
 import torch
 from torch.nn.attention.flex_attention import BlockMask, _mask_mod_signature, create_block_mask
 
-# type: ignore[invalid-assignment]
-create_block_mask = torch.compile(create_block_mask, dynamic=True)
+# Intentionally shadow the imported function with a compiled version
+create_block_mask: _mask_mod_signature = torch.compile(create_block_mask, dynamic=True)
 
 
 def sliding_window_mask_strided(
