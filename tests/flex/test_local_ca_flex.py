@@ -9,7 +9,6 @@ from hepattn.models.decoder import MaskFormerDecoder
 from hepattn.utils.local_ca import auto_local_ca_mask
 
 
-@pytest.mark.skipif(os.environ.get("TORCH_COMPILE") == "1", reason="Fails with torch.compile/Inductor due to dynamic shapes")
 def test_flex_local_ca_mask_equivalence():
     """Test that flex_local_ca_mask produces equivalent masks to torch.nn.attention.flex_attention.create_mask."""
     # Test configuration
