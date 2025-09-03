@@ -19,7 +19,7 @@ def sliding_window_mask_strided(
         q_center = torch.round(q_idx * stride_val)
         return (kv_idx - q_center).abs() <= window_size // 2
 
-    return create_block_mask(mask_mod, B=0, H=0, Q_LEN=q_len, KV_LEN=kv_len, device=device)
+    return create_block_mask(mask_mod, B=0, H=0, Q_LEN=q_len, KV_LEN=kv_len, device=device, _compile=True)
 
 
 def sliding_window_mask_strided_wrapped(
@@ -45,7 +45,7 @@ def sliding_window_mask_strided_wrapped(
 
         return diagonal | wrap_left | wrap_right
 
-    return create_block_mask(mask_mod, B=0, H=0, Q_LEN=q_len, KV_LEN=kv_len, device=device)
+    return create_block_mask(mask_mod, B=0, H=0, Q_LEN=q_len, KV_LEN=kv_len, device=device, _compile=True)
 
 
 def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int) -> BlockMask:
@@ -72,4 +72,5 @@ def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int) -> Bloc
         Q_LEN=kv_tokens,  # new queries = old KV tokens
         KV_LEN=q_tokens,  # new keys    = old Q tokens
         device=dev,
+        _compile=True,
     )
