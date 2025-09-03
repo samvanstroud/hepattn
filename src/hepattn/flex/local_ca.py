@@ -1,6 +1,7 @@
 import torch
 from torch.nn.attention.flex_attention import BlockMask, _mask_mod_signature, create_block_mask
 
+# type: ignore[invalid-assignment]
 create_block_mask = torch.compile(create_block_mask, dynamic=True)
 
 
