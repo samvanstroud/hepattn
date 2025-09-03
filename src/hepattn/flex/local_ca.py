@@ -8,7 +8,6 @@ def sliding_window_mask_strided(
     q_len: int,
     kv_len: int,
     device: str | torch.device,
-    do_compile: bool = False,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
@@ -20,16 +19,15 @@ def sliding_window_mask_strided(
         q_center = torch.round(q_idx * stride_val)
         return (kv_idx - q_center).abs() <= window_size // 2
 
-    block_mask = create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
-
-    if do_compile:
-        block_mask = torch.compile(block_mask)
-
-    return block_mask
+    return create_block_mask(mask_mod, B=0, H=0, Q_LEN=q_len, KV_LEN=kv_len, device=device)
 
 
 def sliding_window_mask_strided_wrapped(
-    window_size: int, stride: float, q_len: int, kv_len: int, device: str | torch.device, do_compile: bool = False
+    window_size: int,
+    stride: float,
+    q_len: int,
+    kv_len: int,
+    device: str | torch.device,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
@@ -47,12 +45,7 @@ def sliding_window_mask_strided_wrapped(
 
         return diagonal | wrap_left | wrap_right
 
-    block_mask = create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
-
-    if do_compile:
-        block_mask = torch.compile(block_mask)
-
-    return block_mask
+    return create_block_mask(mask_mod, B=0, H=0, Q_LEN=q_len, KV_LEN=kv_len, device=device)
 
 
 def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int) -> BlockMask:
@@ -74,8 +67,8 @@ def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int) -> Bloc
 
     return create_block_mask(
         mask_mod_t,
-        B=None,
-        H=None,
+        B=0,
+        H=0,
         Q_LEN=kv_tokens,  # new queries = old KV tokens
         KV_LEN=q_tokens,  # new keys    = old Q tokens
         device=dev,
