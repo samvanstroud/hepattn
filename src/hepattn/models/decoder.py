@@ -178,7 +178,7 @@ class MaskFormerDecoder(nn.Module):
         # Calculate stride based on the ratio of key length to query length
         stride = round(kv_len / q_len)
         window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
-        return window_mask_func(self.window_size, stride=stride, q_len=q_len, kv_len=kv_len, dev=device)
+        return window_mask_func(self.window_size, stride=stride, q_len=q_len, kv_len=kv_len, device=device)
 
     def generate_positional_encodings(self, x: dict):
         x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries

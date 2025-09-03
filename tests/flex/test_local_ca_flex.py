@@ -1,6 +1,3 @@
-import os
-
-import pytest
 import torch
 from torch.nn.attention.flex_attention import create_mask
 
