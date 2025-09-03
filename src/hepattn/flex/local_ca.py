@@ -7,7 +7,7 @@ def sliding_window_mask_strided(
     stride: float,
     q_len: int,
     kv_len: int,
-    device: str | torch.device,
+    device: str,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
@@ -27,7 +27,7 @@ def sliding_window_mask_strided_wrapped(
     stride: float,
     q_len: int,
     kv_len: int,
-    device: str | torch.device,
+    device: str,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
@@ -58,7 +58,7 @@ def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int) -> Bloc
         device: torch.device to build the transposed mask on (defaults to cpu if None)
     """
     orig_mod = bm.mask_mod
-    dev = getattr(bm, "device", "cpu")
+    dev = str(getattr(bm, "device", "cpu"))
 
     # New queries are old keys; new keys are old queries.
     def mask_mod_t(b, h, q_idx, kv_idx):
