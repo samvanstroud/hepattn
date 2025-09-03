@@ -57,7 +57,7 @@ def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int, dev: st
         bm: forward BlockMask (built with Q_LEN=q_tokens, KV_LEN=kv_tokens)
         q_tokens: original forward Q token length
         kv_tokens: original forward KV token length
-        device: torch.device to build the transposed mask on (defaults to cpu if None)
+        dev: device to build the transposed mask on
     """
     orig_mod = bm.mask_mod
 
@@ -74,4 +74,3 @@ def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int, dev: st
         KV_LEN=q_tokens,  # new keys    = old Q tokens
         device=dev,
     )
-
