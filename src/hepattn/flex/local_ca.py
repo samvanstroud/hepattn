@@ -2,19 +2,23 @@ import torch
 from torch.nn.attention.flex_attention import BlockMask, _mask_mod_signature, create_block_mask
 
 
-@torch.compile(dynamic=True)
-def sliding_window_mask_strided(window_size: int, stride: float, q_len: int, kv_len: int, dev) -> _mask_mod_signature:
+def sliding_window_mask_strided(window_size: int, stride: float, q_len: int, kv_len: int, compile: bool = False, device: str | torch.device) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
 
-    stride_val = torch.tensor(stride, device=dev)
+    stride_val = torch.tensor(stride, device=device)
 
     def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
         # b = 0, h = 0 here
         q_center = torch.round(q_idx * stride_val)
         return (kv_idx - q_center).abs() <= window_size // 2
-
-    return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=dev)
+    
+    block_mask = create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
+    
+    if compile:
+        block_mask = torch.compile(block_mask)
+        
+    return 
 
 
 @torch.compile(dynamic=True)
