@@ -97,7 +97,7 @@ class MaskFormerDecoder(nn.Module):
                 q_len = x["query_embed"].shape[1]
                 kv_len = x["key_embed"].shape[1]
                 attn_mask = self.flex_local_ca_mask(q_len, kv_len, device)
-                attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, device=device)
+                attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len)
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -176,7 +176,7 @@ class MaskFormerDecoder(nn.Module):
 
     def flex_local_ca_mask(self, q_len: int, kv_len: int, device):
         # Calculate stride based on the ratio of key length to query length
-        stride = kv_len / q_len
+        stride = round(kv_len / q_len)
         window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
         return window_mask_func(self.window_size, stride=stride, q_len=q_len, kv_len=kv_len, dev=device)
 
@@ -221,16 +221,17 @@ class MaskFormerDecoderLayer(nn.Module):
         attn_norm = norm if not hybrid_norm else None
         dense_post_norm = not hybrid_norm
 
-        self.attn_kwargs = attn_kwargs or {}
+        attn_kwargs = attn_kwargs or {}
+        self.attn_type = attn_kwargs.get("attn_type", "torch")
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim, norm=norm)
-        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **self.attn_kwargs), norm=attn_norm)
-        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **self.attn_kwargs), norm=attn_norm)
+        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         if self.bidirectional_ca:
-            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **self.attn_kwargs), norm=attn_norm)
+            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(
@@ -272,7 +273,7 @@ class MaskFormerDecoderLayer(nn.Module):
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
             if attn_mask is not None:
-                if self.attn_kwargs.get("attn_type", "torch") == "flex":
+                if self.attn_type == "flex":
                     assert attn_mask_transpose is not None, "attn_mask_transpose must be provided for flex attention"
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)

@@ -2,7 +2,14 @@ import torch
 from torch.nn.attention.flex_attention import BlockMask, _mask_mod_signature, create_block_mask
 
 
-def sliding_window_mask_strided(window_size: int, stride: float, q_len: int, kv_len: int, compile: bool = False, device: str | torch.device) -> _mask_mod_signature:
+def sliding_window_mask_strided(
+    window_size: int,
+    stride: float,
+    q_len: int,
+    kv_len: int,
+    device: str | torch.device,
+    do_compile: bool = False,
+) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
 
@@ -12,22 +19,23 @@ def sliding_window_mask_strided(window_size: int, stride: float, q_len: int, kv_
         # b = 0, h = 0 here
         q_center = torch.round(q_idx * stride_val)
         return (kv_idx - q_center).abs() <= window_size // 2
-    
+
     block_mask = create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
-    
-    if compile:
+
+    if do_compile:
         block_mask = torch.compile(block_mask)
-        
-    return 
+
+    return block_mask
 
 
-@torch.compile(dynamic=True)
-def sliding_window_mask_strided_wrapped(window_size: int, stride: float, q_len: int, kv_len: int, dev) -> _mask_mod_signature:
+def sliding_window_mask_strided_wrapped(
+    window_size: int, stride: float, q_len: int, kv_len: int, device: str | torch.device, do_compile: bool = False
+) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
 
-    stride_val = torch.tensor(stride, device=dev)
-    kv_len_t = torch.as_tensor(kv_len, device=dev).reshape(())
+    stride_val = torch.tensor(stride, device=device)
+    kv_len_t = torch.as_tensor(kv_len, device=device).reshape(())
 
     def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
         # b = 0, h = 0 here
@@ -39,10 +47,15 @@ def sliding_window_mask_strided_wrapped(window_size: int, stride: float, q_len: 
 
         return diagonal | wrap_left | wrap_right
 
-    return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=dev)
+    block_mask = create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
+
+    if do_compile:
+        block_mask = torch.compile(block_mask)
+
+    return block_mask
 
 
-def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int, device=None) -> BlockMask:
+def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int) -> BlockMask:
     """Exact transpose of a FlexAttention BlockMask by transposing the mask function.
 
     Args:
@@ -52,7 +65,7 @@ def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int, device=
         device: torch.device to build the transposed mask on (defaults to cpu if None)
     """
     orig_mod = bm.mask_mod
-    dev = device if device is not None else getattr(bm, "device", "cpu")
+    dev = getattr(bm, "device", "cpu")
 
     # New queries are old keys; new keys are old queries.
     def mask_mod_t(b, h, q_idx, kv_idx):
