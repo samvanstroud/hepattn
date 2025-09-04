@@ -8,6 +8,7 @@ from functools import partial
 import torch
 from torch import Tensor, nn
 
+from hepattn.flex.fast_local_ca import build_strided_sliding_window_blockmask
 from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped, transpose_blockmask
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
@@ -30,6 +31,8 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
+        fast_local_ca: bool = False,
+        block_size: int = 128,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -59,6 +62,8 @@ class MaskFormerDecoder(nn.Module):
         self.window_size = window_size
         self.window_wrap = window_wrap
         self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
+        self.fast_local_ca = fast_local_ca
+        self.block_size = block_size
 
         if self.local_strided_attn:
             assert self.attn_type in {"torch", "flex"}, (
@@ -96,7 +101,18 @@ class MaskFormerDecoder(nn.Module):
                 device = x["query_embed"].device
                 q_len = x["query_embed"].shape[1]
                 kv_len = x["key_embed"].shape[1]
-                attn_mask = self.flex_local_ca_mask(q_len, kv_len, device)
+                if self.fast_local_ca:
+                    attn_mask = build_strided_sliding_window_blockmask(
+                        window_size=self.window_size,
+                        block_size=self.block_size,
+                        stride=kv_len / q_len,
+                        q_len=q_len,
+                        kv_len=kv_len,
+                        device=device,
+                        wrap=self.window_wrap,
+                    )
+                else:
+                    attn_mask = self.flex_local_ca_mask(q_len, kv_len, device)
                 attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=device)
 
         outputs: dict[str, dict] = {}
