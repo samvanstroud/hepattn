@@ -41,12 +41,15 @@ def build_strided_sliding_window_blockmask(
         return diagonal | wrap_left | wrap_right
 
     # Do NOT pass full_kv_* or any q_* unless they are *actually* full/needed.
-    return BlockMask.from_kv_blocks(
+    bm = BlockMask.from_kv_blocks(
         kv_num_blocks=num_blocks.to(torch.int32),
         kv_indices=indices.to(torch.int32),
         BLOCK_SIZE=block_size,
-        mask_mod=mask_mod,  # optional but nice to carry for exactness
+        mask_mod=mask_mod,
+        seq_lengths=(q_len, kv_len),
     )
+
+    return bm
 
 
 def compute_intersecting_blocks(
