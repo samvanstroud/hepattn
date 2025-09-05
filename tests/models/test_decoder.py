@@ -328,3 +328,165 @@ class TestMaskFormerDecoderLayer:
         assert new_q.shape == q.shape
         # Without bidirectional, kv should remain unchanged
         assert new_kv is kv
+
+
+class TestMaskFormerDecoderFastLocalCA:
+    """Test MaskFormerDecoder with fast_local_ca integration."""
+
+    @pytest.fixture
+    def decoder_layer_config_flex(self):
+        """Decoder layer config with flex attention."""
+        return {
+            "dim": DIM,
+            "norm": "LayerNorm",
+            "dense_kwargs": {},
+            "attn_kwargs": {"attn_type": "flex"},
+            "bidirectional_ca": True,
+            "hybrid_norm": False,
+        }
+
+    def decoder_layer_config_torch(self):
+        """Decoder layer config with flex attention."""
+        return {
+            "dim": DIM,
+            "norm": "LayerNorm",
+            "dense_kwargs": {},
+            "attn_kwargs": {"attn_type": "torch"},
+            "bidirectional_ca": True,
+            "hybrid_norm": False,
+        }
+
+    @pytest.fixture
+    def decoder_flex_fast_local_ca(self, decoder_layer_config_flex):
+        """Decoder with fast_local_ca=True."""
+        return MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config_flex,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=False,  # Must be False when local_strided_attn=True
+            local_strided_attn=True,
+            window_size=32,
+            window_wrap=True,
+            fast_local_ca=True,
+            block_size=128,
+        )
+
+    @pytest.fixture
+    def decoder_flex_local_ca(self, decoder_layer_config_flex):
+        """Decoder with fast_local_ca=True."""
+        return MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config_flex,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=False,
+            local_strided_attn=True,
+            window_size=32,
+            window_wrap=True,
+            fast_local_ca=False,
+            block_size=128,
+        )
+
+    @pytest.fixture
+    def decoder_torch_local_ca(self, decoder_layer_config_torch):
+        """Decoder with fast_local_ca=True."""
+        return MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config_torch,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=False,
+            local_strided_attn=True,
+            window_size=32,
+            window_wrap=True,
+            fast_local_ca=False,
+            block_size=128,
+        )
+
+    @pytest.fixture
+    def decoder_fast_local_ca(self, decoder_layer_config_flex):
+        """Decoder with fast_local_ca=True."""
+        return MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config_flex,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=False,
+            local_strided_attn=True,
+            window_size=32,
+            window_wrap=True,
+            fast_local_ca=True,
+            block_size=128,
+        )
+
+    @pytest.fixture
+    def decoder_fast_local_ca_no_wrap(self, decoder_layer_config_flex):
+        """Decoder with fast_local_ca=True and wrap=False."""
+        return MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config_flex,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=False,
+            local_strided_attn=True,
+            window_size=32,
+            window_wrap=False,
+            fast_local_ca=True,
+            block_size=128,
+        )
+
+    @pytest.fixture
+    def sample_local_ca_data(self):
+        """Sample data for fast local CA testing (batch size 1 only)."""
+        x = {
+            "query_embed": torch.randn(1, NUM_QUERIES, DIM),
+            "key_embed": torch.randn(1, SEQ_LEN, DIM),
+            "key_posenc": torch.randn(1, SEQ_LEN, DIM),
+            "key_valid": torch.ones(1, SEQ_LEN, dtype=torch.bool),
+            "key_is_input1": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
+            "key_is_input2": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
+        }
+
+        x["key_is_input1"][:, :4] = True
+        x["key_is_input2"][:, 4:] = True
+
+        input_names = ["input1", "input2"]
+        return x, input_names
+
+    def test_fast_local_ca_forward_pass(self, decoder_flex_local_ca, decoder_flex_fast_local_ca, decoder_torch_local_ca, sample_local_ca_data):
+        """Test forward pass with fast_local_ca=True."""
+        x, input_names = sample_local_ca_data
+        decoder_flex_local_ca.tasks = []  # Empty task list
+        decoder_flex_fast_local_ca.tasks = []  # Empty task list
+        decoder_torch_local_ca.tasks = []  # Empty task list
+
+        updated_x_local_ca_fast, _ = decoder_flex_local_ca(x, input_names)
+        updated_x_local_ca, _ = decoder_flex_fast_local_ca(x, input_names)
+        updated_x_local_ca_torch, _ = decoder_torch_local_ca(x, input_names)
+
+        assert torch.allclose(updated_x_local_ca_fast["query_embed"], updated_x_local_ca["query_embed"], atol=1e-5)
+        assert torch.allclose(updated_x_local_ca_fast["key_embed"], updated_x_local_ca["key_embed"], atol=1e-5)
+        assert torch.allclose(updated_x_local_ca_torch["query_embed"], updated_x_local_ca["query_embed"], atol=1e-5)
+        assert torch.allclose(updated_x_local_ca_torch["key_embed"], updated_x_local_ca["key_embed"], atol=1e-5)
+
+    def test_fast_local_ca_different_block_sizes(self, decoder_layer_config_flex, sample_fast_local_ca_data):
+        """Test fast_local_ca with different block sizes."""
+        x, input_names = sample_fast_local_ca_data
+
+        for block_size in [64, 128, 256]:
+            decoder = MaskFormerDecoder(
+                num_queries=NUM_QUERIES,
+                decoder_layer_config=decoder_layer_config_flex,
+                num_decoder_layers=1,  # Use fewer layers for faster testing
+                mask_attention=False,
+                local_strided_attn=True,
+                window_size=32,
+                window_wrap=True,
+                fast_local_ca=True,
+                block_size=block_size,
+            )
+            decoder.tasks = []
+
+            updated_x, _ = decoder(x, input_names)
+
+            # Check that forward pass works
+            assert "query_embed" in updated_x
+            assert "key_embed" in updated_x
+            assert updated_x["query_embed"].shape == (1, NUM_QUERIES, DIM)
+            assert updated_x["key_embed"].shape == (1, SEQ_LEN, DIM)
