@@ -150,8 +150,8 @@ def _kv_blocks_wrap(
 
 
 # compile the helpers
-_kv_blocks_nonwrap = torch.compile(_kv_blocks_nonwrap, dynamic=True)
-_kv_blocks_wrap = torch.compile(_kv_blocks_wrap, dynamic=True)
+_kv_blocks_nonwrap = torch.compile(_kv_blocks_nonwrap, dynamic=True)  # noqa: invalid-assignment
+_kv_blocks_wrap = torch.compile(_kv_blocks_wrap, dynamic=True)  # noqa: invalid-assignment
 
 
 def build_strided_sliding_window_blockmask(
