@@ -54,6 +54,7 @@ class TestMaskFormerDecoder:
             "bidirectional_ca": True,
             "hybrid_norm": False,
         }
+
     @pytest.fixture
     def decoder_layer_config_flex(self):
         return {
@@ -98,7 +99,7 @@ class TestMaskFormerDecoder:
             window_size=4,
             window_wrap=True,
         )
-    
+
     @pytest.fixture
     def decoder_local_strided_attn_flex(self, decoder_layer_config_flex):
         """Decoder with local_strided_attn=True for testing local window attention."""

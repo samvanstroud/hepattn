@@ -37,9 +37,8 @@ def _kv_blocks_nonwrap(
     is refined later by `mask_mod`.
     """
     # Keep scalars as tensors (avoids graph breaks in torch.compile)
-    q_len_t = torch.tensor(q_len, device=device, dtype=torch.int64)
-    kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int64)
     half_t = torch.tensor(window_size // 2, device=device, dtype=torch.int64)
+    kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int64)
 
     qb = torch.arange(q_blocks, device=device, dtype=torch.int64)  # [Q]
     q0 = qb * block_size  # first query token in block
@@ -93,8 +92,6 @@ def _kv_blocks_wrap(
     2) nonwrap_row: window doesn't cross the end (single interval).
     3) wrap_row: window crosses the end (union of two intervals).
     """
-    q_len_t = torch.tensor(q_len, device=device, dtype=torch.int64)
-    kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int64)
     half_t = torch.tensor(window_size // 2, device=device, dtype=torch.int64)
 
     qb = torch.arange(q_blocks, device=device, dtype=torch.int64)
@@ -113,6 +110,7 @@ def _kv_blocks_wrap(
     hi_tok = max_center + half_t
     span = hi_tok - lo_tok + 1  # window width in tokens (inclusive)
 
+    kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int64)
     base = torch.arange(kv_blocks, device=device, dtype=torch.int64)
     base2 = base.unsqueeze(0).expand(q_blocks, kv_blocks)
 
