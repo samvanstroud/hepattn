@@ -47,6 +47,8 @@ class MaskFormerDecoder(nn.Module):
             window_size: The size of the window for local strided window attention.
             window_wrap: If True, wraps the window for local strided window attention.
             attn_type: The attention type to use (e.g., 'torch', 'flex').
+            fast_local_ca: If True, uses fast local CA.
+            block_size: The size of the block for fast local CA.
         """
         super().__init__()
 

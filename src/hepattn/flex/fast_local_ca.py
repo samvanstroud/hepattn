@@ -83,9 +83,9 @@ def _kv_blocks_wrap(
 ):
     """Same as _kv_blocks_nonwrap but the sliding window can wrap around the end of the KV sequence (circular indexing).
     Handles three row types:
-      1) all_rows: window covers the whole KV (mask all blocks)
-      2) nonwrap_row: window doesn't cross the end (single interval)
-      3) wrap_row: window crosses the end (union of two intervals)
+    1) all_rows: window covers the whole KV (mask all blocks).
+    2) nonwrap_row: window doesn't cross the end (single interval).
+    3) wrap_row: window crosses the end (union of two intervals).
     """
     q_len_t = torch.tensor(q_len, device=device, dtype=torch.int64)
     kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int64)
