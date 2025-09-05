@@ -24,6 +24,7 @@ def _kv_blocks_nonwrap(
     kv_blocks: int,
     block_size: int,
     window_size: int,
+    stride: float,
     q_len: int,
     kv_len: int,
     device: str,
@@ -45,9 +46,13 @@ def _kv_blocks_nonwrap(
     q1 = torch.minimum(q0 + (block_size - 1), torch.tensor(q_len - 1, device=device, dtype=torch.int64))  # last query token in block
 
     # Map query-token positions to KV "centers" by proportional scaling:
-    # centers = round(q * kv_len / q_len) with banker's rounding
-    min_center = _round_bankers_num_over_den(q0 * kv_len_t, q_len_t)  # [Q]
-    max_center = _round_bankers_num_over_den(q1 * kv_len_t, q_len_t)  # [Q]
+    s = torch.tensor(stride, device=device, dtype=torch.float64)
+    q0f = q0.to(torch.float64) * s
+    q1f = q1.to(torch.float64) * s
+    lo_center = torch.minimum(q0f, q1f)
+    hi_center = torch.maximum(q0f, q1f)
+    min_center = torch.floor(lo_center).to(torch.int64)
+    max_center = torch.ceil(hi_center).to(torch.int64)
 
     # Convert window in tokens to an inclusive token range [lo_tok, hi_tok]
     lo_tok = torch.maximum(min_center - half_t, torch.zeros_like(min_center))  # Leftmost KV token this block can see
@@ -77,6 +82,7 @@ def _kv_blocks_wrap(
     kv_blocks: int,
     block_size: int,
     window_size: int,
+    stride: float,
     q_len: int,
     kv_len: int,
     device: str,
@@ -95,9 +101,13 @@ def _kv_blocks_wrap(
     q0 = qb * block_size
     q1 = torch.minimum(q0 + (block_size - 1), torch.tensor(q_len - 1, device=device, dtype=torch.int64))
 
-    # Proportional centers as in non-wrap version
-    min_center = _round_bankers_num_over_den(q0 * kv_len_t, q_len_t)
-    max_center = _round_bankers_num_over_den(q1 * kv_len_t, q_len_t)
+    s = torch.tensor(stride, device=device, dtype=torch.float64)
+    q0f = q0.to(torch.float64) * s
+    q1f = q1.to(torch.float64) * s
+    lo_center = torch.minimum(q0f, q1f)
+    hi_center = torch.maximum(q0f, q1f)
+    min_center = torch.floor(lo_center).to(torch.int64)
+    max_center = torch.ceil(hi_center).to(torch.int64)
 
     lo_tok = min_center - half_t
     hi_tok = max_center + half_t
@@ -180,9 +190,9 @@ def build_strided_sliding_window_blockmask(
 
     # Compute the block-level KV visibility (coarse envelope)
     if wrap:
-        kv_num_blocks, kv_indices = _kv_blocks_wrap(q_blocks, kv_blocks, block_size, window_size, q_len, kv_len, device)
+        kv_num_blocks, kv_indices = _kv_blocks_wrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device)
     else:
-        kv_num_blocks, kv_indices = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, q_len, kv_len, device)
+        kv_num_blocks, kv_indices = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device)
 
     # Flex Attention expects [B, H, Q_blocks, ...]; we use singleton B=H=1
     kv_num_blocks = kv_num_blocks.unsqueeze(0).unsqueeze(0)  # [1,1,Q_blocks]
