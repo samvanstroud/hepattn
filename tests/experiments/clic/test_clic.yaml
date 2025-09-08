@@ -28,10 +28,10 @@ data:
   valid_path: dummy
   test_path: dummy
 
-  num_workers: 2
-  num_train: 10
-  num_test: 10
-  num_val: 100
+  num_workers: 4
+  num_train: 4
+  num_val: 4
+  num_test: 100
 
   batch_size: 1
   incidence_cutval: 0.01
@@ -39,7 +39,7 @@ data:
   scale_dict_path: &scale_dict_path src/hepattn/experiments/clic/configs/clic_var_transform.yaml
 
 trainer:
-  max_epochs: 2
+  max_epochs: 1
   accelerator: cpu
   devices: 1
   precision: bf16-mixed

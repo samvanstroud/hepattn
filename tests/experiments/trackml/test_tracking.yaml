@@ -12,10 +12,10 @@ data:
   hit_eval_val: dummy
   hit_eval_test: dummy
 
-  num_workers: 2
+  num_workers: 4
   num_train: 10
-  num_test: 10
   num_val: 10
+  num_test: 10
 
   # Select only hits from these detector volumes
   # pix barrel: 8, pix endcap: 7, 9
@@ -64,7 +64,7 @@ data:
       - phi
 
 trainer:
-  max_epochs: 2
+  max_epochs: 1
   accelerator: cpu
   devices: 1
   precision: bf16-mixed
