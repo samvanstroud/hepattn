@@ -1,10 +1,12 @@
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 
 def test_run(main_module: Any, config_path: str, dir_prefix: str) -> None:
     """Run an experiment test with the given main module, config, and directory prefix."""
+    sys.argv = [sys.argv[0]]
     args = ["fit", "--config", config_path]
     main_module.main(args)
 
