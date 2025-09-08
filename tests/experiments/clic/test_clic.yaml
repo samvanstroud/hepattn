@@ -31,7 +31,7 @@ data:
   num_workers: 4
   num_train: 4
   num_val: 4
-  num_test: 100
+  num_test: 4
 
   batch_size: 1
   incidence_cutval: 0.01
@@ -55,7 +55,6 @@ trainer:
       init_args:
         monitor: val/loss
         save_last: true
-    - class_path: hepattn.experiments.clic.PflowPredictionWriter
     - class_path: lightning.pytorch.callbacks.ModelSummary
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
