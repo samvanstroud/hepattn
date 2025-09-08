@@ -1,6 +1,6 @@
 from hepattn.experiments.trackml import run_tracking
 
-from ..test_utils import run_test  # noqa: TID252
+from ..utils import run_test  # noqa: TID252
 
 
 def run_test_tracking() -> None:
