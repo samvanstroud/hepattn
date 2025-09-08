@@ -2,7 +2,7 @@ name: Test
 on: [push, pull_request]
 
 jobs:
-  unit-tests:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -37,7 +37,7 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  integration-tests:
+  integration:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
