@@ -48,13 +48,12 @@ def get_best_epoch(config_path: Path) -> Path:
 
 class CLI(LightningCLI):
     def add_arguments_to_parser(self, parser) -> None:
-        parser.add_argument("--name", default="hepattn", help="Name for this training run.")
+        parser.add_argument("--name", type=str, default="hepattn", help="Name for this training run.")
 
         parser.add_argument(
             "--matmul_precision",
             type=str,
             choices=["highest", "high", "medium", "low"],
-            default="high",
             help="Precision setting for float32 matrix multiplications.",
         )
 
@@ -109,7 +108,8 @@ class CLI(LightningCLI):
                 raise ValueError("Testing requires --trainer.devices=1")
 
         # Set the matmul precision
-        torch.set_float32_matmul_precision(sc["matmul_precision"])
+        if sc.get("matmul_precision"):
+            torch.set_float32_matmul_precision(sc["matmul_precision"])
 
     def after_instantiate_classes(self) -> None:
         sc = self.config[self.subcommand]
