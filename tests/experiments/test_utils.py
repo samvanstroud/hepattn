@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 
-def run_experiment_test(main_module: Any, config_path: str, dir_prefix: str, logs_dir: str = "logs"):
+def test_run(main_module: Any, config_path: str, dir_prefix: str, logs_dir: str = "logs"):
     """Run an experiment test with the given main module, config, and directory prefix."""
     args = ["fit", "--config", config_path]
     main_module.main(args)

@@ -1,7 +1,6 @@
-from tests.experiments.test_utils import run_experiment_test
-
 from hepattn.experiments.clic import main
+from tests.experiments.test_utils import test_run
 
 
 def test_run_pflow():
-    run_experiment_test(main, "tests/experiments/clic/test_clic.yaml", "clic_test_")
+    test_run(main, "tests/experiments/clic/test_clic.yaml", "clic_test_")
