@@ -3,14 +3,14 @@ from pathlib import Path
 from typing import Any
 
 
-def test_run(main_module: Any, config_path: str, dir_prefix: str, logs_dir: str = "logs"):
+def test_run(main_module: Any, config_path: str, dir_prefix: str) -> None:
     """Run an experiment test with the given main module, config, and directory prefix."""
     args = ["fit", "--config", config_path]
     main_module.main(args)
 
     # Find the most recent experiment directory
-    test_logs_dir = Path(logs_dir)
-    assert test_logs_dir.exists(), f"{logs_dir} directory not found at {test_logs_dir.absolute()}"
+    test_logs_dir = Path("test_logs")
+    assert test_logs_dir.exists(), f"{test_logs_dir} directory not found at {test_logs_dir.absolute()}"
 
     # Get all directories that start with the given prefix
     exp_dirs = [d for d in test_logs_dir.iterdir() if d.is_dir() and d.name.startswith(dir_prefix)]
@@ -18,8 +18,8 @@ def test_run(main_module: Any, config_path: str, dir_prefix: str, logs_dir: str 
 
     # Get the most recent directory by modification time
     latest_dir = max(exp_dirs, key=os.path.getmtime)
-    config_path = latest_dir / "config.yaml"
-    assert config_path.exists(), f"Config file not found at {config_path.absolute()}"
+    test_config_path = latest_dir / "config.yaml"
+    assert test_config_path.exists(), f"Config file not found at {test_config_path.absolute()}"
 
-    args = ["test", "--config", str(config_path)]
+    args = ["test", "--config", str(test_config_path)]
     main_module.main(args)
