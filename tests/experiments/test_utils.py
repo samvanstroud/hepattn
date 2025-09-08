@@ -3,9 +3,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import yaml
 
-def test_run(main_module: Any, config_path: str, dir_prefix: str) -> None:
-    """Run an experiment test with the given main module, config, and directory prefix."""
+
+def test_run(main_module: Any, config_path: str) -> None:
+    """Run an experiment test with the given main module and config."""
+    # Load the config to get the name for the directory prefix
+    config_file = Path(config_path)
+    with config_file.open() as f:
+        config = yaml.safe_load(f)
+    dir_prefix = config["name"] + "_"
+
     sys.argv = [sys.argv[0]]
     args = ["fit", "--config", config_path]
     main_module.main(args)
