@@ -70,7 +70,7 @@ model:
     initial: 1e-6
     max: 8e-5
     end: 1e-6
-    pct_start: 0.05
+    pct_start: 0.0
     weight_decay: 1e-4
     skip_scheduler: false
 
