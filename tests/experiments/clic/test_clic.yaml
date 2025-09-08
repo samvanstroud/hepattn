@@ -39,8 +39,7 @@ data:
   scale_dict_path: &scale_dict_path src/hepattn/experiments/clic/configs/clic_var_transform.yaml
 
 trainer:
-  fast_dev_run: 2
-  max_epochs: 200
+  max_epochs: 2
   accelerator: cpu
   devices: 1
   precision: bf16-mixed
