@@ -28,6 +28,7 @@ def _kv_blocks_nonwrap(
     q_len: int,
     kv_len: int,
     device: str,
+    dtype_float: torch.dtype,
 ):
     """For each query block, compute which KV blocks fall inside a sliding window (no wrap-around).
     This produces a mapping:
@@ -40,38 +41,49 @@ def _kv_blocks_nonwrap(
     half_t = torch.tensor(window_size // 2, device=device, dtype=torch.int64)
     kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int64)
 
-    qb = torch.arange(q_blocks, device=device, dtype=torch.int64)  # [Q]
-    q0 = qb * block_size  # first query token in block
-    q1 = torch.minimum(q0 + (block_size - 1), torch.tensor(q_len - 1, device=device, dtype=torch.int64))  # last query token in block
+    half_f = torch.tensor(window_size // 2, device=device, dtype=dtype_float)
+    kv_len_fm1 = torch.tensor(kv_len - 1, device=device, dtype=dtype_float)
+
+    q_len_t = torch.tensor(q_len, device=device)  # stays integer
+    block_size_t = torch.tensor(block_size, device=device)  # stays integer
+
+    zero_f = torch.zeros(q_blocks, device=device, dtype=dtype_float)
+
+    qb = torch.arange(q_blocks, device=device)  # [Q]
+    q0 = qb * block_size_t  # first query token in block
+    q1 = torch.minimum(q0 + (block_size_t - 1), q_len_t - 1)  # last query token in block
 
     # Map query-token positions to KV "centers" by proportional scaling:
-    s = torch.tensor(stride, device=device, dtype=torch.float64)
-    q0f = q0.to(torch.float64) * s
-    q1f = q1.to(torch.float64) * s
+    s = torch.tensor(stride, device=device, dtype=dtype_float)
+    q0f = q0.to(dtype_float) * s
+    q1f = q1.to(dtype_float) * s
     lo_center = torch.minimum(q0f, q1f)
     hi_center = torch.maximum(q0f, q1f)
-    min_center = torch.floor(lo_center).to(torch.int64)
-    max_center = torch.ceil(hi_center).to(torch.int64)
+    min_center = torch.floor(lo_center)
+    max_center = torch.ceil(hi_center)
 
     # Convert window in tokens to an inclusive token range [lo_tok, hi_tok]
-    lo_tok = torch.maximum(min_center - half_t, torch.zeros_like(min_center))  # Leftmost KV token this block can see
-    hi_tok = torch.minimum(max_center + half_t, kv_len_t - 1)  # Rightmost KV token this block can see
+    # zero_tensor = torch.zeros(q_blocks, device=device)
+    # lo_tok = torch.maximum(min_center - half_t, zero_tensor)  # Leftmost KV token this block can see
+    # hi_tok = torch.minimum(max_center + half_t, kv_len_t - 1)  # Rightmost KV token this block can see
+    lo_tok = torch.maximum(min_center - half_f, zero_f)  # float vs float
+    hi_tok = torch.minimum(max_center + half_f, kv_len_fm1)  # float vs float
 
     # Convert token range to block range
-    lo_blk = torch.div(lo_tok, block_size, rounding_mode="floor")
-    hi_blk = torch.div(hi_tok, block_size, rounding_mode="floor")
+    lo_blk = torch.div(lo_tok, block_size_t, rounding_mode="floor")
+    hi_blk = torch.div(hi_tok, block_size_t, rounding_mode="floor")
 
     # Build a [Q, K] boolean mask over KV blocks
-    base = torch.arange(kv_blocks, device=device, dtype=torch.int64)  # [K]
+    base = torch.arange(kv_blocks, device=device)  # [K]
     base2 = base.unsqueeze(0).expand(q_blocks, kv_blocks)  # [Q,K]
     mask = (base2 >= lo_blk.unsqueeze(1)) & (base2 <= hi_blk.unsqueeze(1))  # [Q,K]
 
     #  - kv_num_blocks: count of True per row
     #  - kv_indices: compacted indices per row (positions via cumsum trick)
-    kv_num_blocks = mask.sum(dim=1).to(torch.int32)  # [Q]
-    pos = (mask.cumsum(dim=1) - 1).masked_fill(~mask, 0).to(torch.int64)  # [Q,K]
-    src = base2.to(torch.int32).masked_fill(~mask, 0)
-    kv_indices = torch.zeros((q_blocks, kv_blocks), dtype=torch.int32, device=device)
+    kv_num_blocks = mask.sum(dim=1)  # [Q]
+    pos = (mask.cumsum(dim=1) - 1).masked_fill(~mask, 0)  # [Q,K]
+    src = base2.masked_fill(~mask, 0)
+    kv_indices = torch.zeros((q_blocks, kv_blocks), device=device, dtype=base.dtype)
     kv_indices.scatter_(dim=1, index=pos, src=src)  # compact along dim=1
     return kv_num_blocks, kv_indices
 
@@ -85,6 +97,7 @@ def _kv_blocks_wrap(
     q_len: int,
     kv_len: int,
     device: str,
+    dtype_float: torch.dtype,
 ):
     """Same as _kv_blocks_nonwrap but the sliding window can wrap around the end of the KV sequence (circular indexing).
     Handles three row types:
@@ -93,18 +106,20 @@ def _kv_blocks_wrap(
     3) wrap_row: window crosses the end (union of two intervals).
     """
     half_t = torch.tensor(window_size // 2, device=device, dtype=torch.int64)
+    block_size_t = torch.tensor(block_size, device=device)  # stays integer
+    q_len_t = torch.tensor(q_len, device=device)  # stays integer
 
-    qb = torch.arange(q_blocks, device=device, dtype=torch.int64)
-    q0 = qb * block_size
-    q1 = torch.minimum(q0 + (block_size - 1), torch.tensor(q_len - 1, device=device, dtype=torch.int64))
+    qb = torch.arange(q_blocks, device=device)
+    q0 = qb * block_size_t
+    q1 = torch.minimum(q0 + (block_size_t - 1), q_len_t - 1)
 
-    s = torch.tensor(stride, device=device, dtype=torch.float64)
-    q0f = q0.to(torch.float64) * s
-    q1f = q1.to(torch.float64) * s
+    s = torch.tensor(stride, device=device, dtype=dtype_float)
+    q0f = q0.to(dtype_float) * s
+    q1f = q1.to(dtype_float) * s
     lo_center = torch.minimum(q0f, q1f)
     hi_center = torch.maximum(q0f, q1f)
-    min_center = torch.floor(lo_center).to(torch.int64)
-    max_center = torch.ceil(hi_center).to(torch.int64)
+    min_center = torch.floor(lo_center)
+    max_center = torch.ceil(hi_center)
 
     lo_tok = min_center - half_t
     hi_tok = max_center + half_t
@@ -117,32 +132,36 @@ def _kv_blocks_wrap(
     # If window covers the whole sequence, select all KV blocks
     all_rows = span >= kv_len_t
 
-    # Mod the bounds into [0, kv_len)
-    lo_mod = torch.remainder(lo_tok, kv_len_t)
-    hi_mod = torch.remainder(hi_tok, kv_len_t)
+    # # Mod the bounds into [0, kv_len)
+    # lo_mod = torch.remainder(lo_tok, kv_len_t)
+    # hi_mod = torch.remainder(hi_tok, kv_len_t)
+    kv_len_f = torch.tensor(kv_len, device=device, dtype=dtype_float)
+
+    lo_mod = torch.remainder(lo_tok, kv_len_f)  # float % float
+    hi_mod = torch.remainder(hi_tok, kv_len_f)  # float % float
 
     # Identify whether the modulo-interval wraps around
     nonwrap_row = (~all_rows) & (lo_mod <= hi_mod)
     wrap_row = (~all_rows) & (lo_mod > hi_mod)
 
     # Non-wrapping interval: [lo_mod, hi_mod]
-    lo_blk_nw = torch.div(lo_mod, block_size, rounding_mode="floor")
-    hi_blk_nw = torch.div(hi_mod, block_size, rounding_mode="floor")
+    lo_blk_nw = torch.div(lo_mod, block_size_t, rounding_mode="floor")
+    hi_blk_nw = torch.div(hi_mod, block_size_t, rounding_mode="floor")
     mask_nw = (base2 >= lo_blk_nw.unsqueeze(1)) & (base2 <= hi_blk_nw.unsqueeze(1))
 
     # Wrapping interval: [0, hi_mod] U [lo_mod, kv_len)
-    lo_blk2 = torch.div(lo_mod, block_size, rounding_mode="floor")
-    hi_blk1 = torch.div(hi_mod, block_size, rounding_mode="floor")
+    lo_blk2 = torch.div(lo_mod, block_size_t, rounding_mode="floor")
+    hi_blk1 = torch.div(hi_mod, block_size_t, rounding_mode="floor")
     mask_wr = (base2 <= hi_blk1.unsqueeze(1)) | (base2 >= lo_blk2.unsqueeze(1))
 
     # Row-wise select the correct mask without Python branching
     mask = (all_rows.unsqueeze(1)) | (nonwrap_row.unsqueeze(1) & mask_nw) | (wrap_row.unsqueeze(1) & mask_wr)
 
     # Pack ragged rows (same trick as in non-wrap)
-    kv_num_blocks = mask.sum(dim=1).to(torch.int32)
-    pos = (mask.cumsum(dim=1) - 1).masked_fill(~mask, 0).to(torch.int64)
-    src = base2.to(torch.int32).masked_fill(~mask, 0)
-    kv_indices = torch.zeros((q_blocks, kv_blocks), dtype=torch.int32, device=device)
+    kv_num_blocks = mask.sum(dim=1)
+    pos = (mask.cumsum(dim=1) - 1).masked_fill(~mask, 0)
+    src = base2.masked_fill(~mask, 0)
+    kv_indices = torch.zeros((q_blocks, kv_blocks), device=device, dtype=base.dtype)
     kv_indices.scatter_(dim=1, index=pos, src=src)
     return kv_num_blocks, kv_indices
 
@@ -162,6 +181,7 @@ def build_strided_sliding_window_blockmask(
     device: str,
     wrap: bool,
     block_size: int = 128,
+    dtype_float: torch.dtype = torch.float32,
 ) -> BlockMask:
     """Build a BlockMask for Flex Attention implementing a strided sliding window.
     High level:
@@ -189,9 +209,9 @@ def build_strided_sliding_window_blockmask(
 
     # Compute the block-level KV visibility (coarse envelope)
     if wrap:
-        kv_num_blocks, kv_indices = _kv_blocks_wrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device)
+        kv_num_blocks, kv_indices = _kv_blocks_wrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, dtype_float)
     else:
-        kv_num_blocks, kv_indices = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device)
+        kv_num_blocks, kv_indices = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, dtype_float)
 
     # Flex Attention expects [B, H, Q_blocks, ...]; we use singleton B=H=1
     kv_num_blocks = kv_num_blocks.unsqueeze(0).unsqueeze(0)  # [1,1,Q_blocks]

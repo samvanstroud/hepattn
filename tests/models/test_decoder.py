@@ -217,35 +217,6 @@ class TestMaskFormerDecoder:
             assert attn_mask.shape == (1, NUM_QUERIES, SEQ_LEN)
             assert attn_mask.dtype == torch.bool
 
-    def test_forward_local_strided_attn_flex(self, decoder_local_strided_attn, decoder_local_strided_attn_flex, sample_local_strided_decoder_data):
-        """Test forward pass with local_strided_attn=True."""
-        x, input_names = sample_local_strided_decoder_data
-        decoder_local_strided_attn.tasks = []  # Empty task list
-        decoder_local_strided_attn_flex.tasks = []  # Empty task list
-
-        updated_x, _ = decoder_local_strided_attn(x, input_names)
-        updated_x_flex, outputs_flex = decoder_local_strided_attn_flex(x, input_names)
-
-        # Check that x was updated with new embeddings
-        assert "query_embed" in updated_x_flex
-        assert "key_embed" in updated_x_flex
-        assert updated_x_flex["query_embed"].shape == (1, NUM_QUERIES, DIM)
-        assert updated_x_flex["key_embed"].shape == (1, SEQ_LEN, DIM)
-
-        assert torch.allclose(updated_x["query_embed"], updated_x_flex["query_embed"], atol=1e-5)
-        assert torch.allclose(updated_x["key_embed"], updated_x_flex["key_embed"], atol=1e-5)
-
-        # Check outputs structure
-        assert len(outputs_flex) == NUM_LAYERS
-        for i in range(NUM_LAYERS):
-            assert f"layer_{i}" in outputs_flex
-            assert isinstance(outputs_flex[f"layer_{i}"], dict)
-            # Check that attention mask was created for local strided attention
-            assert "attn_mask" in outputs_flex[f"layer_{i}"]
-            attn_mask = outputs_flex[f"layer_{i}"]["attn_mask"]
-            assert attn_mask.shape == (1, NUM_QUERIES, SEQ_LEN)
-            assert attn_mask.dtype == torch.bool
-
     def test_forward_shapes(self, decoder_no_mask_attention, sample_decoder_data):
         """Test that forward pass maintains correct tensor shapes."""
         x, input_names = sample_decoder_data

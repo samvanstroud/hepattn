@@ -215,7 +215,7 @@ class TestBuildStridedSlidingWindowBlockmask:
 def test_non_wrapped_equivalence(test_config):
     """Test that fast_local_ca and local_ca produce equivalent masks for non-wrapped case."""
     # Create masks using both approaches
-    fast_mask = build_strided_sliding_window_blockmask(wrap=False, **test_config)
+    fast_mask = build_strided_sliding_window_blockmask(wrap=False, **test_config, dtype_float=torch.float32)
 
     local_mask = sliding_window_mask_strided(
         window_size=test_config["window_size"],
@@ -232,7 +232,7 @@ def test_non_wrapped_equivalence(test_config):
 def test_wrapped_equivalence(test_config):
     """Test that fast_local_ca and local_ca produce equivalent masks for wrapped case."""
     # Create masks using both approaches
-    fast_mask = build_strided_sliding_window_blockmask(wrap=True, **test_config)
+    fast_mask = build_strided_sliding_window_blockmask(wrap=True, **test_config, dtype_float=torch.float32)
 
     local_mask = sliding_window_mask_strided_wrapped(
         window_size=test_config["window_size"],
