@@ -75,7 +75,6 @@ trainer:
   logger: false
 
   callbacks:
-    - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.AttnMaskLogger
     - class_path: hepattn.callbacks.Checkpoint
