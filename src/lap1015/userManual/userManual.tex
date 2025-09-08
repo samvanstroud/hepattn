@@ -25,7 +25,7 @@
 \usepackage[ruled,linesnumbered]{algorithm2e} % For algorithms
 \renewcommand{\algorithmcfname}{ALGORITHM}
 \SetAlFnt{\small}
-\SetAlCapFnt{\small}	
+\SetAlCapFnt{\small}
 \SetAlCapNameFnt{\small}
 \SetAlCapHSkip{0pt}
 \IncMargin{-\parindent}
@@ -223,13 +223,13 @@ In case you would like to use GPU support, use the following as a starting point
 The high-level interface can be found in the \texttt{test\_cpu.cpp} and \texttt{test\_gpu.cu} files. The CPU functions are:
 \begin{verbatim}
 template <class SC, class TC, class CF, class TP>
-void solveAdaptiveOMP(TP &start_time, int N1, int N2, CF &get_cost, int *rowsol, 
+void solveAdaptiveOMP(TP &start_time, int N1, int N2, CF &get_cost, int *rowsol,
                       int entries, bool epsilon)
 \end{verbatim}
 and
 \begin{verbatim}
 template <class SC, class TC, class CF, class TP>
-void solveAdaptive(TP &start_time, int N1, int N2, CF &get_cost, int *rowsol, 
+void solveAdaptive(TP &start_time, int N1, int N2, CF &get_cost, int *rowsol,
                    int entries, bool epsilon)
 \end{verbatim}
 Where:
@@ -246,16 +246,16 @@ Where:
 The corresponding GPU functions are:
 \begin{verbatim}
 template <class SC, class TC, class CF, class STATE, class TP>
-void solveCUDA(TP& start_time, int N1, int N2, CF& get_cost_gpu, STATE* state, 
-               lap::cuda::Worksharing& ws, long long max_memory, int* rowsol, 
+void solveCUDA(TP& start_time, int N1, int N2, CF& get_cost_gpu, STATE* state,
+               lap::cuda::Worksharing& ws, long long max_memory, int* rowsol,
                bool epsilon, bool silent)
 \end{verbatim}
 and
 \begin{verbatim}
 template <class SC, class TC, class CF, class TP>
-void solveTableCUDA(TP& start_time, int N1, int N2, CF& get_cost_cpu, 
-                    lap::cuda::Worksharing& ws, long long max_memory, 
-                    int* rowsol, bool epsilon, bool sequential, bool pinned, 
+void solveTableCUDA(TP& start_time, int N1, int N2, CF& get_cost_cpu,
+                    lap::cuda::Worksharing& ws, long long max_memory,
+                    int* rowsol, bool epsilon, bool sequential, bool pinned,
                     bool silent)
 \end{verbatim}
 The difference between these functions is that the first one uses a device lambda \texttt{CF \&get\_cost\_gpu} with parameters \texttt{(int x, int y, STATE \&state)} while the second function uses a regular cpu lambda as in the cpu code above.
@@ -266,7 +266,7 @@ Additional parameters are:
 \item \texttt{long long max\_memory} defines how much memory should be allocated on a single GPU for holding the cost values (either cache or table)
 \item \texttt{bool sequential} specifies if the \texttt{get\_cost\_cpu} lambda can only be called from a single thread
 \item \texttt{bool pinned} if true, the entire CPU cost table will be stored in pinned memory
-\end{itemize} 
+\end{itemize}
 
 \subsection{Low-Level Interface}
 The low-level interface can be found in the \texttt{lap.h} include files. The single threaded CPU code consists of the following functions for solving the linear assignment and calculating the final costs:
@@ -276,7 +276,7 @@ namespace lap
   template <class SC, class CF, class I> void solve(
     int dim, CF &costfunc, I &iterator, int *rowsol, bool use_epsilon);
   template <class SC, class CF, class I> void solve(
-    int dim, int dim2, CF &costfunc, I &iterator, int *rowsol, 
+    int dim, int dim2, CF &costfunc, I &iterator, int *rowsol,
     bool use_epsilon);
   template <class SC, class CF> SC cost(
     int dim, CF &costfunc, int *rowsol);
@@ -293,7 +293,7 @@ namespace lap
     template <class SC, class CF, class I> void solve(
       int dim, CF &costfunc, I &iterator, int *rowsol, bool use_epsilon);
     template <class SC, class CF, class I> void solve(
-      int dim, int dim2, CF &costfunc, I &iterator, int *rowsol, 
+      int dim, int dim2, CF &costfunc, I &iterator, int *rowsol,
       bool use_epsilon);
     template <class SC, class CF> SC cost(
       int dim, CF &costfunc, int *rowsol);
@@ -311,7 +311,7 @@ namespace lap
     template <class SC, class TC, class CF, class I> void solve(
       int dim, CF &costfunc, I &iterator, int *rowsol, bool use_epsilon);
     template <class SC, class TC, class CF, class I> void solve(
-      int dim, int dim2, CF &costfunc, I &iterator, int *rowsol, 
+      int dim, int dim2, CF &costfunc, I &iterator, int *rowsol,
       bool use_epsilon);
     template <class SC, class TC, class CF> SC cost(
       int dim, CF &costfunc, int *rowsol, cudaStream_t stream);

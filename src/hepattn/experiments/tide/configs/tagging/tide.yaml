@@ -49,7 +49,7 @@ data:
       - is_c
       - is_tau
       - is_other
-      
+
     sudo_pix:
       - loc_x
       - loc_y
@@ -268,7 +268,7 @@ model:
                   - scaled_dphi
                   - scaled_d0
                   - scaled_dz0
-            
+
             - class_path: hepattn.models.task.ClassificationTask
               init_args:
                 name: roi_tagging

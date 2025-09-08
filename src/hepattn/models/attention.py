@@ -212,7 +212,7 @@ class Attention(nn.Module):
         else:
             if kv is None:
                 kv = q
-            q, k, v = F._in_projection_packed(q, kv, kv, self.in_proj_weight, self.in_proj_bias)  # noqa: SLF001  # ty: ignore [unresolved-attribute]
+            q, k, v = F._in_projection_packed(q, kv, kv, self.in_proj_weight, self.in_proj_bias)  # ty: ignore [unresolved-attribute]
 
         # Normalize queries, keys, and values
         if self.qkv_norm:

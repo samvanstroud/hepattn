@@ -105,10 +105,18 @@ class PredictionWriter(Callback):
             if layer_name not in self.write_layers:
                 continue
             layer_group = items_group.create_group(layer_name)
-            for task_name, task_items in layer_items.items():
-                task_group = layer_group.create_group(task_name)
-                for name, value in task_items.items():
-                    self.create_dataset(task_group, name, value[idx][None, ...])
+
+            for layer_item_name, layer_item_value in layer_items.items():
+                task_group = layer_group.create_group(layer_item_name)
+
+                # If the item is just a tensor, save it
+                if isinstance(layer_item_value, Tensor):
+                    self.create_dataset(task_group, layer_item_name, layer_item_value[idx][None, ...])
+
+                # If the item is a dict, save each of the items in the dict
+                elif isinstance(layer_item_value, dict):
+                    for k, v in layer_item_value.items():
+                        self.create_dataset(task_group, k, v[idx][None, ...])
 
     def create_dataset(self, group, name, value):
         # Shouldn't need to detach as we are testing

@@ -3,7 +3,7 @@ preprocessing:
   input_dir: /share/lustre/maxhart/data/pixsplit/user.hart.mc23_13p6TeV.801172.JZ7.e8514_e8528_s4162_s4114_r14327.RadDamage.Mid2024.new.DAOD_IDTIDE_EXT0/
 
   # Directory where the output preprocesed files will be saved
-  output_dir: /share/rcifdata/maxhart/data/pixsplit/mc23_prepped/train
+  output_dir: /share/rcifdata/maxhart/data/pixsplit/mc23_prepped_unenriched/train
 
   input_file_extension: .root
 
@@ -110,4 +110,3 @@ preprocessing:
     #rdo_Cterm
     #rdo_Aterm
     #rdo_Eterm
- 

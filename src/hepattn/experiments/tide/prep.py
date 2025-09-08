@@ -307,12 +307,17 @@ def preprocess_file(
             sudo_pix_valid = build_track_hit_mask_bcodes(data[f"pseudotracks_barcode"][roi_idx], data[f"pixel_sihit_barcodes"][roi_idx])
             sudo_idx, pix_idx = np.nonzero(sudo_pix_valid)
 
+            # We built the sudo pix fields using the valid mask, since if we just used the track-hit fields,
+            # track-hit fields that had a value exactly equal to zero would get marked as an invalid, and the resulting
+            # sparse matrix of values would have a shape different shape to the sparse valid mask
+            sudo_pix_valid = build_track_hit_mask_bcodes(data[f"pseudotracks_barcode"][roi_idx], data[f"pixel_sihit_barcodes"][roi_idx])
+            sudo_idx, pix_idx = np.nonzero(sudo_pix_valid)
+
             # Build the track-hit fields
             for field_name, field_alias in sudo_pix_field_aliases.items():
                 sudo_pix_field = build_track_hit_field(
                     data["pseudotracks_barcode"][roi_idx], data["pixel_sihit_barcodes"][roi_idx], data[f"pixel_{field_name}"][roi_idx]
                 )
-
                 # Use the valid mask indices to prevent field values equal to zero from being marked as empty/sparse
                 sudo_pix_field_csr = csr_matrix(
                     (sudo_pix_field[sudo_idx, pix_idx], (sudo_idx, pix_idx)),

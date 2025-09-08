@@ -30,7 +30,7 @@ D = 64
 
 
 def prepare_qkv_values(tensor):
-    return tensor._values.detach().requires_grad_()  # noqa: SLF001
+    return tensor._values.detach().requires_grad_()
 
 
 def build_seq_idx(tensor: torch.Tensor):
@@ -107,12 +107,12 @@ def test_flex_nested():
     sdpa_outs += [query.grad, key.grad, value.grad]
 
     flex_outs.append(out_flex)
-    out_flex.backward(grad_out._values.unsqueeze(0))  # ty: ignore[unresolved-attribute,possibly-unbound-attribute]  # noqa: SLF001
+    out_flex.backward(grad_out._values.unsqueeze(0))  # ty: ignore[unresolved-attribute,possibly-unbound-attribute]
     flex_outs += [query_values.grad, key_values.grad, value_values.grad]
 
     for flex, sdpa in zip(flex_outs, sdpa_outs, strict=False):
         flex = flex.squeeze(0)
-        torch.testing.assert_close(flex, sdpa._values, atol=1e-2, rtol=1e-2)  # noqa: SLF001
+        torch.testing.assert_close(flex, sdpa._values, atol=1e-2, rtol=1e-2)
 
     print("Correctness check passed ✅")
 

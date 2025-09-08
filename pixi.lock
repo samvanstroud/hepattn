@@ -7193,7 +7193,7 @@ packages:
 - pypi: ./
   name: hepattn
   version: 0.2.0
-  sha256: 459ee701110703c9197e3c6f41464af972b5c0e240eff868eb4aff13459378c3
+  sha256: 14a49660306d2d5e282972e950dc75cc5a70ad22ebe15133fe440f83a67f4e23
   requires_dist:
   - packaging
   - jupyter
@@ -9122,6 +9122,7 @@ packages:
   sha256: 215086c108d80349e96051ad14131b751d17af3ed2cb5a34edd62fa89bfe8ead
   md5: 7df50d44d4a14d6c31a2c54f2cd92157
   depends:
+  - libgcc >=14
   - __glibc >=2.17,<3.0.a0
   - libglvnd 1.7.0 ha4b6fd6_2
   license: LicenseRef-libglvnd

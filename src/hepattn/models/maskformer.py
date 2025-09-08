@@ -76,8 +76,10 @@ class MaskFormer(nn.Module):
             # objects after we have merged them all together
             # TODO: Clean this up
             device = inputs[input_name + "_valid"].device
-            mask = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1)
-            x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
+            key_is_input = torch.cat(
+                [torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1
+            )
+            x[f"key_is_{input_name}"] = key_is_input.unsqueeze(0).expand(batch_size, -1)
 
         # Merge the input constituents and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
@@ -118,8 +120,12 @@ class MaskFormer(nn.Module):
             x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
             x[f"{self.pooling.output_name}_embed"] = x_pooled
 
-        # Get the final outputs
-        outputs["final"] = {}
+        # Get the final outputs - we don't need to compute attention masks or update things here
+        outputs["final"] = {
+            "query_embed": x["query_embed"],
+            "key_embed": x["key_embed"],
+        }
+
         for task in self.tasks:
             outputs["final"][task.name] = task(x)
 

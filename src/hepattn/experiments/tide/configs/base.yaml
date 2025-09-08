@@ -2,9 +2,9 @@ name: TIDE_32trk_F32
 
 data:
   batch_size: 100
-  train_dir: data/tide/prepped/
-  val_dir: data/tide/prepped/
-  test_dir: data/tide/prepped/
+  train_dir: /share/rcifdata/maxhart/data/ambi/train/
+  val_dir: /share/rcifdata/maxhart/data/ambi/val/
+  test_dir: /share/rcifdata/maxhart/data/ambi/test/
   num_workers: 10
   num_train: 1000000
   num_test: 10000
@@ -28,7 +28,7 @@ data:
 
   # The maximum number of tracks that can be dropped from track
   # cuts before we drop the entire ROI
-  roi_max_num_dropped_tracks: 0
+  roi_max_num_dropped_tracks: 100
 
   inputs:
     pix:
@@ -227,6 +227,16 @@ data:
 
     sudo_sct: []
 
+    reco_pix: []
+
+    reco_sct: []
+
+    sisp_pix: []
+
+    sisp_sct: []
+
+
+
 # Training stuff here
 trainer:
   max_epochs: 10
@@ -255,9 +265,9 @@ trainer:
     - class_path: hepattn.callbacks.PredictionWriter
       init_args:
         write_inputs: false
-        write_outputs: false
+        write_outputs: true
         write_preds: true
-        write_targets: false
+        write_targets: true
         write_losses: false
     - class_path: lightning.pytorch.callbacks.ModelSummary
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
@@ -400,12 +410,12 @@ model:
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 4
+          num_layers: 8
           dim: *dim
           attn_type: torch
 
       decoder:
-        num_decoder_layers: 4
+        num_decoder_layers: 8
         num_queries: *num_tracks
         mask_attention: true
         use_query_masks: false
@@ -430,7 +440,7 @@ model:
                 output_object: pred
                 target_object: sudo
                 losses:
-                  object_bce: 1.0
+                  object_bce: 0.01
                 costs:
                   object_bce: 10.0
                 dim: *dim

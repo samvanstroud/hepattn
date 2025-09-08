@@ -25,7 +25,7 @@ INPUT_DIR="/share/rcifdata/maxhart/data/itk/"
 
 # Select which dataset to download
 #DATASET_NAME="ATLAS-P2-RUN4-03-00-00_Rel.24_ttbar_uncorr_pu200_dumpv5_acorn2.0.0_acorn_data_reading_output_trainset"
-DATASET_NAME="ATLAS-P2-RUN4-03-00-00_Rel.24_ttbar_uncorr_pu200_v9_acorn_data_reading_output_valset"
+DATASET_NAME="ATLAS-P2-RUN4-03-00-00_Rel.24_ttbar_uncorr_pu200_v9_acorn_data_reading_output_testset"
 DATASET_TAG="user.avallier:${DATASET_NAME}"
 
 cd $INPUT_DIR

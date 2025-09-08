@@ -67,4 +67,3 @@ APPTAINER_CMD="apptainer run --nv --bind /share/rcifdata/svanstroud /share/rcifd
 
 echo "Running command: $APPTAINER_CMD"
 $APPTAINER_CMD
-

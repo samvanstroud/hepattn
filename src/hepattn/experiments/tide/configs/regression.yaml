@@ -14,7 +14,7 @@ model:
                   object_bce: 1.0
                 costs:
                   object_bce: 100.0
-                dim: *dim
+                dim: &dim 256
                 null_weight: 1.0
                 mask_queries: false
 

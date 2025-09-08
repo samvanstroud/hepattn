@@ -7,7 +7,7 @@ from scipy.optimize import linear_sum_assignment
 from scipy.stats import binned_statistic
 from tqdm import tqdm
 
-plt.rcParams["text.usetex"] = True
+plt.rcParams["text.usetex"] = False
 plt.rcParams["figure.dpi"] = 300
 plt.rcParams["font.size"] = 10
 plt.rcParams["figure.constrained_layout.use"] = True
@@ -18,7 +18,7 @@ def sigmoid(x):
 
 
 def main():
-    eval_path = Path("/share/rcifdata/maxhart/hepattn/logs/TIDE_100k_100_32trk_20250514-T142829/ckpts/epoch=092-train_loss=24.68639_train_eval.h5")
+    eval_path = Path("/share/rcifdata/maxhart/hepattn/logs/TIDE_32trk_F32_20250902-T043232/ckpts/epoch=009-train_loss=0.69887_test_eval.h5")
 
     pred_names = ["sudo", "sisp", "reco", "pred"]
     colors = {

@@ -47,9 +47,8 @@ class InputNet(nn.Module):
             Tensor containing an embedding of the concatenated input features.
         """
         # Some input fields will be a vector, i.e. have shape (batch, keys, D) where D > 1
-        # But must will be scalars, i.e. (batch, keys), so for these we reshape them to (batch, keys, 1)
+        # But some will be scalars, i.e. (batch, keys), so for these we reshape them to (batch, keys, 1)
         # After this we can then concatenate everything together
-
         x = self.net(concat_tensors([inputs[f"{self.input_name}_{field}"] for field in self.fields]))
 
         # Perform an optional positional encoding using the positonal encoding fields

@@ -1,4 +1,4 @@
-name: CLD_8_320_10MeV_tracking
+name: CLD_8_320_10MeV_neutrals_muon_cartesian
 
 matmul_precision: high
 
@@ -25,18 +25,17 @@ data:
   target_pad_value: 0.0
 
   # Minimum pT for a particle to be deemed reconstructve in GeV
-  particle_min_pt: 0.01
+  particle_min_pt: 0.00
   particle_max_abs_eta: 4.0
 
   # Whether to include charged / neutral particles as targets
   include_charged: true
-  include_neutral: false
+  include_neutral: true
 
   # Number of query slots / particles to generate per event
   force_pad_sizes:
     particle: &num_particles 320
     pandora: *num_particles
-    sitrack: *num_particles
 
   skip_pad_items: []
 
@@ -46,40 +45,44 @@ data:
   charged_particle_min_num_hits:
     vtxd: 0
     trkr: 0
-    sihit: 4
+    sihit: 0
 
   # Charged particle cuts based on hit content
   charged_particle_max_num_hits:
     vtxd: 12
     trkr: 12
-    sihit: 24
+    sihit: 1000
+
+  particle_cut_veto_min_num_hits:
+    ecal: 100000
+    hcal: 100000
 
   # Cuts on minimum fraction of particle pT a hit should have
   particle_hit_min_p_ratio:
-    vtxd: 0.01
-    trkr: 0.01
+    vtxd: 0.0
+    trkr: 0.0
 
   # Cuts on maximum deflection between subsequent hits
   particle_hit_deflection_cuts:
     vtxd:
-      max_angle: 0.25
+      max_angle: 100.0
       max_angle_xy: -1
       max_angle_rz: -1
-      num_passes: 8
+      num_passes: 0
     trkr:
-      max_angle: 1.0
+      max_angle: 100.0
       max_angle_xy: -1
       max_angle_rz: -1
-      num_passes: 12
+      num_passes: 0
 
   # Cuts on maximum distance between subsequent hit
   particle_hit_separation_cuts:
     vtxd:
-      max_dist: 0.25
-      num_passes: 8
+      max_dist: 10000.0
+      num_passes: 0
     trkr:
-      max_dist: 1.5
-      num_passes: 12
+      max_dist: 10000.0
+      num_passes: 0
 
   truth_filter_hits: []
 
@@ -222,13 +225,10 @@ data:
       - charge
       - time
       - mass
-      - energy
-      # Particle creation vertex coordinates
       - vtx.x
       - vtx.y
       - vtx.z
       - vtx.r
-      # Production momentum coordinates
       - mom.x
       - mom.y
       - mom.z
@@ -241,30 +241,24 @@ data:
       - mom.phi_drad
       - mom.rinv
       - mom.qopt
-      # Spin coordinates
       - spin.x
       - spin.y
       - spin.z
       - colorFlow.a
       - colorFlow.b
-      # Constituent count info
+      - is_charged
+      - is_neutral
       - num_vtxd
       - num_trkr
       - num_ecal
       - num_hcal
       - num_sihit
-      - num_muon
-      # Angular isolation
       - isolation
-      # Calorimeter energy info
       - energy_ecal
       - energy_hcal
       - calib_energy_ecal
       - calib_energy_hcal
       - calib_energy_calo
-      # Binary particle class info
-      - is_charged
-      - is_neutral
       - is_neutral_hadron
       - is_charged_hadron
       - is_photon
@@ -275,7 +269,6 @@ data:
       - is_other
       - is_primary
       - is_secondary
-
 
     particle_vtxd:
       - pos.x
@@ -320,7 +313,6 @@ data:
     particle_muon:
       - energy
 
-    # Pandora reconstruction info
     pandora:
       - PDG
       - charge
@@ -347,16 +339,6 @@ data:
 
     pandora_muon: []
 
-    # Conformal tracking info
-    sitrack:
-      - type
-      - chi2
-      - ndf
-
-    sitrack_vtxd: []
-
-    sitrack_trkr: []
-
 # Training stuff here
 trainer:
   max_epochs: 10
@@ -369,10 +351,11 @@ trainer:
   accumulate_grad_batches: 1
   enable_progress_bar: True
 
+  # Specify loggers here
   logger:
-    class_path: hepattn.utils.loggers.MyCometLogger
+    class_path: lightning.pytorch.loggers.CometLogger
     init_args:
-      project: cld
+      project_name: cld
 
   callbacks:
     - class_path: hepattn.callbacks.Compile
@@ -484,6 +467,89 @@ model:
                       - pos.y
                       - pos.z
 
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: ecal
+                input_dtype: float32
+                fields:
+                  - pos.x
+                  - pos.y
+                  - pos.z
+                  - pos.s
+                  - pos.r
+                  - pos.theta
+                  - pos.phi
+                  - log_energy
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 8
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.FourierPositionEncoder
+                  init_args:
+                    input_name: ecal
+                    dim: *dim
+                    fields:
+                      - pos.x
+                      - pos.y
+                      - pos.z
+
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: hcal
+                input_dtype: float32
+                fields:
+                  - pos.x
+                  - pos.y
+                  - pos.z
+                  - pos.s
+                  - pos.r
+                  - pos.theta
+                  - pos.phi
+                  - log_energy
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 8
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.FourierPositionEncoder
+                  init_args:
+                    input_name: hcal
+                    dim: *dim
+                    fields:
+                      - pos.x
+                      - pos.y
+                      - pos.z
+
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: muon
+                input_dtype: float32
+                fields:
+                  - pos.x
+                  - pos.y
+                  - pos.z
+                  - pos.s
+                  - pos.r
+                  - pos.theta
+                  - pos.phi
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 7
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.FourierPositionEncoder
+                  init_args:
+                    input_name: muon
+                    dim: *dim
+                    fields:
+                      - pos.x
+                      - pos.y
+                      - pos.z
+
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
@@ -532,19 +598,17 @@ model:
                 dim: *dim
                 null_weight: 1.0
                 mask_queries: false
-                has_intermediate_loss: False
 
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: flow_vtxd_assignment
-                input_constituent: vtxd
+                input_hit: vtxd
                 input_object: query
                 output_object: flow
                 target_object: particle
-                has_intermediate_loss: False
                 losses:
-                  mask_bce: 0.25
-                  mask_dice: 0.75
+                  mask_bce: 1.0
+                  mask_dice: 1.0
                   #mask_focal: 1.0
                 costs:
                   #mask_bce: 1.0
@@ -556,14 +620,70 @@ model:
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: flow_trkr_assignment
-                input_constituent: trkr
+                input_hit: trkr
                 input_object: query
                 output_object: flow
                 target_object: particle
-                has_intermediate_loss: False
+                losses:
+                  mask_bce: 1.0
+                  mask_dice: 1.0
+                  #mask_focal: 1.0
+                costs:
+                  #mask_bce: 1.0
+                  mask_dice: 1.0
+                  #mask_focal: 1.0
+                dim: *dim
+                null_weight: 1.0
+
+            - class_path: hepattn.models.task.ObjectHitMaskTask
+              init_args:
+                name: flow_ecal_assignment
+                input_hit: ecal
+                input_object: query
+                output_object: flow
+                target_object: particle
+                target_field: valid
                 losses:
                   mask_bce: 0.25
-                  mask_dice: 0.75
+                  mask_dice: 0.25
+                  #mask_focal: 1.0
+                costs:
+                  #mask_bce: 1.0
+                  mask_dice: 1.0
+                  #mask_focal: 1.0
+                dim: *dim
+                null_weight: 1.0
+
+            - class_path: hepattn.models.task.ObjectHitMaskTask
+              init_args:
+                name: flow_hcal_assignment
+                input_hit: hcal
+                input_object: query
+                output_object: flow
+                target_object: particle
+                target_field: valid
+                losses:
+                  mask_bce: 0.5
+                  mask_dice: 0.5
+                  #mask_focal: 1.0
+                costs:
+                  #mask_bce: 1.0
+                  mask_dice: 1.0
+                  #mask_focal: 1.0
+                dim: *dim
+                null_weight: 1.0
+
+            - class_path: hepattn.models.task.ObjectHitMaskTask
+              init_args:
+                name: flow_muon_assignment
+                input_hit: muon
+                input_object: query
+                output_object: flow
+                target_object: particle
+                target_field: valid
+                losses:
+                  mask_bce: 1.0
+                  mask_dice: 1.0
                   #mask_focal: 1.0
                 costs:
                   #mask_bce: 1.0

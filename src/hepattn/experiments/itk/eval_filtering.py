@@ -7,11 +7,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
+from hepattn.utils.eval_plots import bayesian_binomial_error, plot_hist_to_ax
 from scipy.stats import binned_statistic
 from tqdm import tqdm
 
 from hepattn.experiments.itk.data import ITkDataset
-from hepattn.utils.eval_plots import bayesian_binomial_error, plot_hist_to_ax
 
 plt.rcParams["figure.dpi"] = 300
 plt.rcParams["font.size"] = 8
@@ -74,7 +74,7 @@ def main():
     nominal_wp = 0.025
 
     # Iterate over the events
-    for idx in tqdm(range(10)):
+    for idx in tqdm(range(len(dataset.sample_ids))):
         # Load the data from the event
         sample_id = dataset.sample_ids[idx]
 
@@ -88,6 +88,9 @@ def main():
         dump_data_df = pd.DataFrame({
             "hit_id": inputs["pixel_hit_id"],
             "logit": hit_logits,
+            "global_x": inputs["pixel_cluster_x"],
+            "global_y": inputs["pixel_cluster_y"],
+            "global_z": inputs["pixel_cluster_z"],
         })
         dump_data_df.to_csv(dump_path / f"{event_name}.csv", index=False)
 

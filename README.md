@@ -39,7 +39,7 @@ cd hepattn
 ```
 
 We recommend using a container to set up and run the code.
-This is necessary if your system's `libc` version is `<2.28` 
+This is necessary if your system's `libc` version is `<2.28`
 due to requirements of recent `torch` versions.
 We use `pixi`'s CUDA image, which you can access with:
 
@@ -48,8 +48,8 @@ apptainer pull pixi.sif docker://ghcr.io/prefix-dev/pixi:0.50.2-noble-cuda-12.8.
 apptainer shell --nv pixi.sif
 ```
 
-**📝 Note**: If you are not using the `pixi` container, you will need to make sure 
-`pixi` is installed according to https://pixi.sh/latest/installation/. 
+**📝 Note**: If you are not using the `pixi` container, you will need to make sure
+`pixi` is installed according to https://pixi.sh/latest/installation/.
 
 You can then install the project with locked dependencies:
 
@@ -74,7 +74,7 @@ See the [`pixi shell` docs](https://pixi.sh/latest/reference/cli/pixi/shell/) fo
 
 ## 🧪 Running Tests
 
-Once inside the environment, if a GPU and relevant external data are available, just run: 
+Once inside the environment, if a GPU and relevant external data are available, just run:
 
 ```shell
 pytest

@@ -374,7 +374,7 @@ void testSanity(long long min_tab, long long max_tab, int runs, bool omp, bool e
 			C *vec = new C[N << 1];
 
 			for (long long i = 0; i < N << 1; i++) vec[i] = distribution(generator);
-			
+
 			// cost functions
 			auto get_cost = [&vec, &N](int x, int y) -> C
 			{
@@ -394,7 +394,7 @@ void testSanity(long long min_tab, long long max_tab, int runs, bool omp, bool e
 			{
 				solveTable<C, C>(start_time, N, N, get_cost, rowsol, epsilon);
 			}
-			
+
 			bool passed = true;
 			for (long long i = 0; (passed) && (i < N); i++)
 			{
@@ -705,7 +705,7 @@ void testGeometric(long long min_tab, long long max_tab, int runs, bool omp, boo
 	}
 }
 
-template <class C> 
+template <class C>
 void testGeometricCached(long long min_cached, long long max_cached, long long max_memory, int runs, bool omp, bool epsilon, bool disjoint, std::string name_C)
 {
 	for (long long NN = min_cached * min_cached; NN <= max_cached * max_cached; NN <<= 1)

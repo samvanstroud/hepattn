@@ -10,7 +10,7 @@ from torch import Tensor, nn
 from hepattn.utils.import_utils import check_import_safe
 
 
-def solve_scipy(cost):
+def solve_scipy(cost: np.ndarray) -> np.ndarray:
     _, col_idx = scipy.optimize.linear_sum_assignment(cost)
     return col_idx
 
@@ -49,7 +49,7 @@ def match_individual(solver_fn, cost: np.ndarray, default_idx: Tensor) -> np.nda
     return pred_idx
 
 
-def match_parallel(solver_fn, costs: np.ndarray, batch_obj_lengths: torch.Tensor, n_jobs: int = 8) -> torch.Tensor:
+def match_parallel(solver_fn, costs: np.ndarray, batch_obj_lengths: Tensor, n_jobs: int = 8) -> Tensor:
     batch_size = len(costs)
     chunk_size = (batch_size + n_jobs - 1) // n_jobs
     default_idx = np.arange(costs.shape[2], dtype=np.int32)
@@ -102,11 +102,10 @@ class Matcher(nn.Module):
         self.step = 0
         self.verbose = verbose
 
-    def compute_matching(self, costs, object_valid_mask=None):
+    def compute_matching(self, costs: np.ndarray, object_valid_mask: np.ndarray | None = None) -> np.ndarray:
         if object_valid_mask is None:
             object_valid_mask = torch.ones((costs.shape[0], costs.shape[1]), dtype=torch.bool)
 
-        object_valid_mask = object_valid_mask.detach().bool()
         batch_obj_lengths = torch.sum(object_valid_mask, dim=1).unsqueeze(-1)
 
         if self.parallel_solver:
@@ -128,15 +127,18 @@ class Matcher(nn.Module):
         return torch.from_numpy(np.stack(idxs))
 
     @torch.no_grad()
-    def forward(self, costs, object_valid_mask=None):
+    def forward(self, costs: Tensor, object_valid_mask: Tensor | None = None) -> Tensor:
         # Cost matrix dimensions are batch, pred, true
         # Solvers need numpy arrays on the cpu
         costs = costs.detach().to(torch.float32).cpu().numpy()
 
+        if object_valid_mask is not None:
+            object_valid_mask = object_valid_mask = object_valid_mask.detach().bool()
+
         # If we are at a check interval, use the current cost batch to see which
         # solver is the fastest, and set that to be the new solver
         if self.adaptive_solver and self.step % self.adaptive_check_interval == 0:
-            self.adapt_solver(costs)
+            self.adapt_solver(costs, object_valid_mask)
 
         pred_idxs = self.compute_matching(costs, object_valid_mask)
         self.step += 1
@@ -144,7 +146,7 @@ class Matcher(nn.Module):
         assert torch.all(pred_idxs >= 0), "Matcher error!"
         return pred_idxs
 
-    def adapt_solver(self, costs):
+    def adapt_solver(self, costs: np.ndarray, object_valid_mask: np.ndarray | None = None) -> None:
         solver_times = {}
 
         if self.verbose:

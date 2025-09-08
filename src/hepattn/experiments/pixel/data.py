@@ -333,7 +333,7 @@ class PixelClusterDataset(Dataset):
                 return None
 
             # Apply multiplicity subsampling
-            if x["cluster_multiplicity"] in self.cluster_multiplicity_subsample_frac:  # noqa: SIM102
+            if x["cluster_multiplicity"] in self.cluster_multiplicity_subsample_frac:
                 # Reject the cluster with probability 1 - subsample rate
                 if self.rng.random() > self.cluster_multiplicity_subsample_frac[x["cluster_multiplicity"]]:
                     return None
@@ -382,6 +382,11 @@ class PixelClusterDataset(Dataset):
             x["cluster_leading_theta"] = x["particle_theta"][np.argmax(x["particle_p"])]
 
             x["particle_valid"] = x["particle_valid"][x["particle_valid"]]
+
+            # Sort particles by ascending x, needed if we use a model that is not permutation invariant
+            sort_idx = np.argsort(x["particle_x"])
+            for field in particle_fields:
+                x[f"particle_{field}"] = x[f"particle_{field}"][sort_idx]
 
             ########################################################################
             # Now return the cluster fields

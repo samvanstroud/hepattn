@@ -35,6 +35,7 @@ def get_module_dtype(module: torch.nn.Module) -> torch.dtype:
     # Prefer parameters if available
     for param in module.parameters(recurse=True):
         return param.dtype
+
     # Fall back to buffers if no parameters exist
     for buffer in module.buffers(recurse=True):
         return buffer.dtype

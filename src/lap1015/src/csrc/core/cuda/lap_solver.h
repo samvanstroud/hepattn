@@ -702,7 +702,7 @@ namespace lap
 #ifdef LAP_CUDA_OPENMP
 				else
 				{
-					for (int i = 0; i < dim2; i++) host_struct_private[i].jmin = 0; 
+					for (int i = 0; i < dim2; i++) host_struct_private[i].jmin = 0;
 #pragma omp parallel num_threads(devices)
 					{
 						int t = omp_get_thread_num();

@@ -1,209 +1,281 @@
+import math
 from pathlib import Path
 
 import h5py
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import yaml
-from scipy.stats import binned_statistic
-from tqdm import tqdm
 
-from hepattn.experiments.cld.data import CLDDataset
-from hepattn.experiments.cld.plot_event import plot_cld_event_reconstruction
-from hepattn.utils.eval_plots import bayesian_binomial_error, plot_hist_to_ax
+from hepattn.experiments.cld.data import CLDDataModule
+from hepattn.models.matcher import Matcher
+from hepattn.utils.eval import apply_matching, calc_binary_reco_metrics, calc_cost, calculate_selections
+from hepattn.utils.histogram import PoissonHistogram
 
-plt.rcParams["text.usetex"] = False
-plt.rcParams["figure.dpi"] = 300
-plt.rcParams["font.size"] = 10
-plt.rcParams["figure.constrained_layout.use"] = True
+object_names = ["particle", "pandora", "flow"]
+truth_object_name = "particle"
+
+tracker_hit_names = ["sihit"]
+calo_hit_names = ["ecal", "hcal"]
+muon_hit_names = ["muon"]
+
+hit_names = tracker_hit_names + calo_hit_names + muon_hit_names
+
+# Define all the particle classes
+particle_types = [
+    "charged",
+    "charged_hadron",
+    "neutral_hadron",
+    "electron",
+    "photon",
+    "muon",
+]
+
+# Define which detector subsystems each particle type interacts with
+particle_type_hits = {
+    "charged": ["sihit"],
+    "charged_hadron": ["sihit", "ecal", "hcal"],
+    "neutral_hadron": ["ecal", "hcal"],
+    "electron": ["ecal"],
+    "photon": ["sihit", "ecal"],
+    "muon": ["sihit", "ecal", "hcal", "muon"],
+}
+
+matching_metric = {hit_name: {"weight": 1.0, "metric": "iou", "field": "valid"} for hit_name in hit_names}
+
+binary_metrics_config = {}
+working_points = {"dm": 0.5, "lhc": 0.75, "tight": 0.95}
+
+for particle_type, hits in particle_type_hits.items():
+    for wp_name, wp_thresh in working_points.items():
+        binary_metric = []
+        for hit in hits:
+            binary_metric.extend({"hit": hit, "thresh": wp_thresh, "metric": metric, "field": "valid"} for metric in ["eff", "pur"])
+        binary_metrics_config[f"{particle_type}_{wp_name}"] = binary_metric
+
+# Define some flags which tell us whether the object left a signature in each sub detetector
+selections = {
+    "has_sihit": [
+        "num_sihit >= 4",
+    ],
+    "has_ecal": [
+        "num_ecal >= 10",
+        "energy_ecal >= 0.1",
+    ],
+    "has_hcal": [
+        "num_hcal >= 10",
+        "energy_hcal >= 0.1",
+    ],
+    "has_muon": [
+        "num_muon >= 4",
+    ],
+}
+
+# If the particle left a signature in all the subdetetcors it should interact with,
+# we can mark it as likely being that particle type
+for particle_type, hits in particle_type_hits.items():
+    selections[f"sig_{particle_type}"] = [f"has_{hit}" for hit in hits]
+
+particle_selections = {
+    "tight": [
+        "is_primary",
+        "mom.r >= 0.1",
+        "mom.abs_eta <= 2.44",
+        "vtx.r <= 50",
+        "isolation >= 0.02",
+    ],
+    "loose": ["mom.r >= 0.01"],
+}
+
+# Define whether each particle type is reconstructable
+for particle_type in particle_types:
+    particle_selections[f"{particle_type}_loose"] = [f"is_{particle_type}", "loose"]
+    particle_selections[f"{particle_type}_tight"] = [f"is_{particle_type}", "tight"]
 
 
-def sigmoid(x):
-    return 1 / (1 + np.exp(-np.clip(x, -10, 10)))
+field_aliases = {
+    "mom.r": r"$p_T$",
+    "mom.eta": r"$\eta$",
+    "mom.phi": r"$\phi$",
+    "vtx.r": r"Vertex $r$",
+    "isolation": r"Angular Isolation",
+    "num_vtxd": "Num. VTXD Hits",
+    "num_trkr": "Num. Tracker Hits",
+    "num_sihit": "Num. Si Hits",
+    "num_ecal": "Num. ECAL Hits",
+    "num_hcal": "Num. HCAL Hits",
+    "num_muon": "Num. Muon Hits",
+}
+
+field_scales = {
+    "calib_energy_ecal": "log",
+    "calib_energy_hcal": "log",
+    "mom.r": "log",
+    "mom.eta": "linear",
+    "mom.phi": "linear",
+    "vtx.r": "linear",
+    "isolation": "log",
+    "num_vtxd": "linear",
+    "num_trkr": "linear",
+    "num_sihit": "linear",
+    "num_ecal": "log",
+    "num_hcal": "log",
+    "num_muon": "linear",
+}
+
+field_bins = {
+    "calib_energy_ecal": np.logspace(-3, 2, 32),
+    "calib_energy_hcal": np.logspace(-3, 2, 32),
+    "mom.r": np.geomspace(0.01, 365, 32),
+    "mom.eta": np.linspace(-3, 3, 32),
+    "mom.phi": np.linspace(-np.pi, np.pi, 32),
+    "vtx.r": np.linspace(0, 500, 32),
+    "isolation": np.geomspace(1e-4, math.pi, 32),
+    "num_vtxd": np.arange(-1, 12) + 0.5,
+    "num_trkr": np.arange(-1, 12) + 0.5,
+    "num_sihit": np.arange(-1, 24) + 0.5,
+    "num_ecal": np.geomspace(1, 1000, 32),
+    "num_hcal": np.geomspace(1, 500, 32),
+    "num_muon": np.arange(-1, 14) + 0.5,
+}
+
+binary_histogram_config = {}
+
+for object_name in object_names:
+    for particle_type in particle_types:
+        for selection in ["tight", "loose"]:
+            selection_name = f"particle_{particle_type}_{selection}"
+            for wp_name in working_points:
+                binary_metric_name = f"particle_{object_name}_{particle_type}_{wp_name}"
+
+                for field in field_aliases:
+                    binary_histogram_config[f"{object_name}_{particle_type}_{selection}_{wp_name}_{field}"] = {
+                        "field": f"particle_{field}",
+                        "bins": field,
+                        "selection": selection_name,
+                        "numerator": binary_metric_name,
+                        "denominator": selection_name,
+                    }
 
 
-def main():
-    config_path = Path("/share/rcifdata/maxhart/hepattn/logs/CLD_TRKECALHCAL_5_96_TF_charged_10MeV_F32_costwt_20250518-T144640/config.yaml")
-    eval_path = Path(
-        "/share/rcifdata/maxhart/hepattn/logs/CLD_TRKECALHCAL_5_96_TF_charged_10MeV_F32_costwt_20250518-T144640/ckpts/epoch=006-train_loss=10.25808_train_eval.h5"
+binary_histograms = {
+    name: PoissonHistogram(
+        cfg["field"],
+        field_bins[cfg["bins"]],
+        cfg["selection"],
+        cfg["numerator"],
+        cfg["denominator"],
     )
+    for name, cfg in binary_histogram_config.items()
+}
 
-    # Now create the dataset
-    config = yaml.safe_load(config_path.read_text())["data"]
+print("\nBinary histogram spec:\n")
+for name, hist in binary_histograms.items():
+    print(name, hist.field, hist.selection, hist.numerator, hist.denominator)
 
-    config["dirpath"] = Path("/share/rcifdata/maxhart/data/cld/prepped/train/")
 
-    # Remve keys that are normally for the datamodule
-    config_del_keys = [
-        "train_dir",
-        "test_dir",
-        "val_dir",
-        "num_train",
-        "num_test",
-        "num_val",
-        "num_workers",
-        "batch_size",
-        "pin_memory",
-    ]
+residual_metrics = {}
 
-    for key in config_del_keys:
-        config.pop(key)
 
-    dataset = CLDDataset(**config)
+residual_histogram_config = {}
+for particle_type in particle_types:
+    for selection in ["tight", "loose"]:
+        selection_name = f"particle_{particle_type}_{selection}"
+        for hit in ["ecal", "hcal"]:
+            # Skip if the particle type doesnt involve the ecal/hcal
+            if hit not in particle_type_hits[particle_type]:
+                continue
 
-    # Which hits sets will be considered in the eval
-    hits = ["vtxd", "trkr", "ecal", "hcal"]
 
-    # Where to save all the plots
-    plot_save_dir = Path(__file__).resolve().parent / Path("eval_plots")
+# Setup the dataset to load truth and pandora info from
+config_path = Path("src/hepattn/experiments/cld/configs/base.yaml")
+config = yaml.safe_load(config_path.read_text())["data"]
 
-    # Spec for event displays
-    axes_spec = [
-        {"x": "pos.x", "y": "pos.y", "px": "mom.x", "py": "mom.y", "input_names": hits},
-        {"x": "pos.z", "y": "pos.y", "px": "mom.z", "py": "mom.y", "input_names": hits},
-    ]
+# Need to overwrite whatever is in the config
+config["num_workers"] = 0
+config["batch_size"] = 1
+config["num_test"] = -1  # Load the entire test set, so that we can access any sample id
 
-    # Which sample will be used to produce a sample event display
-    display_sample_idx = 0
+# Get the dataset object
+datamodule = CLDDataModule(**config)
+datamodule.setup(stage="test")
+dataset = datamodule.test_dataloader().dataset
 
-    # Get the truth data for the truth event display
-    sample_id = dataset.sample_ids[display_sample_idx]
-    inputs, targets = dataset[display_sample_idx]
 
-    # Get the predictions for the reconstruction event display
-    preds = {}
-    with h5py.File(eval_path, "r") as eval_file:
+eval_file_path = Path(
+    "/share/rcifdata/maxhart/hepattn/logs/CLD_8_320_10MeV_neutrals_muon_20250809-T183715/ckpts/epoch=007-train_loss=2.60941_test_eval_old.h5"
+)
+
+
+matcher = Matcher(default_solver="scipy", adaptive_solver=False, parallel_solver=False)
+
+
+with h5py.File(eval_file_path, "r") as eval_file:
+    sample_ids = list(eval_file.keys())
+
+
+with h5py.File(eval_file_path, "r") as eval_file:
+    for sample_id in sample_ids:
+        data = {}
+
+        # Get the predictions just from the final layer
         final_preds = eval_file[f"{sample_id}/preds/final/"]
-        preds["particle_valid"] = torch.from_numpy(final_preds["flow_valid/flow_valid"][:])
+        final_outputs = eval_file[f"{sample_id}/outputs/final/"]
 
-        for hit in hits:
-            hit_valid = targets[f"{hit}_valid"][0]
-            preds[f"particle_{hit}_valid"] = torch.from_numpy(final_preds[f"flow_{hit}_assignment/flow_{hit}_valid"][:][:, :, : len(hit_valid)])
+        # Load whether each slot was predicted as valid or not
+        data["flow_valid"] = torch.from_numpy(final_preds["flow_valid/flow_valid"][:])
+        data["flow_logit"] = torch.from_numpy(final_outputs["flow_valid/flow_logit"][:])
 
-    # Plot the event display for the truth
-    fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
-    fig.savefig(plot_save_dir / Path("event_display_truth.png"))
+        data["flow_valid"] = data["flow_logit"].sigmoid() >= 0.5
 
-    # Plot the event display for the reconstruction
-    fig = plot_cld_event_reconstruction(inputs, preds, axes_spec)
-    fig.savefig(plot_save_dir / Path("event_display_preds.png"))
+        for hit in ["vtxd", "trkr", "ecal", "hcal", "muon"]:
+            # Make sure to drop any invalid hit slots from the mask
+            data[f"flow_{hit}_valid"] = torch.from_numpy(final_preds[f"flow_{hit}_assignment/flow_{hit}_valid"][:])
 
-    plot_specs = {
-        "mom.r": ("$p_T$ [GeV]", np.geomspace(0.01, 100.0, 32), "log"),
-        "mom.rinv": ("$p_T$ [GeV] (rinv)", np.geomspace(0.01, 100.0, 32), "log"),
-        "mom.qopt": ("$p_T$ [GeV] (qopt)", np.geomspace(0.01, 100.0, 32), "log"),
-        "mom.eta": (r"$\eta$", np.linspace(-4, 4, 32), "linear"),
-        "mom.phi": (r"$\phi$", np.linspace(-np.pi, np.pi, 32), "linear"),
-        "mom.sinphi": (r"$\sin\phi$", np.linspace(-np.pi, np.pi, 32), "linear"),
-        "mom.cosphi": (r"$\cos\phi$", np.linspace(-np.pi, np.pi, 32), "linear"),
-        "vtx.r": ("Vertex $r_0$ [m]", np.linspace(0.0, 0.05, 32), "linear"),
-        "vtx.z": ("Vertex $z_0$ [m]", np.linspace(-0.5, 0.5, 32), "linear"),
-        "isolation": (r"$\Delta R$ Isolation", np.logspace(-4, 0, 32), "log"),
-        "num_vtxd": ("Number of Vertex Detector Hits", np.arange(0, 20) + 0.5, "linear"),
-        "num_trkr": ("Number of Tracker Hits", np.arange(0, 20) + 0.5, "linear"),
-        "num_ecal": ("Number of ECAL Hits", np.geomspace(1, 10000, 32), "linear"),
-        "num_hcal": ("Number of HCAL Hits", np.geomspace(1, 1000, 32), "linear"),
-    }
+        # Get the sample
+        sample = dataset.load_sample(int(sample_id))
 
-    particle_total_valid = {hit: {field: np.zeros(len(plot_specs[field][1]) - 1) for field in plot_specs} for hit in hits}
-    particle_total_eff = {hit: {field: np.zeros(len(plot_specs[field][1]) - 1) for field in plot_specs} for hit in hits}
+        # Prepare it by adding any necessary padding and converting to tensorsl,
+        inputs, targets = dataset.prep_sample(sample)
 
-    {hit: {field: np.zeros(len(plot_specs[field][1]) - 1) for field in plot_specs} for hit in hits}
-    {hit: {field: np.zeros(len(plot_specs[field][1]) - 1) for field in plot_specs} for hit in hits}
+        # Add the input and target data from the dataset
+        data |= targets
+        data |= inputs
 
-    for idx in tqdm(range(100)):
-        # Load the data from the event
-        sample_id = dataset.sample_ids[idx]
+        # Add extra information to the objects
+        for object_name in object_names:
+            # Make sihit collection which merges vtxd and tracker
+            data[f"{object_name}_sihit_valid"] = torch.cat((data[f"{object_name}_vtxd_valid"], data[f"{object_name}_trkr_valid"]), -1)
 
-        inputs, targets = dataset.load_event(sample_id)
+            # Add hit count info to objects
+            for hit_name in hit_names:
+                if f"{object_name}_{hit_name}_valid" in data:
+                    data[f"{object_name}_num_{hit_name}"] = data[f"{object_name}_{hit_name}_valid"].sum(-1)
 
-        for hit in hits:
-            hit_valid = targets[f"{hit}_valid"]
+            # Calculate the total calo hit energy assigned to the object
+            for hit_name in calo_hit_names:
+                if f"{object_name}_{hit_name}_valid" in data:
+                    object_hit_energy = data[f"{object_name}_{hit_name}_valid"].float() * data[f"{hit_name}_energy"].unsqueeze(-2)
+                    data[f"{object_name}_{hit_name}_energy"] = object_hit_energy
+                    data[f"{object_name}_energy_{hit_name}"] = object_hit_energy.sum(-1)
 
-            # Loading a single event from the dataloader does not pad the particles, so we have to apply the
-            # particle / object padding that was used for the model to both the particles and the masks
-            particle_pad_size = dataset.event_max_num_particles - len(targets["particle_valid"])
-            particle_valid = np.pad(targets["particle_valid"], ((0, particle_pad_size),), constant_values=False)
+        for object_name in object_names:
+            # Calculate the costs for the matching
+            costs = calc_cost(data, truth_object_name, object_name, {k: v for k, v in matching_metric.items() if f"{object_name}_{k}_valid" in data})
 
-            particle_hit_valid = np.pad(targets[f"particle_{hit}_valid"], ((0, particle_pad_size), (0, 0)), constant_values=False)
+            # Permute the obejcts to minimise the cost
+            data = apply_matching(data, truth_object_name, object_name, costs, matcher)
 
-            # Load the eval file
-            with h5py.File(eval_path, "r") as eval_file:
-                preds = eval_file[f"{sample_id}/preds/final/"]
+            eff_metrics = calc_binary_reco_metrics(data, "particle", object_name, binary_metrics_config)
+            pur_metrics = calc_binary_reco_metrics(data, object_name, "particle", binary_metrics_config)
 
-                flow_valid = preds["flow_valid/flow_valid"][0]
+            data |= eff_metrics
+            data |= pur_metrics
 
-                # The masks will have had the particle padding applied, but also the hit padding (since they are batched)
-                flow_hit_valid = preds[f"flow_{hit}_assignment/flow_{hit}_valid"][0][:, : len(hit_valid)]
+            # Calculate selections that can be done on all objects
+            data = calculate_selections(data, object_name, selections)
 
-            particle_valid &= particle_hit_valid.sum(-1) > 0
+        # Calculate selections that can be done on particles only
+        data = calculate_selections(data, truth_object_name, particle_selections)
 
-            hit_iou = (particle_hit_valid & flow_hit_valid).sum(-1) / (particle_hit_valid | flow_hit_valid).sum(-1)
-
-            matched = particle_valid & flow_valid & (hit_iou >= 0.75)
-
-            particle_eff = particle_valid & matched
-
-            # Fill the particle histograms
-            for field, (_, bins, _) in plot_specs.items():
-                particle_field = np.pad(targets[f"particle_{field}"], ((0, particle_pad_size),), constant_values=0.0)
-
-                # Do overflow binning
-                particle_field = np.clip(particle_field, bins[0], bins[-1])
-
-                num_valid, _, _ = binned_statistic(particle_field, particle_valid, statistic="sum", bins=bins)
-                num_eff, _, _ = binned_statistic(particle_field, particle_eff, statistic="sum", bins=bins)
-
-                particle_total_valid[hit][field] += num_valid
-                particle_total_eff[hit][field] += num_eff
-
-    hit_aliases = {
-        "vtxd": "VTXD",
-        "trkr": "Tracker",
-        "ecal": "ECAL",
-        "hcal": "HCAL",
-    }
-
-    # Now plot everything
-    for field, (alias, bins, scale) in plot_specs.items():
-        for hit in hits:
-            total_valid = particle_total_valid[hit][field]
-            total_eff = particle_total_eff[hit][field]
-
-            # Total effieicny is the total number of effieint particles /
-            # total number of valid (i.e. reconstructable) particles
-            eff = total_eff / total_valid
-            eff_errors = bayesian_binomial_error(total_eff, total_valid)
-
-            # Plot the efficiency
-            fig, ax = plt.subplots()
-            fig.set_size_inches(8, 3)
-
-            plot_hist_to_ax(ax, eff, bins, eff_errors)
-
-            ax.set_xlabel(f"Particle {alias}")
-            ax.set_ylabel(f"Particle {hit_aliases[hit]} Efficiency")
-            ax.set_xscale(scale)
-            ax.legend()
-            ax.grid(zorder=0, alpha=0.25, linestyle="--")
-
-            fig.savefig(plot_save_dir / Path(f"part_{hit}_eff_{field}.png"))
-
-        # Plot distributions of truth quantities
-        fig, ax = plt.subplots()
-        fig.set_size_inches(8, 3)
-
-        plot_hist_to_ax(ax, total_valid, bins, vertical_lines=True)
-
-        ax.set_xlabel(f"Particle {alias}")
-        ax.set_ylabel("Count")
-        ax.set_xscale(scale)
-        ax.set_yscale("log")
-        ax.legend()
-        ax.grid(zorder=0, alpha=0.25, linestyle="--")
-
-        fig.savefig(plot_save_dir / Path(f"part_{field}.png"))
-
-
-if __name__ == "__main__":
-    main()
+        for histogram in binary_histograms.values():
+            histogram.fill(data)

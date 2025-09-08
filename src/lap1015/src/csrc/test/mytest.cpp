@@ -82,6 +82,6 @@ int main(int argc, char* argv[])
     bool epsilon = true;
     auto start_time = std::chrono::high_resolution_clock::now();
     solveTable<C, C>(start_time, Nx, Ny, get_cost, rowsol, epsilon);
-    
+
     return 0;
 }

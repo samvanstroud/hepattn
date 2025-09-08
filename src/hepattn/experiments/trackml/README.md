@@ -31,7 +31,7 @@ python run_filtering.py test --config PATH --data.test_dir /share/rcifdata/maxha
 ## Tracking
 
 ```shell
-# train 
+# train
 python run_tracking.py fit --config configs/tracking.yaml --trainer.fast_dev_run 10
 
 # test

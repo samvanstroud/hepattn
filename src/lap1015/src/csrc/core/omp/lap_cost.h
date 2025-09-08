@@ -45,7 +45,7 @@ namespace lap
 					cc[t] = &(tab[ws.part[t].first]);
 				}
 			}
-			
+
 			template <class DirectCost>
 			void initTable(DirectCost &cost)
 			{

@@ -3,33 +3,33 @@ name: TIDE_10M_250_40trk_F32_tagging_sudo_TSS
 data:
   inputs:
     sudo:
-        # Track paramaters in global frame
-        - pt
-        - eta
-        - phi
-        - theta
-        - z0
-        - d0
-        - q
-        - qopt
-        # Track paramaters in the ROI frame
-        - dtheta
-        - deta
-        - dphi
-        - dz0
-        # Vertex location in global frame
-        - vx
-        - vy
-        - vz
-        # Hit summary statistics
-        - num_pix
-        - num_sct
-        - num_shared_pix
-        - num_shared_sct
-        - num_layer_0_pix
-        - num_layer_1_pix
-        - num_shared_layer_0_pix
-        - num_shared_layer_1_pix
+      # Track paramaters in global frame
+      - pt
+      - eta
+      - phi
+      - theta
+      - z0
+      - d0
+      - q
+      - qopt
+      # Track paramaters in the ROI frame
+      - dtheta
+      - deta
+      - dphi
+      - dz0
+      # Vertex location in global frame
+      - vx
+      - vy
+      - vz
+      # Hit summary statistics
+      - num_pix
+      - num_sct
+      - num_shared_pix
+      - num_shared_sct
+      - num_layer_0_pix
+      - num_layer_1_pix
+      - num_shared_layer_0_pix
+      - num_shared_layer_1_pix
 
 model:
   model:

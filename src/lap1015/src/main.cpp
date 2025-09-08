@@ -58,7 +58,7 @@ py::array_t<int> linear_sum_assignment(py::array_t<float> cost_matrix, bool omp 
     if (Nx > Ny) {
         throw std::runtime_error("The cost matrix must be larger along the second dimension than the first");
     }
-    
+
     // create a function that returns the cost of a given assignment
     auto get_cost = [&C](int x, int y) -> float { return C(x, y); };
 
@@ -92,7 +92,7 @@ namespace py = pybind11;
 PYBIND11_MODULE(_core, m) {
     m.def(
         "linear_sum_assignment",
-        &linear_sum_assignment, 
+        &linear_sum_assignment,
         py::arg("cost_matrix"), py::arg("omp")=true, py::arg("eps")=true,
         "Solve the linear sum assignment problem"
     );
