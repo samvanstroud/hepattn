@@ -13,9 +13,9 @@ data:
   hit_eval_test: dummy
 
   num_workers: 4
-  num_train: 10
-  num_test: 10
-  num_val: 10
+  num_train: 4
+  num_test: 4
+  num_val: 4
 
   # Select only hits from these detector volumes
   # pix barrel: 8, pix endcap: 7, 9
