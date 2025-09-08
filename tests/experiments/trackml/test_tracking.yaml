@@ -64,13 +64,12 @@ data:
       - phi
 
 trainer:
-  fast_dev_run: 2
-  max_epochs: 10
+  max_epochs: 2
   accelerator: cpu
   devices: 1
   precision: bf16-mixed
   log_every_n_steps: 50
-  default_root_dir: logs
+  default_root_dir: test_logs
   gradient_clip_val: 0.1
   enable_progress_bar: true
   logger: false
