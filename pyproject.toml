@@ -95,6 +95,12 @@ cmd = "pytest"
 [tool.pixi.tasks.test-ci]
 cmd = "pytest -m 'not gpu and not requiresdata' --cov=src --cov-report=xml --cov-report=term-missing"
 
+[tool.pixi.tasks.test-unit-ci]
+cmd = "pytest --ignore=tests/experiments/ -m 'not gpu and not requiresdata' --cov=src --cov-report=xml --cov-report=term-missing"
+
+[tool.pixi.tasks.test-integration-ci]
+cmd = "pytest tests/experiments/ -m 'not gpu and not requiresdata' --cov=src --cov-report=xml --cov-report=term-missing"
+
 
 [tool.ruff]
 src = ["src"]
