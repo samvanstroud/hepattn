@@ -24,10 +24,10 @@ on: [push, pull_request]
       git lfs pull
 
 .common-upload: &common-upload
-  name: Upload test coverage to Codecov
-  uses: codecov/codecov-action@v5
-  env:
-    CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  - name: Upload test coverage to Codecov
+    uses: codecov/codecov-action@v5
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
 jobs:
   unit-tests:
