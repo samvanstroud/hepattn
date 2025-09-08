@@ -1,0 +1,8 @@
+coverage:
+  status:
+    project:
+      default:
+        after_n_builds: 2
+    patch:
+      default:
+        after_n_builds: 2
