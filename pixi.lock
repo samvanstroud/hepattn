@@ -7193,7 +7193,7 @@ packages:
 - pypi: ./
   name: hepattn
   version: 0.2.0
-  sha256: 5f95911e1a318c62d3d89e281c00f552f2017eec9d90cbae716121e0952d1785
+  sha256: 459ee701110703c9197e3c6f41464af972b5c0e240eff868eb4aff13459378c3
   requires_dist:
   - packaging
   - jupyter
@@ -12070,7 +12070,6 @@ packages:
 - pypi: https://download.pytorch.org/whl/cu128/torch-2.8.0%2Bcu128-cp312-cp312-manylinux_2_28_x86_64.whl
   name: torch
   version: 2.8.0+cu128
-  sha256: 4354fc05bb79b208d6995a04ca1ceef6a9547b1c4334435574353d381c55087c
   requires_dist:
   - filelock
   - typing-extensions>=4.10.0
