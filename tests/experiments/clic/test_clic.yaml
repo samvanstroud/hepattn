@@ -46,7 +46,7 @@ trainer:
   precision: bf16-mixed
   gradient_clip_val: 0.1
   log_every_n_steps: 50
-  default_root_dir: logs
+  default_root_dir: test_logs
   enable_progress_bar: True
   logger: false
 
