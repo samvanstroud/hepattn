@@ -3,8 +3,6 @@ import torch
 
 from hepattn.models.decoder import MaskFormerDecoder, MaskFormerDecoderLayer
 
-HAS_CUDA = torch.cuda.is_available()
-
 BATCH_SIZE = 2
 SEQ_LEN = 10
 NUM_QUERIES = 5
@@ -56,17 +54,6 @@ class TestMaskFormerDecoder:
         }
 
     @pytest.fixture
-    def decoder_layer_config_flex(self):
-        return {
-            "dim": DIM,
-            "norm": "LayerNorm",
-            "dense_kwargs": {},
-            "attn_kwargs": {"attn_type": "flex"},
-            "bidirectional_ca": True,
-            "hybrid_norm": False,
-        }
-
-    @pytest.fixture
     def decoder(self, decoder_layer_config):
         return MaskFormerDecoder(
             num_queries=NUM_QUERIES,
@@ -101,20 +88,6 @@ class TestMaskFormerDecoder:
         )
 
     @pytest.fixture
-    def decoder_local_strided_attn_flex(self, decoder_layer_config_flex):
-        """Decoder with local_strided_attn=True for testing local window attention."""
-        config = decoder_layer_config_flex.copy()
-        return MaskFormerDecoder(
-            num_queries=NUM_QUERIES,
-            decoder_layer_config=config,
-            num_decoder_layers=NUM_LAYERS,
-            mask_attention=False,  # Must be False when local_strided_attn=True
-            local_strided_attn=True,
-            window_size=4,
-            window_wrap=True,
-        )
-
-    @pytest.fixture
     def sample_decoder_data(self):
         x = {
             "query_embed": torch.randn(BATCH_SIZE, NUM_QUERIES, DIM),
@@ -137,7 +110,7 @@ class TestMaskFormerDecoder:
             "query_embed": torch.randn(1, NUM_QUERIES, DIM),
             "key_embed": torch.randn(1, SEQ_LEN, DIM),
             "key_posenc": torch.randn(1, SEQ_LEN, DIM),
-            "key_valid": None,
+            "key_valid": torch.ones(1, SEQ_LEN, dtype=torch.bool),
             "key_is_input1": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
             "key_is_input2": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
         }
