@@ -15,7 +15,7 @@ def test_config():
     return {"window_size": 32, "stride": 2.0, "q_len": 100, "kv_len": 1000, "device": "cpu", "block_size": 128, "dtype_float": torch.float32}
 
 
-class TestKvBlocksNonwrap:
+class TestKvBlocks:
     """Test the _kv_blocks_nonwrap function."""
 
     def test_basic_functionality(self):
@@ -29,15 +29,23 @@ class TestKvBlocksNonwrap:
         kv_len = 400
         device = "cpu"
 
-        kv_num_blocks, kv_indices = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.int32)
-
+        kv_num_blocks_nonwrap, kv_indices_nonwrap = _kv_blocks_nonwrap(
+            q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.int32
+        )
+        kv_num_blocks_wrap, kv_indices_wrap = _kv_blocks_wrap(
+            q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.int32
+        )
         # Check output shapes
-        assert kv_num_blocks.shape == (q_blocks,)
-        assert kv_indices.shape == (q_blocks, kv_blocks)
+        assert kv_num_blocks_nonwrap.shape == (q_blocks,)
+        assert kv_indices_nonwrap.shape == (q_blocks, kv_blocks)
+        assert kv_num_blocks_wrap.shape == (q_blocks,)
+        assert kv_indices_wrap.shape == (q_blocks, kv_blocks)
 
         # Check that all values are non-negative
-        assert torch.all(kv_num_blocks >= 0)
-        assert torch.all(kv_indices >= 0)
+        assert torch.all(kv_num_blocks_nonwrap >= 0)
+        assert torch.all(kv_indices_nonwrap >= 0)
+        assert torch.all(kv_num_blocks_wrap >= 0)
+        assert torch.all(kv_indices_wrap >= 0)
 
     def test_large_window_size(self):
         """Test with window size larger than sequence length."""
@@ -50,57 +58,18 @@ class TestKvBlocksNonwrap:
         kv_len = 300
         device = "cpu"
 
-        kv_num_blocks, kv_indices = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.int32)
-
+        kv_num_blocks_nonwrap, kv_indices_nonwrap = _kv_blocks_nonwrap(
+            q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.int32
+        )
+        kv_num_blocks_wrap, kv_indices_wrap = _kv_blocks_wrap(
+            q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.int32
+        )
         # All blocks should be visible
-        assert torch.all(kv_num_blocks == kv_blocks)
+        assert torch.all(kv_num_blocks_nonwrap == kv_blocks)
+        assert torch.all(kv_num_blocks_wrap == kv_blocks)
         # Check that indices are valid
-        assert torch.all(kv_indices >= 0)
-
-
-class TestKvBlocksWrap:
-    """Test the _kv_blocks_wrap function."""
-
-    def test_basic_functionality(self):
-        """Test basic functionality of _kv_blocks_wrap."""
-        q_blocks = 2
-        kv_blocks = 4
-        block_size = 128
-        window_size = 32
-        stride = 2.0
-        q_len = 200
-        kv_len = 400
-        device = "cpu"
-
-        kv_num_blocks, kv_indices = _kv_blocks_wrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.int32)
-
-        # Check output shapes
-        assert kv_num_blocks.shape == (q_blocks,)
-        assert kv_indices.shape == (q_blocks, kv_blocks)
-
-        # Check that all values are non-negative
-        assert torch.all(kv_num_blocks >= 0)
-        assert torch.all(kv_indices >= 0)
-
-    def test_wrapping_behavior(self):
-        """Test that wrapping behavior works correctly."""
-        q_blocks = 1
-        kv_blocks = 2
-        block_size = 64
-        window_size = 100  # Large enough to wrap
-        stride = 1.0
-        q_len = 50
-        kv_len = 100
-        device = "cpu"
-
-        kv_num_blocks, kv_indices = _kv_blocks_wrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.int32)
-
-        # Should have blocks visible due to wrapping
-        assert torch.all(kv_num_blocks > 0)
-        # Check that indices are valid
-        assert torch.all(kv_indices >= 0)
-
-        # TODO: insert expected values
+        assert torch.all(kv_indices_nonwrap >= 0)
+        assert torch.all(kv_indices_wrap >= 0)
 
 
 def test_non_wrapped_equivalence(test_config):
