@@ -56,7 +56,10 @@ class TrackMLDataset(Dataset):
             return
 
         # Get a list of event names
-        event_names = [Path(file).stem.replace("-parts", "") for file in Path(dirpath).glob("event*-parts.parquet")]
+        event_names = [
+            Path(file).stem.replace("-parts", "")
+            for file in Path(dirpath).glob("event*-parts.parquet")
+        ]
 
         # Calculate the number of events that will actually be used
         num_events_available = len(event_names)
@@ -115,7 +118,9 @@ class TrackMLDataset(Dataset):
             targets[f"{feature}_valid"] = inputs[f"{feature}_valid"]
 
             for field in fields:
-                inputs[f"{feature}_{field}"] = torch.from_numpy(hits[field].values).unsqueeze(0).half()
+                inputs[f"{feature}_{field}"] = (
+                    torch.from_numpy(hits[field].values).unsqueeze(0).half()
+                )
 
         # Build the targets for whether a particle slot is used or not
         targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
@@ -128,14 +133,23 @@ class TrackMLDataset(Dataset):
         particle_ids = torch.from_numpy(particles["particle_id"].values)
 
         # Fill in empty slots with -1s and get the IDs of the particle on each hit
-        particle_ids = torch.cat([particle_ids, -999 * torch.ones(self.event_max_num_particles - len(particle_ids))])
+        particle_ids = torch.cat(
+            [
+                particle_ids,
+                -999 * torch.ones(self.event_max_num_particles - len(particle_ids)),
+            ]
+        )
         hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
 
         # Create the mask targets
-        targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+        targets["particle_hit_valid"] = (
+            particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)
+        ).unsqueeze(0)
 
         # Create the hit filter targets
-        targets["hit_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy()).unsqueeze(0)
+        targets["hit_on_valid_particle"] = torch.from_numpy(
+            hits["on_valid_particle"].to_numpy()
+        ).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)
@@ -146,7 +160,9 @@ class TrackMLDataset(Dataset):
                 # Null target/particle slots are filled with nans
                 # This acts as a sanity check that we correctly mask out null slots in the loss
                 x = torch.full((self.event_max_num_particles,), torch.nan)
-                x[:num_particles] = torch.from_numpy(particles[field].to_numpy()[: self.event_max_num_particles])
+                x[:num_particles] = torch.from_numpy(
+                    particles[field].to_numpy()[: self.event_max_num_particles]
+                )
                 targets[f"particle_{field}"] = x.unsqueeze(0)
 
         return inputs, targets
@@ -175,7 +191,9 @@ class TrackMLDataset(Dataset):
         hits["v"] = hits["y"] / (hits["x"] ** 2 + hits["y"] ** 2)
 
         # Add extra particle fields
-        particles["p"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2 + particles["pz"] ** 2)
+        particles["p"] = np.sqrt(
+            particles["px"] ** 2 + particles["py"] ** 2 + particles["pz"] ** 2
+        )
         particles["pt"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2)
         particles["qopt"] = particles["q"] / particles["pt"]
         particles["eta"] = np.arctanh(particles["pz"] / particles["p"])
@@ -190,29 +208,36 @@ class TrackMLDataset(Dataset):
         particles = particles[particles["pt"] > self.particle_min_pt]
         particles = particles[particles["eta"].abs() < self.particle_max_abs_eta]
 
-        # Apply particle cut based on hit content
-        counts = hits["particle_id"].value_counts()
-        keep_particle_ids = counts[counts >= self.particle_min_num_hits].index.to_numpy()
-        particles = particles[particles["particle_id"].isin(keep_particle_ids)]
-
-        # Mark which hits are on a valid / reconstructable particle, for the hit filter
-        hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
-
         # If a hit eval file was specified, read in the predictions from it to use the hit filtering
         if self.hit_eval_path:
             with h5py.File(self.hit_eval_path, "r") as hit_eval_file:
-                assert str(self.sample_ids[idx]) in hit_eval_file, f"Key {self.sample_ids[idx]} not found in file {self.hit_eval_path}"
+                assert (
+                    str(self.sample_ids[idx]) in hit_eval_file
+                ), f"Key {self.sample_ids[idx]} not found in file {self.hit_eval_path}"
 
                 # The dataset has shape (1, num_hits)
-                hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
+                hit_filter_pred = hit_eval_file[
+                    f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"
+                ][0]
                 hits = hits[hit_filter_pred]
 
         # TODO: Add back truth based hit filtering
 
+        # Apply particle cut based on hit content
+        counts = hits["particle_id"].value_counts()
+        keep_particle_ids = counts[
+            counts >= self.particle_min_num_hits
+        ].index.to_numpy()
+        particles = particles[particles["particle_id"].isin(keep_particle_ids)]
+
+        # Mark which hits are on a valid / reconstructable particle, for the hit filter
+        hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
         # Sanity checks
         assert len(particles) != 0, "No particles remaining - loosen selection!"
         assert len(hits) != 0, "No hits remaining - loosen selection!"
-        assert particles["particle_id"].nunique() == len(particles), "Non-unique particle ids"
+        assert particles["particle_id"].nunique() == len(
+            particles
+        ), "Non-unique particle ids"
 
         # Check that all hits have different phi
         # This is necessary as the fast sorting algorithm used by pytorch can be non-stable
@@ -244,7 +269,9 @@ class TrackMLDataset(Dataset):
             for field in fields:
                 # Generate random normal data for all fields
                 data = rng.standard_normal(num_hits)
-                inputs[f"{feature}_{field}"] = torch.from_numpy(data).unsqueeze(0).to(torch.float32)
+                inputs[f"{feature}_{field}"] = (
+                    torch.from_numpy(data).unsqueeze(0).to(torch.float32)
+                )
 
         # Build the targets for whether a particle slot is used or not
         targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
@@ -253,16 +280,25 @@ class TrackMLDataset(Dataset):
 
         # Build dummy particle IDs
         particle_ids = torch.arange(num_particles, dtype=torch.long)
-        particle_ids = torch.cat([particle_ids, -999 * torch.ones(self.event_max_num_particles - num_particles)])
+        particle_ids = torch.cat(
+            [
+                particle_ids,
+                -999 * torch.ones(self.event_max_num_particles - num_particles),
+            ]
+        )
 
         # Assign random particle IDs to hits
         hit_particle_ids = torch.randint(0, num_particles, (num_hits,))
 
         # Create the mask targets
-        targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+        targets["particle_hit_valid"] = (
+            particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)
+        ).unsqueeze(0)
 
         # Create the hit filter targets (random boolean)
-        targets["hit_on_valid_particle"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
+        targets["hit_on_valid_particle"] = torch.randint(
+            0, 2, (num_hits,), dtype=torch.bool
+        ).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([idx], dtype=torch.int32)
@@ -329,11 +365,17 @@ class TrackMLDataModule(LightningDataModule):
 
         # Only print train/val dataset details when actually training
         if stage == "fit":
-            rank_zero_info(f"Created training dataset with {len(self.train_dataset):,} events")
-            rank_zero_info(f"Created validation dataset with {len(self.val_dataset):,} events")
+            rank_zero_info(
+                f"Created training dataset with {len(self.train_dataset):,} events"
+            )
+            rank_zero_info(
+                f"Created validation dataset with {len(self.val_dataset):,} events"
+            )
 
         if stage == "test":
-            assert self.test_dir is not None, "No test file specified, see --data.test_dir"
+            assert (
+                self.test_dir is not None
+            ), "No test file specified, see --data.test_dir"
 
             self.test_dataset = TrackMLDataset(
                 dirpath=self.test_dir,
@@ -341,7 +383,9 @@ class TrackMLDataModule(LightningDataModule):
                 hit_eval_path=self.hit_eval_test,
                 **self.kwargs,
             )
-            rank_zero_info(f"Created test dataset with {len(self.test_dataset):,} events")
+            rank_zero_info(
+                f"Created test dataset with {len(self.test_dataset):,} events"
+            )
 
     def get_dataloader(self, stage: str, dataset: TrackMLDataset, shuffle: bool):
         return DataLoader(
@@ -355,10 +399,16 @@ class TrackMLDataModule(LightningDataModule):
         )
 
     def train_dataloader(self):
-        return self.get_dataloader(dataset=self.train_dataset, stage="fit", shuffle=True)
+        return self.get_dataloader(
+            dataset=self.train_dataset, stage="fit", shuffle=True
+        )
 
     def val_dataloader(self):
-        return self.get_dataloader(dataset=self.val_dataset, stage="test", shuffle=False)
+        return self.get_dataloader(
+            dataset=self.val_dataset, stage="test", shuffle=False
+        )
 
     def test_dataloader(self):
-        return self.get_dataloader(dataset=self.test_dataset, stage="test", shuffle=False)
+        return self.get_dataloader(
+            dataset=self.test_dataset, stage="test", shuffle=False
+        )
