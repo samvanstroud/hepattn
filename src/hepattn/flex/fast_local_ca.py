@@ -185,27 +185,26 @@ def build_strided_sliding_window_blockmask(
     # Number of query/KV blocks (ceil division)
     q_blocks = (q_len + block_size - 1) // block_size
     kv_blocks = (kv_len + block_size - 1) // block_size
-    stride = torch.tensor(stride, device=device, dtype=dtype_float)
+    stride_t = torch.tensor(stride, device=device, dtype=dtype_float)
 
     # Compute the block-level KV visibility (coarse envelope)
     if wrap:
-        kv_num_blocks, kv_indices = _kv_blocks_wrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, dtype_float)
+        kv_num_blocks, kv_indices = _kv_blocks_wrap(q_blocks, kv_blocks, block_size, window_size, stride_t, q_len, kv_len, device, dtype_float)
     else:
-        kv_num_blocks, kv_indices = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, dtype_float)
+        kv_num_blocks, kv_indices = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, stride_t, q_len, kv_len, device, dtype_float)
 
     # Flex Attention expects [B, H, Q_blocks, ...]; we use singleton B=H=1
     kv_num_blocks = kv_num_blocks.unsqueeze(0).unsqueeze(0)  # [1,1,Q_blocks]
     kv_indices = kv_indices.unsqueeze(0).unsqueeze(0)  # [1,1,Q_blocks,kv_blocks]
 
     # Scalars as tensors for compiled mask_mod
-    stride_val = torch.tensor(stride, device=device)
     kv_len_t = torch.as_tensor(kv_len, device=device).reshape(())
 
     # Per-token refinement: given (q_idx, kv_idx) decide if it's inside the
     # strided window. Called by Flex Attention during block processing.
     def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
         # Center of the window for this query token
-        q_center = torch.round(q_idx * stride_val)
+        q_center = torch.round(q_idx * stride_t)
         if not wrap:
             return (kv_idx - q_center).abs() <= window_size // 2
         diagonal = (kv_idx - q_center).abs() <= window_size // 2
