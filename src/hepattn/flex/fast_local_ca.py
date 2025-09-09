@@ -1,9 +1,6 @@
 import torch
 from torch.nn.attention.flex_attention import BlockMask
 
-# ---------------------------
-# Compiled tensor-only helpers
-# ---------------------------
 
 def _kv_blocks_nonwrap(
     q_blocks: int,
@@ -157,7 +154,7 @@ _kv_blocks_wrap = torch.compile(_kv_blocks_wrap, dynamic=True)  # type: ignore[i
 def build_strided_sliding_window_blockmask(
     *,
     window_size: int,
-    stride: float,  # kept for mask_mod; not used in compiled helpers
+    stride: float,
     q_len: int,
     kv_len: int,
     device: str,
@@ -188,6 +185,7 @@ def build_strided_sliding_window_blockmask(
     # Number of query/KV blocks (ceil division)
     q_blocks = (q_len + block_size - 1) // block_size
     kv_blocks = (kv_len + block_size - 1) // block_size
+    stride = torch.tensor(stride, device=device, dtype=dtype_float)
 
     # Compute the block-level KV visibility (coarse envelope)
     if wrap:
