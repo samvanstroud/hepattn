@@ -103,6 +103,7 @@ class MaskFormerDecoder(nn.Module):
                 device = x["query_embed"].device
                 q_len = x["query_embed"].shape[1]
                 kv_len = x["key_embed"].shape[1]
+                dtype_float = x["query_embed"].dtype
                 if self.fast_local_ca:
                     attn_mask = build_strided_sliding_window_blockmask(
                         window_size=self.window_size,
@@ -112,6 +113,7 @@ class MaskFormerDecoder(nn.Module):
                         kv_len=kv_len,
                         device=device,
                         wrap=self.window_wrap,
+                        dtype_float=dtype_float,
                     )
                 else:
                     attn_mask = self.flex_local_ca_mask(q_len, kv_len, device)

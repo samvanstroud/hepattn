@@ -5,26 +5,12 @@ from torch.nn.attention.flex_attention import BlockMask
 # Compiled tensor-only helpers
 # ---------------------------
 
-
-def _round_bankers_num_over_den(num: torch.Tensor, den: torch.Tensor) -> torch.Tensor:
-    # Integer division and remainder
-    q = torch.div(num, den, rounding_mode="floor")
-    r = num - q * den
-    # Compare 2*r to den to detect < 0.5, > 0.5, and == 0.5 cases
-    twice_r = r << 1  # 2*r
-    gt = twice_r > den
-    lt = twice_r < den
-    # tie -> round to even: if q is even keep q else use q+1
-    q_plus_one = q + 1
-    return torch.where(lt, q, torch.where(gt, q_plus_one, torch.where((q & 1) == 0, q, q_plus_one)))
-
-
 def _kv_blocks_nonwrap(
     q_blocks: int,
     kv_blocks: int,
     block_size: int,
     window_size: int,
-    stride: float,
+    s: torch.Tensor,
     q_len: int,
     kv_len: int,
     device: str,
@@ -38,9 +24,6 @@ def _kv_blocks_nonwrap(
     is refined later by `mask_mod`.
     """
     # Keep scalars as tensors (avoids graph breaks in torch.compile)
-    half_t = torch.tensor(window_size // 2, device=device, dtype=torch.int64)
-    kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int64)
-
     half_f = torch.tensor(window_size // 2, device=device, dtype=dtype_float)
     kv_len_fm1 = torch.tensor(kv_len - 1, device=device, dtype=dtype_float)
 
@@ -54,7 +37,6 @@ def _kv_blocks_nonwrap(
     q1 = torch.minimum(q0 + (block_size_t - 1), q_len_t - 1)  # last query token in block
 
     # Map query-token positions to KV "centers" by proportional scaling:
-    s = torch.tensor(stride, device=device, dtype=dtype_float)
     q0f = q0.to(dtype_float) * s
     q1f = q1.to(dtype_float) * s
     lo_center = torch.minimum(q0f, q1f)
@@ -93,7 +75,7 @@ def _kv_blocks_wrap(
     kv_blocks: int,
     block_size: int,
     window_size: int,
-    stride: float,
+    s: torch.Tensor,
     q_len: int,
     kv_len: int,
     device: str,
@@ -105,7 +87,7 @@ def _kv_blocks_wrap(
     2) nonwrap_row: window doesn't cross the end (single interval).
     3) wrap_row: window crosses the end (union of two intervals).
     """
-    half_t = torch.tensor(window_size // 2, device=device, dtype=torch.int64)
+    half_t = torch.tensor(window_size // 2, device=device, dtype=torch.int32)
     block_size_t = torch.tensor(block_size, device=device)  # stays integer
     q_len_t = torch.tensor(q_len, device=device)  # stays integer
 
@@ -113,7 +95,6 @@ def _kv_blocks_wrap(
     q0 = qb * block_size_t
     q1 = torch.minimum(q0 + (block_size_t - 1), q_len_t - 1)
 
-    s = torch.tensor(stride, device=device, dtype=dtype_float)
     q0f = q0.to(dtype_float) * s
     q1f = q1.to(dtype_float) * s
     lo_center = torch.minimum(q0f, q1f)
@@ -125,8 +106,8 @@ def _kv_blocks_wrap(
     hi_tok = max_center + half_t
     span = hi_tok - lo_tok + 1  # window width in tokens (inclusive)
 
-    kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int64)
-    base = torch.arange(kv_blocks, device=device, dtype=torch.int64)
+    kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int32)
+    base = torch.arange(kv_blocks, device=device, dtype=torch.int32)
     base2 = base.unsqueeze(0).expand(q_blocks, kv_blocks)
 
     # If window covers the whole sequence, select all KV blocks
@@ -163,6 +144,7 @@ def _kv_blocks_wrap(
     src = base2.masked_fill(~mask, 0)
     kv_indices = torch.zeros((q_blocks, kv_blocks), device=device, dtype=base.dtype)
     kv_indices.scatter_(dim=1, index=pos, src=src)
+
     return kv_num_blocks, kv_indices
 
 
