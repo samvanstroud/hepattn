@@ -8,7 +8,6 @@ from lightning import LightningDataModule
 from lightning.pytorch.utilities.rank_zero import rank_zero_info
 from torch.utils.data import DataLoader, Dataset
 
-
 def is_valid_file(path):
     path = Path(path)
     return path.is_file() and path.stat().st_size > 0
@@ -190,11 +189,6 @@ class TrackMLDataset(Dataset):
         particles = particles[particles["pt"] > self.particle_min_pt]
         particles = particles[particles["eta"].abs() < self.particle_max_abs_eta]
 
-        # Apply particle cut based on hit content
-        counts = hits["particle_id"].value_counts()
-        keep_particle_ids = counts[counts >= self.particle_min_num_hits].index.to_numpy()
-        particles = particles[particles["particle_id"].isin(keep_particle_ids)]
-
         # Mark which hits are on a valid / reconstructable particle, for the hit filter
         hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
 
@@ -207,7 +201,13 @@ class TrackMLDataset(Dataset):
                 hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
                 hits = hits[hit_filter_pred]
 
+
         # TODO: Add back truth based hit filtering
+
+        # Apply particle cut based on hit content
+        counts = hits["particle_id"].value_counts()
+        keep_particle_ids = counts[counts >= self.particle_min_num_hits].index.to_numpy()
+        particles = particles[particles["particle_id"].isin(keep_particle_ids)]
 
         # Sanity checks
         assert len(particles) != 0, "No particles remaining - loosen selection!"
