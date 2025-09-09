@@ -24,7 +24,7 @@ class TestKvBlocks:
         kv_blocks = 4
         block_size = 128
         window_size = 32
-        stride = 2.0
+        stride = torch.tensor(2.0)
         q_len = 200
         kv_len = 400
         device = "cpu"
@@ -53,7 +53,7 @@ class TestKvBlocks:
         kv_blocks = 3
         block_size = 128
         window_size = 1000  # Much larger than kv_len
-        stride = 1.0
+        stride = torch.tensor(1.0)
         q_len = 200
         kv_len = 300
         device = "cpu"
