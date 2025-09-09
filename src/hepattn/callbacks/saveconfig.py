@@ -2,7 +2,7 @@ import os
 import socket
 from pathlib import Path
 
-import lightning as L
+import lightning
 import torch
 import yaml
 from lightning import Callback, LightningModule, Trainer
@@ -56,11 +56,11 @@ class SaveConfig(Callback):
             "gpu_ids": trainer.device_ids,
             "num_workers": datamodule.train_dataloader().num_workers,
             "torch_version": str(torch.__version__),
-            "lightning_version": str(L.__version__),
+            "lightning_version": str(lightning.__version__),
             "cuda_version": torch.version.cuda,
             "hostname": socket.gethostname(),
-            "out_dir": logger.save_dir,
-            "log_url": getattr(logger.experiment, "url", None),
+            "out_dir": logger.save_dir if logger else log_dir,
+            "log_url": getattr(logger.experiment, "url", None) if logger else None,
         }
 
         if hasattr(trainer, "timestamp"):

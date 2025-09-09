@@ -46,11 +46,17 @@ class InferenceTimer(Callback):
 
     def on_test_end(self, trainer, pl_module):
         pl_module.forward = self.old_forward
-        self.times = self.times[self.n_warm_start :]  # ensure warm start
-        self.dims = self.dims[self.n_warm_start :]
 
         if not len(self.times):
             raise ValueError("No times recorded.")
+
+        # ensure warm start
+        self.times = self.times[self.n_warm_start :]
+        self.dims = self.dims[self.n_warm_start :]
+
+        if not len(self.times):
+            print("Not enough steps to obtain timing information")
+            return
 
         self.times = torch.tensor(self.times)
         self.mean_time = self.times.mean().item()

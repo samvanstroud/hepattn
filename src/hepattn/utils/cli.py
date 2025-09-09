@@ -48,13 +48,12 @@ def get_best_epoch(config_path: Path) -> Path:
 
 class CLI(LightningCLI):
     def add_arguments_to_parser(self, parser) -> None:
-        parser.add_argument("--name", default="hepattn", help="Name for this training run.")
+        parser.add_argument("--name", type=str, default="hepattn", help="Name for this training run.")
 
         parser.add_argument(
             "--matmul_precision",
             type=str,
             choices=["highest", "high", "medium", "low"],
-            default="high",
             help="Precision setting for float32 matrix multiplications.",
         )
 
@@ -97,7 +96,7 @@ class CLI(LightningCLI):
             if sc["ckpt_path"] is None:
                 config = sc["config"]
                 assert len(config) == 1
-                best_epoch_path = get_best_epoch(Path(config[0].rel_path))
+                best_epoch_path = get_best_epoch(Path(config[0].relative))
                 sc["ckpt_path"] = best_epoch_path
 
             # Ensure only one device is used for testing
@@ -109,13 +108,14 @@ class CLI(LightningCLI):
                 raise ValueError("Testing requires --trainer.devices=1")
 
         # Set the matmul precision
-        torch.set_float32_matmul_precision(sc["matmul_precision"])
+        if sc.get("matmul_precision"):
+            torch.set_float32_matmul_precision(sc["matmul_precision"])
 
     def after_instantiate_classes(self) -> None:
         sc = self.config[self.subcommand]
 
         if self.subcommand == "test":
-            ckpt_path = sc["ckpt_path"] or get_best_epoch(Path(sc["config"][0].rel_path))
+            ckpt_path = sc["ckpt_path"] or get_best_epoch(Path(sc["config"][0].relative))
             # Workaround to store ckpt dir for prediction writer since trainer.ckpt_path gets set to none somewhere
             # TODO: Figure out what causes trainer.ckpt_path to be set to none
             self.trainer.ckpt_path = ckpt_path

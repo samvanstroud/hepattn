@@ -1,5 +1,5 @@
 seed_everything: 42
-name: tracking-test
+name: tracking-test-old-sort
 
 data:
   dummy_data: true
@@ -12,10 +12,10 @@ data:
   hit_eval_val: dummy
   hit_eval_test: dummy
 
-  num_workers: 2
-  num_train: 10
-  num_test: 10
-  num_val: 10
+  num_workers: 4
+  num_train: 4
+  num_test: 4
+  num_val: 4
 
   # Select only hits from these detector volumes
   # pix barrel: 8, pix endcap: 7, 9
@@ -64,19 +64,17 @@ data:
       - phi
 
 trainer:
-  fast_dev_run: 2
-  max_epochs: 10
+  max_epochs: 1
   accelerator: cpu
   devices: 1
   precision: bf16-mixed
   log_every_n_steps: 50
-  default_root_dir: logs
+  default_root_dir: test_logs
   gradient_clip_val: 0.1
   enable_progress_bar: true
   logger: false
 
   callbacks:
-    - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.AttnMaskLogger
     - class_path: hepattn.callbacks.Checkpoint
@@ -101,7 +99,7 @@ model:
     initial: 1e-5
     max: 5e-5
     end: 1e-5
-    pct_start: 0.05
+    pct_start: 0.0
     skip_scheduler: false
     weight_decay: 1e-5
 

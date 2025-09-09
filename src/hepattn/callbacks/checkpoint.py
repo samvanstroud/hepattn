@@ -23,5 +23,5 @@ class Checkpoint(ModelCheckpoint):
     def _save_checkpoint(self, trainer: Trainer, filepath: str) -> None:
         super()._save_checkpoint(trainer, filepath)
         metadata = {"epoch": trainer.current_epoch, "dirpath": self.dirpath}
-        if self.log_model:
+        if self.log_model and trainer.logger:
             trainer.logger.experiment.log_model(name=self.name, file_or_folder=filepath, metadata=metadata)

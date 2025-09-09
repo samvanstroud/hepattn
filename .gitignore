@@ -91,6 +91,7 @@ venv.bak/
 *.png
 *.pdf
 logs/
+test_logs/
 
 # Extra
 target
