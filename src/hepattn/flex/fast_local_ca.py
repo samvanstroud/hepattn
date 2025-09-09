@@ -41,16 +41,13 @@ def _kv_blocks_nonwrap(
     min_center = torch.floor(lo_center)
     max_center = torch.ceil(hi_center)
 
-    # Convert window in tokens to an inclusive token range [lo_tok, hi_tok]
-    # zero_tensor = torch.zeros(q_blocks, device=device)
-    # lo_tok = torch.maximum(min_center - half_t, zero_tensor)  # Leftmost KV token this block can see
-    # hi_tok = torch.minimum(max_center + half_t, kv_len_t - 1)  # Rightmost KV token this block can see
-    lo_tok = torch.maximum(min_center - half_f, zero_f)  # float vs float
-    hi_tok = torch.minimum(max_center + half_f, kv_len_fm1)  # float vs float
+    # Convert window in tokens to an inclusive token range
+    low_token = torch.maximum(min_center - half_f, zero_f)  # Leftmost KV token this block can see
+    hi_token = torch.minimum(max_center + half_f, kv_len_fm1)  # Rightmost KV token this block can see
 
     # Convert token range to block range
-    lo_blk = torch.div(lo_tok, block_size_t, rounding_mode="floor")
-    hi_blk = torch.div(hi_tok, block_size_t, rounding_mode="floor")
+    lo_blk = torch.div(low_token, block_size_t, rounding_mode="floor")
+    hi_blk = torch.div(hi_token, block_size_t, rounding_mode="floor")
 
     # Build a [Q, K] boolean mask over KV blocks
     base = torch.arange(kv_blocks, device=device)  # [K]
@@ -99,9 +96,9 @@ def _kv_blocks_wrap(
     min_center = torch.floor(lo_center)
     max_center = torch.ceil(hi_center)
 
-    lo_tok = min_center - half_t
-    hi_tok = max_center + half_t
-    span = hi_tok - lo_tok + 1  # window width in tokens (inclusive)
+    low_token = min_center - half_t
+    hi_token = max_center + half_t
+    span = hi_token - low_token + 1  # window width in tokens (inclusive)
 
     kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int32)
     base = torch.arange(kv_blocks, device=device, dtype=torch.int32)
@@ -110,27 +107,25 @@ def _kv_blocks_wrap(
     # If window covers the whole sequence, select all KV blocks
     all_rows = span >= kv_len_t
 
-    # # Mod the bounds into [0, kv_len)
-    # lo_mod = torch.remainder(lo_tok, kv_len_t)
-    # hi_mod = torch.remainder(hi_tok, kv_len_t)
     kv_len_f = torch.tensor(kv_len, device=device, dtype=dtype_float)
 
-    lo_mod = torch.remainder(lo_tok, kv_len_f)  # float % float
-    hi_mod = torch.remainder(hi_tok, kv_len_f)  # float % float
+    #  Mod the bounds into [0, kv_len)
+    low_mod = torch.remainder(low_token, kv_len_f)
+    high_mod = torch.remainder(hi_token, kv_len_f)
 
     # Identify whether the modulo-interval wraps around
-    nonwrap_row = (~all_rows) & (lo_mod <= hi_mod)
-    wrap_row = (~all_rows) & (lo_mod > hi_mod)
+    nonwrap_row = (~all_rows) & (low_mod <= high_mod)
+    wrap_row = (~all_rows) & (low_mod > high_mod)
 
-    # Non-wrapping interval: [lo_mod, hi_mod]
-    lo_blk_nw = torch.div(lo_mod, block_size_t, rounding_mode="floor")
-    hi_blk_nw = torch.div(hi_mod, block_size_t, rounding_mode="floor")
-    mask_nw = (base2 >= lo_blk_nw.unsqueeze(1)) & (base2 <= hi_blk_nw.unsqueeze(1))
+    # Non-wrapping interval: [low_mod, high_mod]
+    low_blk_nw = torch.div(low_mod, block_size_t, rounding_mode="floor")
+    hi_blk_nw = torch.div(high_mod, block_size_t, rounding_mode="floor")
+    mask_nw = (base2 >= low_blk_nw.unsqueeze(1)) & (base2 <= hi_blk_nw.unsqueeze(1))
 
-    # Wrapping interval: [0, hi_mod] U [lo_mod, kv_len)
-    lo_blk2 = torch.div(lo_mod, block_size_t, rounding_mode="floor")
-    hi_blk1 = torch.div(hi_mod, block_size_t, rounding_mode="floor")
-    mask_wr = (base2 <= hi_blk1.unsqueeze(1)) | (base2 >= lo_blk2.unsqueeze(1))
+    # Wrapping interval: [0, high_mod] U [low_mod, kv_len)
+    low_block2 = torch.div(low_mod, block_size_t, rounding_mode="floor")
+    hi_block1 = torch.div(high_mod, block_size_t, rounding_mode="floor")
+    mask_wr = (base2 <= hi_block1.unsqueeze(1)) | (base2 >= low_block2.unsqueeze(1))
 
     # Row-wise select the correct mask without Python branching
     mask = (all_rows.unsqueeze(1)) | (nonwrap_row.unsqueeze(1) & mask_nw) | (wrap_row.unsqueeze(1) & mask_wr)
