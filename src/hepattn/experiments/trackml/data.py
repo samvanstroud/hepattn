@@ -8,10 +8,6 @@ from lightning import LightningDataModule
 from lightning.pytorch.utilities.rank_zero import rank_zero_info
 from torch.utils.data import DataLoader, Dataset
 
-def is_valid_file(path):
-    path = Path(path)
-    return path.is_file() and path.stat().st_size > 0
-
 
 class TrackMLDataset(Dataset):
     def __init__(
@@ -200,7 +196,6 @@ class TrackMLDataset(Dataset):
                 # The dataset has shape (1, num_hits)
                 hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
                 hits = hits[hit_filter_pred]
-
 
         # TODO: Add back truth based hit filtering
 
