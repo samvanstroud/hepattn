@@ -30,10 +30,10 @@ class TestKvBlocks:
         device = "cpu"
 
         kv_num_blocks_nonwrap, kv_indices_nonwrap = _kv_blocks_nonwrap(
-            q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.int32
+            q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.float32
         )
         kv_num_blocks_wrap, kv_indices_wrap = _kv_blocks_wrap(
-            q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.int32
+            q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.float32
         )
         # Check output shapes
         assert kv_num_blocks_nonwrap.shape == (q_blocks,)
