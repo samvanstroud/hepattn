@@ -101,7 +101,7 @@ def _kv_blocks_wrap(
     span = hi_token - low_token + 1  # window width in tokens (inclusive)
 
     kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int32)
-    base = torch.arange(kv_blocks, device=device, dtype=torch.int32)
+    base = torch.arange(kv_blocks, device=device, dtype=torch.int64)
     base2 = base.unsqueeze(0).expand(q_blocks, kv_blocks)
 
     # If window covers the whole sequence, select all KV blocks
