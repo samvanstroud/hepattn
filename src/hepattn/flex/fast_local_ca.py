@@ -81,7 +81,7 @@ def _kv_blocks_wrap(
     2) nonwrap_row: window doesn't cross the end (single interval).
     3) wrap_row: window crosses the end (union of two intervals).
     """
-    half_t = torch.tensor(window_size // 2, device=device, dtype=torch.int32)
+    half_f = torch.tensor(window_size // 2, device=device, dtype=dtype_float)
     block_size_t = torch.tensor(block_size, device=device)  # stays integer
     q_len_t = torch.tensor(q_len, device=device)  # stays integer
 
@@ -96,8 +96,8 @@ def _kv_blocks_wrap(
     min_center = torch.floor(lo_center)
     max_center = torch.ceil(hi_center)
 
-    low_token = min_center - half_t
-    hi_token = max_center + half_t
+    low_token = min_center - half_f
+    hi_token = max_center + half_f
     span = hi_token - low_token + 1  # window width in tokens (inclusive)
 
     kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int32)
