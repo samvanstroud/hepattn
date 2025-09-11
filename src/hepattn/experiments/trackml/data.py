@@ -190,14 +190,6 @@ class TrackMLDataset(Dataset):
         particles = particles[particles["pt"] > self.particle_min_pt]
         particles = particles[particles["eta"].abs() < self.particle_max_abs_eta]
 
-        # Apply particle cut based on hit content
-        counts = hits["particle_id"].value_counts()
-        keep_particle_ids = counts[counts >= self.particle_min_num_hits].index.to_numpy()
-        particles = particles[particles["particle_id"].isin(keep_particle_ids)]
-
-        # Mark which hits are on a valid / reconstructable particle, for the hit filter
-        hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
-
         # If a hit eval file was specified, read in the predictions from it to use the hit filtering
         if self.hit_eval_path:
             with h5py.File(self.hit_eval_path, "r") as hit_eval_file:
@@ -208,6 +200,14 @@ class TrackMLDataset(Dataset):
                 hits = hits[hit_filter_pred]
 
         # TODO: Add back truth based hit filtering
+
+        # Apply particle cut based on hit content
+        counts = hits["particle_id"].value_counts()
+        keep_particle_ids = counts[counts >= self.particle_min_num_hits].index.to_numpy()
+        particles = particles[particles["particle_id"].isin(keep_particle_ids)]
+
+        # Mark which hits are on a valid / reconstructable particle, for the hit filter
+        hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
 
         # Sanity checks
         assert len(particles) != 0, "No particles remaining - loosen selection!"
