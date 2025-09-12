@@ -33,13 +33,16 @@ class TestObjectHitMaskTaskBasics:
 
     @pytest.fixture
     def traditional_task(self, task_config):
-        """ObjectHitMaskTask with unified_decoding=False (traditional mode)."""
-        return ObjectHitMaskTask(**task_config, unified_decoding=False)
+        """ObjectHitMaskTask using traditional hit embedding approach."""
+        return ObjectHitMaskTask(**task_config)
 
     @pytest.fixture
     def unified_task(self, task_config):
-        """ObjectHitMaskTask with unified_decoding=True (unified mode)."""
-        return ObjectHitMaskTask(**task_config, unified_decoding=True)
+        """ObjectHitMaskTask using unified key embedding approach."""
+        # For unified mode, we use "key" as the input_constituent
+        unified_config = task_config.copy()
+        unified_config["input_constituent"] = "key"
+        return ObjectHitMaskTask(**unified_config)
 
     @pytest.fixture
     def traditional_inputs(self):
@@ -73,18 +76,16 @@ class TestObjectHitMaskTaskBasics:
         assert traditional_task.name == "track_hit_valid"
         assert traditional_task.input_constituent == "hit"
         assert traditional_task.input_object == "query"
-        assert traditional_task.unified_decoding is False
         assert traditional_task.inputs == ["query_embed", "hit_embed"]
         assert traditional_task.outputs == ["track_hit_logit"]
 
     def test_unified_initialization(self, unified_task):
         """Test unified task initialization."""
         assert unified_task.name == "track_hit_valid"
-        assert unified_task.input_constituent == "hit"
+        assert unified_task.input_constituent == "key"
         assert unified_task.input_object == "query"
-        assert unified_task.unified_decoding is True
         assert unified_task.inputs == ["query_embed", "key_embed"]
-        assert unified_task.outputs == ["track_hit_logit"]
+        assert unified_task.outputs == ["track_key_logit"]
 
     def test_traditional_forward(self, traditional_task, traditional_inputs):
         """Test forward pass in traditional mode."""
@@ -103,12 +104,12 @@ class TestObjectHitMaskTaskBasics:
         outputs = unified_task(unified_inputs)
 
         # Check output structure
-        assert "track_hit_logit" in outputs
-        track_hit_logit = outputs["track_hit_logit"]
+        assert "track_key_logit" in outputs
+        track_key_logit = outputs["track_key_logit"]
 
         # Check output shape: (batch_size, num_queries, num_constituents)
-        assert track_hit_logit.shape == (BATCH_SIZE, NUM_QUERIES, NUM_CONSTITUENTS)
-        assert track_hit_logit.dtype == torch.float32
+        assert track_key_logit.shape == (BATCH_SIZE, NUM_QUERIES, NUM_CONSTITUENTS)
+        assert track_key_logit.dtype == torch.float32
 
     def test_traditional_attn_mask(self, traditional_task, traditional_inputs):
         """Test attention mask generation in traditional mode."""
@@ -151,15 +152,15 @@ class TestObjectHitMaskTaskBasics:
         outputs = unified_task(unified_inputs)
         predictions = unified_task.predict(outputs)
 
-        assert "track_hit_valid" in predictions
-        pred = predictions["track_hit_valid"]
+        assert "track_key_valid" in predictions
+        pred = predictions["track_key_valid"]
         assert pred.shape == (BATCH_SIZE, NUM_QUERIES, NUM_CONSTITUENTS)
         assert pred.dtype == torch.bool
 
     def test_mask_consistency_between_modes(self):
         """Test that attention masks are consistent between traditional and unified modes."""
-        # Create tasks with identical configurations except for unified_decoding
-        config = {
+        # Create tasks with different input_constituent names to test both modes
+        traditional_config = {
             "name": "test_task",
             "input_constituent": "hit",
             "input_object": "query",
@@ -171,8 +172,11 @@ class TestObjectHitMaskTaskBasics:
             "mask_attn": True,
         }
 
-        traditional_task = ObjectHitMaskTask(**config, unified_decoding=False)
-        unified_task = ObjectHitMaskTask(**config, unified_decoding=True)
+        unified_config = traditional_config.copy()
+        unified_config["input_constituent"] = "key"
+
+        traditional_task = ObjectHitMaskTask(**traditional_config)
+        unified_task = ObjectHitMaskTask(**unified_config)
 
         # Create inputs with the same underlying data
         torch.manual_seed(42)  # Ensure reproducible results
@@ -219,7 +223,7 @@ class TestObjectHitMaskTaskBasics:
         # The masks should be computed from logits that have the same shape
         # and similar distributions (though exact values may differ due to
         # potentially different embedding processing)
-        assert traditional_outputs["track_hit_logit"].shape == unified_outputs["track_hit_logit"].shape
+        assert traditional_outputs["track_hit_logit"].shape == unified_outputs["track_key_logit"].shape
 
         # Test with a mix of valid and invalid constituents
         mixed_valid_mask = torch.tensor(
