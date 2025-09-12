@@ -241,8 +241,11 @@ class TestObjectHitMaskTaskBasics:
         unified_mask_mixed = unified_masks_mixed["key"]
 
         # Check that invalid positions are consistently masked to False in both modes
-        invalid_positions = ~mixed_valid_mask.unsqueeze(1)  # Broadcast to query dimension
-
         # In both modes, attention should be masked (False) for invalid constituents
-        assert torch.all(~traditional_mask_mixed[invalid_positions])
-        assert torch.all(~unified_mask_mixed[invalid_positions])
+        # Check across all query positions for invalid constituents
+        for batch_idx in range(BATCH_SIZE):
+            for const_idx in range(NUM_CONSTITUENTS):
+                if not mixed_valid_mask[batch_idx, const_idx]:
+                    # All queries should have False attention to invalid constituents
+                    assert torch.all(~traditional_mask_mixed[batch_idx, :, const_idx])
+                    assert torch.all(~unified_mask_mixed[batch_idx, :, const_idx])
