@@ -30,6 +30,7 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
+        unified_decoding: bool = False,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -43,7 +44,7 @@ class MaskFormerDecoder(nn.Module):
             local_strided_attn: If True, uses local strided window attention.
             window_size: The size of the window for local strided window attention.
             window_wrap: If True, wraps the window for local strided window attention.
-            attn_type: The attention type to use (e.g., 'torch', 'flex').
+            unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
         """
         super().__init__()
 
@@ -58,6 +59,7 @@ class MaskFormerDecoder(nn.Module):
         self.attn_type = decoder_layer_config.get("attn_kwargs", {}).get("attn_type", "torch")
         self.window_size = window_size
         self.window_wrap = window_wrap
+        self.unified_decoding = unified_decoding
         self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
 
         if self.local_strided_attn:
@@ -75,6 +77,9 @@ class MaskFormerDecoder(nn.Module):
 
         Returns:
             Tuple containing updated embeddings and outputs from each decoder layer and final outputs.
+
+        Raises:
+            ValueError: If in merged input mode and multiple attention masks are provided.
         """
         batch_size = x["key_embed"].shape[0]
         num_constituents = x["key_embed"].shape[-2]
@@ -144,9 +149,20 @@ class MaskFormerDecoder(nn.Module):
 
             # Construct the full attention mask for MaskAttention decoder
             if attn_masks and self.mask_attention:
-                attn_mask = torch.full((batch_size, self.num_queries, num_constituents), False, device=x["key_embed"].device)
-                for input_name, task_attn_mask in attn_masks.items():
-                    attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
+                if self.unified_decoding:
+                    # In merged input mode, tasks should return masks directly for the full merged tensor
+                    # We expect only one mask key (likely "key" or similar) that covers all constituents
+                    if len(attn_masks) > 1:
+                        raise ValueError(f"In merged input mode, expected only one attention mask, got {len(attn_masks)}")
+                    attn_mask = next(iter(attn_masks.values()))
+                    # Ensure proper shape: (batch, num_queries, num_constituents)
+                    if attn_mask.dim() == 2:  # (batch, num_queries) -> (batch, num_queries, num_constituents)
+                        attn_mask = attn_mask.unsqueeze(-1).expand(-1, -1, num_constituents)
+                else:
+                    # Original logic for separate input types
+                    attn_mask = torch.full((batch_size, self.num_queries, num_constituents), False, device=x["key_embed"].device)
+                    for input_name, task_attn_mask in attn_masks.items():
+                        attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
 
                 attn_mask = attn_mask.detach()
                 # True values indicate a slot will be included in the attention computation, while False will be ignored.
@@ -169,8 +185,9 @@ class MaskFormerDecoder(nn.Module):
                 attn_mask_transpose=attn_mask_transpose,
             )
 
-            # update the individual input constituent representations
-            x = unmerge_inputs(x, input_names)
+            # update the individual input constituent representations only if not in merged input mode
+            if not self.unified_decoding:
+                x = unmerge_inputs(x, input_names)
 
         return x, outputs
 

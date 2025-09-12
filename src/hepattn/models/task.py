@@ -229,6 +229,7 @@ class ObjectHitMaskTask(Task):
         logit_scale: float = 1.0,
         pred_threshold: float = 0.5,
         has_intermediate_loss: bool = True,
+        unified_decoding: bool = False,
     ):
         """Task for predicting associations between objects and hits.
 
@@ -247,6 +248,7 @@ class ObjectHitMaskTask(Task):
             logit_scale: Scale for logits.
             pred_threshold: Prediction threshold.
             has_intermediate_loss: Whether the task has intermediate loss.
+            unified_decoding: If True, expects inputs to be in merged form (key_embed with key_is_* masks).
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
 
@@ -265,24 +267,32 @@ class ObjectHitMaskTask(Task):
         self.logit_scale = logit_scale
         self.pred_threshold = pred_threshold
         self.has_intermediate_loss = mask_attn
+        self.unified_decoding = unified_decoding
 
         self.output_object_hit = output_object + "_" + input_constituent
         self.target_object_hit = target_object + "_" + input_constituent
-        self.inputs = [input_object + "_embed", input_constituent + "_embed"]
+
+        if unified_decoding:
+            self.inputs = [input_object + "_embed", "key_embed"]
+        else:
+            self.inputs = [input_object + "_embed", input_constituent + "_embed"]
+
         self.outputs = [self.output_object_hit + "_logit"]
         self.hit_net = Dense(dim, dim)
         self.object_net = Dense(dim, dim)
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        # Produce new task-specific embeddings for the hits and objects
+        # Produce new task-specific embeddings for the objects and hits
         x_object = self.object_net(x[self.input_object + "_embed"])
-        x_hit = self.hit_net(x[self.input_constituent + "_embed"])
+        x_hit = self.hit_net(x["key_embed"]) if self.unified_decoding else self.hit_net(x[self.input_constituent + "_embed"])
 
         # Object-hit probability is the dot product between the hit and object embedding
         object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", x_object, x_hit)
 
         # Zero out entries for any padded input constituents
-        object_hit_logit[~x[self.input_constituent + "_valid"].unsqueeze(-2).expand_as(object_hit_logit)] = torch.finfo(object_hit_logit.dtype).min
+        valid_key = "key_valid" if self.unified_decoding else f"{self.input_constituent}_valid"
+        valid_mask = x[valid_key].unsqueeze(-2).expand_as(object_hit_logit)
+        object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
 
         return {self.output_object_hit + "_logit": object_hit_logit}
 
@@ -291,6 +301,12 @@ class ObjectHitMaskTask(Task):
             return {}
 
         attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= threshold
+
+        if self.unified_decoding:
+            # In merged input mode, return mask for the full merged tensor
+            return {"key": attn_mask}
+
+        # In separate input mode, return mask for the specific input constituent
         return {self.input_constituent: attn_mask}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:

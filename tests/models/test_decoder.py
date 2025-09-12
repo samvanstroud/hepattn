@@ -328,3 +328,192 @@ class TestMaskFormerDecoderLayer:
         assert new_q.shape == q.shape
         # Without bidirectional, kv should remain unchanged
         assert new_kv is kv
+
+
+class MockUnifiedTask:
+    """Mock task for testing unified decoding strategy."""
+
+    has_intermediate_loss = True
+    name = "unified_task"
+
+    def __call__(self, x):
+        # Return mock outputs with the expected shape
+        batch_size, num_queries = x["query_embed"].shape[:2]
+        num_constituents = x["key_embed"].shape[1]
+        return {"track_hit_logit": torch.randn(batch_size, num_queries, num_constituents)}
+
+    def attn_mask(self, outputs):
+        # Return attention mask for the full merged tensor
+        attn_mask = outputs["track_hit_logit"].sigmoid() > 0.5
+        return {"key": attn_mask}
+
+
+class TestMaskFormerDecoderUnified:
+    """Test class for unified decoding strategy."""
+
+    @pytest.fixture
+    def decoder_layer_config(self):
+        return {
+            "dim": DIM,
+            "norm": "LayerNorm",
+            "dense_kwargs": {},
+            "attn_kwargs": {},
+            "bidirectional_ca": True,
+            "hybrid_norm": False,
+        }
+
+    @pytest.fixture
+    def unified_decoder(self, decoder_layer_config):
+        """Decoder with unified_decoding=True for testing unified decoding."""
+        return MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=True,
+            unified_decoding=True,
+        )
+
+    @pytest.fixture
+    def sample_unified_decoder_data(self):
+        """Sample data for unified decoding tests - no key_is_ masks needed."""
+        x = {
+            "key_embed": torch.randn(BATCH_SIZE, SEQ_LEN, DIM),
+            "key_posenc": torch.randn(BATCH_SIZE, SEQ_LEN, DIM),
+            "key_valid": torch.ones(BATCH_SIZE, SEQ_LEN, dtype=torch.bool),
+        }
+        input_names = ["input1", "input2"]  # Still needed for backward compatibility
+        return x, input_names
+
+    def test_unified_initialization(self, unified_decoder):
+        """Test that unified decoder initializes correctly."""
+        assert unified_decoder.num_queries == NUM_QUERIES
+        assert unified_decoder.mask_attention is True
+        assert unified_decoder.unified_decoding is True
+        assert len(unified_decoder.decoder_layers) == NUM_LAYERS
+
+    def test_unified_forward_without_tasks(self, unified_decoder, sample_unified_decoder_data):
+        """Test unified decoder forward pass without tasks."""
+        x, input_names = sample_unified_decoder_data
+        unified_decoder.tasks = []
+
+        x_out, outputs = unified_decoder(x, input_names)
+
+        # Check that the forward pass completes successfully
+        assert "query_embed" in x_out
+        assert "key_embed" in x_out
+        assert x_out["query_embed"].shape == (BATCH_SIZE, NUM_QUERIES, DIM)
+        assert x_out["key_embed"].shape == (BATCH_SIZE, SEQ_LEN, DIM)
+
+        # Check that individual input embeddings are NOT created (unified mode)
+        assert "input1_embed" not in x_out
+        assert "input2_embed" not in x_out
+
+        # Check layer outputs structure
+        for i in range(NUM_LAYERS):
+            assert f"layer_{i}" in outputs
+
+    def test_unified_forward_with_task(self, unified_decoder, sample_unified_decoder_data):
+        """Test unified decoder with a task that works on merged inputs."""
+        x, input_names = sample_unified_decoder_data
+
+        # Set up the task
+        task = MockUnifiedTask()
+        unified_decoder.tasks = [task]
+
+        _, outputs = unified_decoder(x, input_names)
+
+        # Check outputs exist for all layers
+        for i in range(NUM_LAYERS):
+            assert f"layer_{i}" in outputs
+            assert task.name in outputs[f"layer_{i}"]
+            assert "track_hit_logit" in outputs[f"layer_{i}"][task.name]
+
+        # Check attention mask is created correctly
+        for i in range(NUM_LAYERS):
+            if "attn_mask" in outputs[f"layer_{i}"]:
+                attn_mask = outputs[f"layer_{i}"]["attn_mask"]
+                assert attn_mask.shape == (BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
+
+    def test_unified_no_key_is_masks_needed(self, unified_decoder, sample_unified_decoder_data):
+        """Test that unified decoder doesn't require key_is_ masks."""
+        x, input_names = sample_unified_decoder_data
+
+        # Verify that key_is_ masks are not in the input
+        assert "key_is_input1" not in x
+        assert "key_is_input2" not in x
+
+        # Set up a task
+        task = MockUnifiedTask()
+        unified_decoder.tasks = [task]
+
+        # This should work without key_is_ masks
+        x_out, _ = unified_decoder(x, input_names)
+
+        # Verify successful completion
+        assert "query_embed" in x_out
+        assert "key_embed" in x_out
+
+    def test_unified_attention_mask_shape(self, unified_decoder, sample_unified_decoder_data):
+        """Test that attention masks have correct shape in unified mode."""
+        x, input_names = sample_unified_decoder_data
+
+        task = MockUnifiedTask()
+        unified_decoder.tasks = [task]
+
+        _, outputs = unified_decoder(x, input_names)
+
+        # Check that attention masks, if present, have the correct shape
+        for layer_idx in range(NUM_LAYERS):
+            layer_outputs = outputs[f"layer_{layer_idx}"]
+            if "attn_mask" in layer_outputs:
+                attn_mask = layer_outputs["attn_mask"]
+                # Should be (batch_size, num_queries, seq_len)
+                assert attn_mask.shape == (BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
+                assert attn_mask.dtype == torch.bool
+
+    def test_unified_vs_traditional_compatibility(self, decoder_layer_config):
+        """Test that unified and traditional modes can coexist."""
+        # Traditional decoder
+        traditional_decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=True,
+            unified_decoding=False,  # Traditional mode
+        )
+
+        # Unified decoder
+        unified_decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=True,
+            unified_decoding=True,  # Unified mode
+        )
+
+        assert traditional_decoder.unified_decoding is False
+        assert unified_decoder.unified_decoding is True
+
+    def test_unified_output_shapes(self, unified_decoder, sample_unified_decoder_data):
+        """Test that all outputs have expected shapes in unified mode."""
+        x, input_names = sample_unified_decoder_data
+
+        task = MockUnifiedTask()
+        unified_decoder.tasks = [task]
+
+        x_out, outputs = unified_decoder(x, input_names)
+
+        # Test final embeddings shapes
+        assert x_out["query_embed"].shape == (BATCH_SIZE, NUM_QUERIES, DIM)
+        assert x_out["key_embed"].shape == (BATCH_SIZE, SEQ_LEN, DIM)
+        assert x_out["query_valid"].shape == (BATCH_SIZE, NUM_QUERIES)
+
+        # Test that layer outputs have correct structure
+        for layer_idx in range(NUM_LAYERS):
+            layer_key = f"layer_{layer_idx}"
+            assert layer_key in outputs
+            assert task.name in outputs[layer_key]
+
+            task_outputs = outputs[layer_key][task.name]
+            assert "track_hit_logit" in task_outputs
+            assert task_outputs["track_hit_logit"].shape == (BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
