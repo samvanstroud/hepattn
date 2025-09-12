@@ -248,7 +248,7 @@ class ObjectHitMaskTask(Task):
             logit_scale: Scale for logits.
             pred_threshold: Prediction threshold.
             has_intermediate_loss: Whether the task has intermediate loss.
-            unified_decoding: If True, expects inputs to be in a single merged tensor (`key_embed`) rather than separate embeddings for each input type.
+            unified_decoding: If True, expects inputs to be in a single merged tensor rather than separate embeddings for each input type.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
 
