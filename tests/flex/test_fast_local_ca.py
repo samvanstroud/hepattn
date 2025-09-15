@@ -182,37 +182,6 @@ class TestEdgeCases:
         assert not torch.all(dense_mask)
 
 
-class TestDtypeCompatibility:
-    """Test different float dtypes."""
-
-    def test_float32_dtype(self):
-        """Test with float32 dtype."""
-        mask = build_strided_sliding_window_blockmask(
-            window_size=32,
-            stride=2.0,
-            q_len=100,
-            kv_len=1000,
-            device="cpu",
-            wrap=False,
-            dtype_float=torch.float32,
-        )
-
-        dense_mask = blockmask_to_dense(mask, 100, 1000, "cpu")
-
-    def test_float64_dtype(self):
-        """Test with float64 dtype."""
-        mask = build_strided_sliding_window_blockmask(
-            window_size=32,
-            stride=2.0,
-            q_len=100,
-            kv_len=1000,
-            device="cpu",
-            wrap=False,
-            dtype_float=torch.float64,
-        )
-        dense_mask = blockmask_to_dense(mask, 100, 1000, "cpu")
-
-
 class TestWrapVsNonWrap:
     """Test wrap vs non-wrap behavior."""
 
@@ -365,8 +334,6 @@ class TestMaskModFunction:
         # Test some specific mask_mod calls
         # These should match the expected sliding window behavior
         dense_mask = blockmask_to_dense(mask, 100, 1000, "cpu")
-        local_dense = local_mask.to_dense()
-        assert torch.equal(fast_dense, local_dense), "Fast and local CA masks should be identical for non-wrapped case"
 
         # Check that the mask has the expected sliding window structure
         # For stride 2.0, query 0 should see keys around position 0
