@@ -104,3 +104,373 @@ def test_wrapped_equivalence(test_config):
 
     # They should be identical even though they're different types
     assert torch.equal(fast_mask.to_dense(), local_mask.to_dense()), "Fast and local CA masks should be identical for wrapped case"
+
+
+class TestErrorCases:
+    """Test error cases and validation."""
+
+    def test_odd_window_size_error(self):
+        """Test that odd window size raises ValueError."""
+        with pytest.raises(ValueError, match="Window size must be even"):
+            build_strided_sliding_window_blockmask(
+                window_size=31,  # odd
+                stride=2.0,
+                q_len=100,
+                kv_len=1000,
+                device="cpu",
+                wrap=False,
+            )
+
+    def test_negative_window_size_error(self):
+        """Test that negative window size raises ValueError."""
+        with pytest.raises(ValueError, match="Window size must be even"):
+            build_strided_sliding_window_blockmask(
+                window_size=-32,  # negative
+                stride=2.0,
+                q_len=100,
+                kv_len=1000,
+                device="cpu",
+                wrap=False,
+            )
+
+    def test_zero_window_size_error(self):
+        """Test that zero window size raises ValueError."""
+        with pytest.raises(ValueError, match="Window size must be even"):
+            build_strided_sliding_window_blockmask(
+                window_size=0,  # zero
+                stride=2.0,
+                q_len=100,
+                kv_len=1000,
+                device="cpu",
+                wrap=False,
+            )
+
+
+class TestEdgeCases:
+    """Test edge cases and boundary conditions."""
+
+    def test_single_block_sequences(self):
+        """Test with sequences that fit in a single block."""
+        mask = build_strided_sliding_window_blockmask(
+            window_size=32,
+            stride=1.0,
+            q_len=64,  # fits in one block
+            kv_len=64,  # fits in one block
+            device="cpu",
+            wrap=False,
+            block_size=128,
+        )
+        # Should still produce valid BlockMask
+        assert mask is not None
+        dense_mask = mask.to_dense()
+        assert dense_mask.shape == (64, 64)
+
+    def test_very_small_sequences(self):
+        """Test with very small sequences."""
+        mask = build_strided_sliding_window_blockmask(
+            window_size=4,
+            stride=1.0,
+            q_len=5,
+            kv_len=5,
+            device="cpu",
+            wrap=False,
+            block_size=128,
+        )
+
+        dense_mask = mask.to_dense()
+        assert dense_mask.shape == (5, 5)
+        # Should be a valid sliding window mask
+        assert torch.all(dense_mask >= 0)  # boolean mask
+
+    def test_large_window_small_sequence(self):
+        """Test with window size larger than sequence length."""
+        mask = build_strided_sliding_window_blockmask(
+            window_size=1000,  # much larger than sequences
+            stride=1.0,
+            q_len=50,
+            kv_len=50,
+            device="cpu",
+            wrap=False,
+        )
+
+        dense_mask = mask.to_dense()
+        # All tokens should be visible to all queries
+        assert torch.all(dense_mask)
+
+    def test_different_q_kv_lengths(self):
+        """Test with different query and key-value lengths."""
+        mask = build_strided_sliding_window_blockmask(
+            window_size=32,
+            stride=2.0,
+            q_len=100,
+            kv_len=200,  # different length
+            device="cpu",
+            wrap=False,
+        )
+
+        dense_mask = mask.to_dense()
+        assert dense_mask.shape == (100, 200)
+
+    def test_very_long_sequences(self):
+        """Test with very long sequences."""
+        mask = build_strided_sliding_window_blockmask(
+            window_size=64,
+            stride=1.5,
+            q_len=2000,
+            kv_len=3000,
+            device="cpu",
+            wrap=False,
+            block_size=128,
+        )
+
+        dense_mask = mask.to_dense()
+        assert dense_mask.shape == (2000, 3000)
+        # Should be sparse (not all True)
+        assert not torch.all(dense_mask)
+
+
+class TestDtypeCompatibility:
+    """Test different float dtypes."""
+
+    def test_float32_dtype(self):
+        """Test with float32 dtype."""
+        mask = build_strided_sliding_window_blockmask(
+            window_size=32,
+            stride=2.0,
+            q_len=100,
+            kv_len=1000,
+            device="cpu",
+            wrap=False,
+            dtype_float=torch.float32,
+        )
+
+        dense_mask = mask.to_dense()
+        assert dense_mask.dtype == torch.bool  # BlockMask.to_dense() returns bool
+
+    def test_float64_dtype(self):
+        """Test with float64 dtype."""
+        mask = build_strided_sliding_window_blockmask(
+            window_size=32,
+            stride=2.0,
+            q_len=100,
+            kv_len=1000,
+            device="cpu",
+            wrap=False,
+            dtype_float=torch.float64,
+        )
+        dense_mask = mask.to_dense()
+        assert dense_mask.dtype == torch.bool  # BlockMask.to_dense() returns bool
+
+
+class TestWrapVsNonWrap:
+    """Test wrap vs non-wrap behavior."""
+
+    def test_wrap_behavior_difference(self):
+        """Test that wrap and non-wrap produce different results for edge cases."""
+        # Use a case where wrapping should make a difference
+        q_len, kv_len = 50, 100
+        window_size = 40
+        stride = 2.0
+
+        mask_nonwrap = build_strided_sliding_window_blockmask(
+            window_size=window_size,
+            stride=stride,
+            q_len=q_len,
+            kv_len=kv_len,
+            device="cpu",
+            wrap=False,
+        )
+
+        mask_wrap = build_strided_sliding_window_blockmask(
+            window_size=window_size,
+            stride=stride,
+            q_len=q_len,
+            kv_len=kv_len,
+            device="cpu",
+            wrap=True,
+        )
+
+        dense_nonwrap = mask_nonwrap.to_dense()
+        dense_wrap = mask_wrap.to_dense()
+
+        # They should have the same shape
+        assert dense_nonwrap.shape == dense_wrap.shape
+
+        # For this configuration, wrap should allow more connections
+        # (non-wrap is more restrictive)
+        wrap_connections = dense_wrap.sum()
+        nonwrap_connections = dense_nonwrap.sum()
+        assert wrap_connections >= nonwrap_connections
+
+    def test_wrap_equivalence_for_small_windows(self):
+        """Test that wrap and non-wrap are equivalent for small windows."""
+        # Small window relative to sequence length
+        mask_nonwrap = build_strided_sliding_window_blockmask(
+            window_size=10,
+            stride=1.0,
+            q_len=100,
+            kv_len=100,
+            device="cpu",
+            wrap=False,
+        )
+
+        mask_wrap = build_strided_sliding_window_blockmask(
+            window_size=10,
+            stride=1.0,
+            q_len=100,
+            kv_len=100,
+            device="cpu",
+            wrap=True,
+        )
+
+        # For small windows, they should be identical
+        assert torch.equal(mask_nonwrap.to_dense(), mask_wrap.to_dense())
+
+
+class TestBlockMaskProperties:
+    """Test BlockMask properties and methods."""
+
+    def test_blockmask_shape_validation(self):
+        """Test that BlockMask has correct shape."""
+        mask = build_strided_sliding_window_blockmask(
+            window_size=32,
+            stride=2.0,
+            q_len=100,
+            kv_len=1000,
+            device="cpu",
+            wrap=False,
+        )
+
+        dense_mask = mask.to_dense()
+        assert dense_mask.shape == (100, 1000)
+        assert dense_mask.dtype == torch.bool
+
+    def test_blockmask_symmetry_properties(self):
+        """Test symmetry properties of the mask."""
+        # Test with symmetric parameters
+        mask = build_strided_sliding_window_blockmask(
+            window_size=32,
+            stride=1.0,  # stride 1.0 should give some symmetry
+            q_len=100,
+            kv_len=100,
+            device="cpu",
+            wrap=False,
+        )
+
+        dense_mask = mask.to_dense()
+
+        # For stride 1.0, the mask should have some diagonal structure
+        # Check that diagonal elements are True
+        diagonal_mask = torch.diag(dense_mask)
+        assert torch.all(diagonal_mask)  # All diagonal elements should be True
+
+
+class TestCompiledFunctions:
+    """Test that compiled functions work correctly."""
+
+    def test_compiled_kv_blocks_nonwrap(self):
+        """Test that compiled _kv_blocks_nonwrap produces correct results."""
+        q_blocks = 3
+        kv_blocks = 5
+        block_size = 128
+        window_size = 32
+        stride = torch.tensor(2.0)
+        q_len = 300
+        kv_len = 500
+        device = "cpu"
+
+        kv_num_blocks, kv_indices = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.float32)
+
+        # Check output shapes
+        assert kv_num_blocks.shape == (q_blocks,)
+        assert kv_indices.shape == (q_blocks, kv_blocks)
+
+        # Check that all values are valid
+        assert torch.all(kv_num_blocks >= 0)
+        assert torch.all(kv_num_blocks <= kv_blocks)
+        assert torch.all(kv_indices >= 0)
+        assert torch.all(kv_indices < kv_blocks)
+
+    def test_compiled_kv_blocks_wrap(self):
+        """Test that compiled _kv_blocks_wrap produces correct results."""
+        q_blocks = 3
+        kv_blocks = 5
+        block_size = 128
+        window_size = 32
+        stride = torch.tensor(2.0)
+        q_len = 300
+        kv_len = 500
+        device = "cpu"
+
+        kv_num_blocks, kv_indices = _kv_blocks_wrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.float32)
+
+        # Check output shapes
+        assert kv_num_blocks.shape == (q_blocks,)
+        assert kv_indices.shape == (q_blocks, kv_blocks)
+
+        # Check that all values are valid
+        assert torch.all(kv_num_blocks >= 0)
+        assert torch.all(kv_num_blocks <= kv_blocks)
+        assert torch.all(kv_indices >= 0)
+        assert torch.all(kv_indices < kv_blocks)
+
+
+class TestMaskModFunction:
+    """Test the mask_mod function behavior."""
+
+    def test_mask_mod_nonwrap_behavior(self):
+        """Test mask_mod function for non-wrap case."""
+        mask = build_strided_sliding_window_blockmask(
+            window_size=32,
+            stride=2.0,
+            q_len=100,
+            kv_len=1000,
+            device="cpu",
+            wrap=False,
+        )
+
+        # Test some specific mask_mod calls
+        # These should match the expected sliding window behavior
+        dense_mask = mask.to_dense()
+
+        # Check that the mask has the expected sliding window structure
+        # For stride 2.0, query 0 should see keys around position 0
+        # Query 1 should see keys around position 2, etc.
+        for q_idx in [0, 1, 2, 10, 20]:
+            if q_idx < 100:  # within bounds
+                expected_center = round(q_idx * 2.0)
+                window_start = max(0, expected_center - 16)
+                window_end = min(1000, expected_center + 16)
+                # Check that the mask is True in the expected window
+                actual_window = dense_mask[q_idx, window_start:window_end]
+                assert torch.all(actual_window), f"Query {q_idx} should see keys in window [{window_start}, {window_end})"
+
+    def test_mask_mod_wrap_behavior(self):
+        """Test mask_mod function for wrap case."""
+        mask = build_strided_sliding_window_blockmask(
+            window_size=32,
+            stride=2.0,
+            q_len=100,
+            kv_len=1000,
+            device="cpu",
+            wrap=True,
+        )
+
+        dense_mask = mask.to_dense()
+
+        # For wrap case, the mask should allow connections that wrap around
+        # This is harder to test directly, but we can check that wrap allows
+        # more connections than non-wrap for edge cases
+        mask_nonwrap = build_strided_sliding_window_blockmask(
+            window_size=32,
+            stride=2.0,
+            q_len=100,
+            kv_len=1000,
+            device="cpu",
+            wrap=False,
+        )
+
+        dense_nonwrap = mask_nonwrap.to_dense()
+
+        # Wrap should allow at least as many connections as non-wrap
+        assert dense_mask.sum() >= dense_nonwrap.sum()
