@@ -53,6 +53,9 @@ cd flash-attention/hopper/
 MAX_JOBS=16 python setup.py install
 ```
 
+If the build runs for a while, but ends in an error related to `ninja`, this can be ignored as FA3 is usually installed successfully by this point.
+Note that you have to import FA3 from a different namespace: `flash_attn_interface` rather than `flash_attn` (see [here](https://github.com/samvanstroud/hepattn/blob/main/src/hepattn/models/attention.py#L4)).
+
 
 ## Data Access & Transfer
 

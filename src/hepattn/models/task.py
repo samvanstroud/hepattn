@@ -235,6 +235,7 @@ class ObjectHitMaskTask(Task):
         Args:
             name: Name of the task.
             input_constituent: Name of the input constituent type (traditionally hits in tracking).
+                For unified decoding, use "key" to access merged embeddings.
             input_object: Name of the input object.
             output_object: Name of the output object.
             target_object: Name of the target object.
@@ -268,13 +269,14 @@ class ObjectHitMaskTask(Task):
 
         self.output_object_hit = output_object + "_" + input_constituent
         self.target_object_hit = target_object + "_" + input_constituent
+
         self.inputs = [input_object + "_embed", input_constituent + "_embed"]
         self.outputs = [self.output_object_hit + "_logit"]
         self.hit_net = Dense(dim, dim)
         self.object_net = Dense(dim, dim)
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        # Produce new task-specific embeddings for the hits and objects
+        # Produce new task-specific embeddings for the objects and hits
         x_object = self.object_net(x[self.input_object + "_embed"])
         x_hit = self.hit_net(x[self.input_constituent + "_embed"])
 
@@ -282,7 +284,9 @@ class ObjectHitMaskTask(Task):
         object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", x_object, x_hit)
 
         # Zero out entries for any padded input constituents
-        object_hit_logit[~x[self.input_constituent + "_valid"].unsqueeze(-2).expand_as(object_hit_logit)] = torch.finfo(object_hit_logit.dtype).min
+        valid_key = f"{self.input_constituent}_valid"
+        valid_mask = x[valid_key].unsqueeze(-2).expand_as(object_hit_logit)
+        object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
 
         return {self.output_object_hit + "_logit": object_hit_logit}
 
