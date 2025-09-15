@@ -44,7 +44,7 @@ due to requirements of recent `torch` versions.
 We use `pixi`'s CUDA image, which you can access with:
 
 ```shell
-apptainer pull pixi.sif docker://ghcr.io/prefix-dev/pixi:0.50.2-noble-cuda-12.8.1
+apptainer pull pixi.sif docker://ghcr.io/prefix-dev/pixi:0.54.1-jammy-cuda-12.8.1
 apptainer shell --nv pixi.sif
 ```
 
