@@ -38,6 +38,7 @@ class TestTrackMLEvent:
 
         target_fields = {
             "particle": ["pt", "eta", "phi"],
+            "hit": ["on_valid_particle"],
         }
 
         dirpath = "data/trackml/prepped/"
