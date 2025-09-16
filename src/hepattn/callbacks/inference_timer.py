@@ -5,16 +5,15 @@ import numpy as np
 import torch
 from lightning import Callback
 
-from hepattn.utils.cuda_timer import cuda_timer
-
 
 class InferenceTimer(Callback):
-    def __init__(self):
+    def __init__(self, do_compile=True):
         super().__init__()
         self.times = []
         self.dims = []
         self.n_warm_start = 10
         self._tmp_dims = None
+        self.compile = do_compile
 
     def on_test_start(self, trainer, pl_module):
         assert trainer.global_rank == 0, "InferenceTimer should only be used with a single process."
@@ -22,11 +21,20 @@ class InferenceTimer(Callback):
         if hasattr(model, "model"):
             model = model.model
         self.old_forward = model.forward
+        if self.compile:
+            compiled_forward = torch.compile(self.old_forward)
 
+        @torch._dynamo.disable(recursive=False)
         def new_forward(*args, **kwargs):
             self._tmp_dims = sum(v.shape[1] for v in args[0].values())
-            with cuda_timer(self.times):
-                return self.old_forward(*args, **kwargs)
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+            out = compiled_forward(*args, **kwargs)
+            end.record()
+            torch.cuda.synchronize()
+            self.times.append(start.elapsed_time(end))
+            return out
 
         model.forward = new_forward
 

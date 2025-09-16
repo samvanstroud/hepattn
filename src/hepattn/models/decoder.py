@@ -3,11 +3,13 @@
 - https://github.com/facebookresearch/Mask2Former.
 """
 
+import math
 from functools import partial
 
 import torch
 from torch import Tensor, nn
 
+from hepattn.flex.fast_local_ca import build_strided_sliding_window_blockmask
 from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped, transpose_blockmask
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
@@ -30,6 +32,10 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
+        hit_particle_ratio: float = 0,
+        query_init: str = "",
+        fast_local_ca: bool = False,
+        block_size: int = 128,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -58,7 +64,17 @@ class MaskFormerDecoder(nn.Module):
         self.attn_type = decoder_layer_config.get("attn_kwargs", {}).get("attn_type", "torch")
         self.window_size = window_size
         self.window_wrap = window_wrap
-        self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
+        self.hit_particle_ratio = hit_particle_ratio
+        self.query_init = query_init
+        self.fast_local_ca = fast_local_ca
+        self.block_size = block_size
+        self.dim = decoder_layer_config["dim"]
+        if self.query_init == "randn":
+            self.register_buffer("initial_queries_bank", torch.randn(self.num_queries, self.dim))
+        elif self.query_init == "zero":
+            self.register_buffer("initial_queries_bank", torch.zeros(self.num_queries, self.dim))
+        else:
+            self.initial_queries = nn.Parameter(torch.randn(self.num_queries, self.dim))
 
         if self.local_strided_attn:
             assert self.attn_type in {"torch", "flex"}, (
@@ -79,8 +95,14 @@ class MaskFormerDecoder(nn.Module):
         batch_size = x["key_embed"].shape[0]
         num_constituents = x["key_embed"].shape[-2]
 
-        # Generate the queries that represent objects
-        x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
+        if self.hit_particle_ratio:
+            self.num_queries = math.ceil(num_constituents / self.hit_particle_ratio)
+        if self.query_init:
+            x["query_embed"] = self.initial_queries_bank[: self.num_queries].expand(batch_size, -1, -1)
+        else:
+            # Generate the queries that represent objects
+            x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
+
         x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
 
         if self.posenc:
@@ -96,7 +118,19 @@ class MaskFormerDecoder(nn.Module):
                 device = x["query_embed"].device
                 q_len = x["query_embed"].shape[1]
                 kv_len = x["key_embed"].shape[1]
-                attn_mask = self.flex_local_ca_mask(q_len, kv_len, device)
+                dtype_float = x["query_embed"].dtype
+                if self.fast_local_ca:
+                    attn_mask = build_strided_sliding_window_blockmask(
+                        window_size=self.window_size,
+                        block_size=self.block_size,
+                        q_len=q_len,
+                        kv_len=kv_len,
+                        device=device,
+                        wrap=self.window_wrap,
+                        dtype_float=dtype_float,
+                    )
+                else:
+                    attn_mask = self.flex_local_ca_mask(q_len, kv_len, device)
                 attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=device)
 
         outputs: dict[str, dict] = {}
@@ -176,9 +210,9 @@ class MaskFormerDecoder(nn.Module):
 
     def flex_local_ca_mask(self, q_len: int, kv_len: int, device):
         # Calculate stride based on the ratio of key length to query length
-        stride = kv_len / q_len
+        kv_len = torch.tensor(kv_len, device=device)
         window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
-        return window_mask_func(self.window_size, stride=stride, q_len=q_len, kv_len=kv_len, device=str(device))
+        return window_mask_func(self.window_size, q_len=q_len, kv_len=kv_len, device=str(device))
 
     def generate_positional_encodings(self, x: dict):
         x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
@@ -197,6 +231,7 @@ class MaskFormerDecoderLayer(nn.Module):
         attn_kwargs: dict | None = None,
         bidirectional_ca: bool = True,
         hybrid_norm: bool = False,
+        bidirectional_posenc: bool = False,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
 
@@ -278,10 +313,10 @@ class MaskFormerDecoderLayer(nn.Module):
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)
 
-            if query_posenc is not None:
-                q = q + query_posenc
-            if key_posenc is not None:
-                kv = kv + key_posenc
+            # if query_posenc is not None:
+            #     q = q + query_posenc
+            # if key_posenc is not None:
+            #     kv = kv + key_posenc
 
             kv = self.kv_ca(kv, kv=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
             kv = self.kv_dense(kv)

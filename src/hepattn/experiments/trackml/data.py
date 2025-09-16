@@ -7,7 +7,7 @@ import torch
 from lightning import LightningDataModule
 from lightning.pytorch.utilities.rank_zero import rank_zero_info
 from torch.utils.data import DataLoader, Dataset
-
+import math
 
 class TrackMLDataset(Dataset):
     def __init__(
@@ -23,6 +23,7 @@ class TrackMLDataset(Dataset):
         event_max_num_particles=1000,
         hit_eval_path: str | None = None,
         dummy_data: bool = False,
+        hit_particle_ratio = 0,
     ):
         super().__init__()
 
@@ -74,6 +75,7 @@ class TrackMLDataset(Dataset):
         self.num_events = num_events
         self.event_names = event_names[:num_events]
         self.sample_ids = [int(name.removeprefix("event")) for name in self.event_names]
+        self.hit_particle_ratio = hit_particle_ratio
 
         # Setup hit eval file if specified
         if self.hit_eval_path:
@@ -112,12 +114,23 @@ class TrackMLDataset(Dataset):
             for field in fields:
                 inputs[f"{feature}_{field}"] = torch.from_numpy(hits[field].values).unsqueeze(0).half()
 
+        if self.hit_particle_ratio:
+            self.event_max_num_particles = math.ceil(len(hits) / self.hit_particle_ratio)
+            rank_zero_info(
+                f"Event {idx} has {len(hits)} hits and {num_particles} particles, setting to {self.event_max_num_particles}"
+            )
+        # Limit the number of particles to event_max_num_particles
+        if num_particles > self.event_max_num_particles:
+            rank_zero_info(
+                f"Event {idx} has {num_particles} particles, limiting to {self.event_max_num_particles}"
+            )
+            particles = particles.iloc[: self.event_max_num_particles]
+            num_particles = self.event_max_num_particles
+
         # Build the targets for whether a particle slot is used or not
         targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
         targets["particle_valid"][:num_particles] = True
         targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
-        message = f"Event {idx} has {num_particles}, but limit is {self.event_max_num_particles}"
-        assert num_particles <= self.event_max_num_particles, message
 
         # Build the particle regression targets
         particle_ids = torch.from_numpy(particles["particle_id"].values)
@@ -185,9 +198,6 @@ class TrackMLDataset(Dataset):
         particles = particles[particles["pt"] > self.particle_min_pt]
         particles = particles[particles["eta"].abs() < self.particle_max_abs_eta]
 
-        # Mark which hits are on a valid / reconstructable particle, for the hit filter
-        hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
-
         # If a hit eval file was specified, read in the predictions from it to use the hit filtering
         if self.hit_eval_path:
             with h5py.File(self.hit_eval_path, "r") as hit_eval_file:
@@ -203,6 +213,8 @@ class TrackMLDataset(Dataset):
         counts = hits["particle_id"].value_counts()
         keep_particle_ids = counts[counts >= self.particle_min_num_hits].index.to_numpy()
         particles = particles[particles["particle_id"].isin(keep_particle_ids)]
+        # Mark which hits are on a valid / reconstructable particle, for the hit filter
+        hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
 
         # Sanity checks
         assert len(particles) != 0, "No particles remaining - loosen selection!"
