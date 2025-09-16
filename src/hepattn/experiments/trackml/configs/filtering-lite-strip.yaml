@@ -2,9 +2,9 @@ seed_everything: 42
 name: HC-v3-lite-strips-separate-encoders
 
 data:
-  train_dir:  /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/train/
-  val_dir: /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/val/
-  test_dir: /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/test/
+  train_dir:  
+  val_dir: 
+  test_dir: 
 
   num_workers: 10
   num_train: -1
