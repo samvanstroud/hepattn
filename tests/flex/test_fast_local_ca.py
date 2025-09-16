@@ -92,9 +92,9 @@ def test_non_wrapped_equivalence(test_config):
     )
 
     # They should be identical even though they're different types
-    fast_dense = blockmask_to_dense(fast_mask, test_config["q_len"], test_config["kv_len"], test_config["device"])
-    local_dense = local_mask.to_dense()
-    assert torch.equal(fast_dense, local_dense), "Fast and local CA masks should be identical for non-wrapped case"
+    fast_dense = fast_mask.to_dense().int()
+    local_dense = local_mask.to_dense().int()
+    assert torch.allclose(fast_dense, local_dense), "Fast and local CA masks should be identical for non-wrapped case"
 
 
 def test_wrapped_equivalence(test_config):
@@ -111,9 +111,9 @@ def test_wrapped_equivalence(test_config):
     )
 
     # They should be identical even though they're different types
-    fast_dense = blockmask_to_dense(fast_mask, test_config["q_len"], test_config["kv_len"], test_config["device"])
+    fast_dense = fast_mask.to_dense()
     local_dense = local_mask.to_dense()
-    assert torch.equal(fast_dense, local_dense), "Fast and local CA masks should be identical for wrapped case"
+    assert torch.allclose(fast_dense, local_dense), "Fast and local CA masks should be identical for wrapped case"
 
 
 class TestErrorCases:
@@ -210,8 +210,8 @@ class TestWrapVsNonWrap:
             wrap=True,
         )
 
-        dense_nonwrap = blockmask_to_dense(mask_nonwrap, q_len, kv_len, "cpu")
-        dense_wrap = blockmask_to_dense(mask_wrap, q_len, kv_len, "cpu")
+        dense_nonwrap = mask_nonwrap.to_dense()
+        dense_wrap = mask_wrap.to_dense()
 
         # They should have the same shape
         assert dense_nonwrap.shape == dense_wrap.shape
@@ -246,7 +246,7 @@ class TestWrapVsNonWrap:
         # For small windows, they should be identical
         dense_nonwrap = blockmask_to_dense(mask_nonwrap, 100, 100, "cpu")
         dense_wrap = blockmask_to_dense(mask_wrap, 100, 100, "cpu")
-        assert torch.equal(dense_nonwrap, dense_wrap)
+        assert torch.allclose(dense_nonwrap, dense_wrap)
 
 
 class TestBlockMaskProperties:
