@@ -21,6 +21,7 @@ class MaskFormer(nn.Module):
         matcher: nn.Module | None = None,
         input_sort_field: str | None = None,
         sorter: nn.Module | None = None,
+        unified_decoding: bool = False,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object reconstruction with attention-based decoding and optional encoder blocks.
@@ -36,6 +37,7 @@ class MaskFormer(nn.Module):
             matcher: A module used to match predictions to targets (e.g., using the Hungarian algorithm) for loss computation.
             input_sort_field: An optional key used to sort the input constituents (e.g., for windowed attention).
             sorter: An optional sorter module used to reorder input constituents before processing.
+            unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after encoding.
         """
         super().__init__()
 
@@ -43,10 +45,12 @@ class MaskFormer(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
         self.decoder.tasks = tasks
+        self.decoder.unified_decoding = unified_decoding
         self.pooling = pooling
         self.tasks = tasks
         self.target_object = target_object
         self.matcher = matcher
+        self.unified_decoding = unified_decoding
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
@@ -74,10 +78,11 @@ class MaskFormer(nn.Module):
 
             # These slices can be used to pick out specific
             # objects after we have merged them all together
-            # TODO: Clean this up
-            device = inputs[input_name + "_valid"].device
-            mask = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1)
-            x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
+            # Only needed when not doing unified decoding
+            if not self.unified_decoding:
+                device = inputs[input_name + "_valid"].device
+                mask = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1)
+                x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
 
         # Merge the input constituents and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
@@ -107,8 +112,9 @@ class MaskFormer(nn.Module):
         x_sort_value = x.get(f"key_{self.input_sort_field}") if self.sorter is None else None
         x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
 
-        # Unmerge the updated features back into the separate input types
-        x = unmerge_inputs(x, self.input_names)
+        # Unmerge the updated features back into the separate input types only if not doing unified decoding
+        if not self.unified_decoding:
+            x = unmerge_inputs(x, self.input_names)
 
         # Pass through decoder layers
         x, outputs = self.decoder(x, self.input_names)
