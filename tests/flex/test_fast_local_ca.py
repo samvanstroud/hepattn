@@ -1,3 +1,5 @@
+import importlib
+import math
 import pytest
 import torch
 from torch.nn.attention.flex_attention import create_mask
@@ -381,7 +383,6 @@ class TestMaskModFunction:
         assert dense_mask.sum() >= dense_nonwrap.sum()
 
 
-# ===== New tests start here =====
 
 class TestEdgeAndRoundingBehavior:
     def test_wrap_edges_allow_circular_connections(self):
@@ -558,3 +559,174 @@ class TestEquivalenceMoreRegimes:
         total = d.numel()
         on = int(d.sum())
         assert 0 < on < total, "mask should be neither empty nor fully dense"
+
+
+@pytest.fixture(scope="module")
+def flc_eager():
+    """
+    Reload hepattn.flex.fast_local_ca with torch.compile turned into a no-op,
+    so coverage includes the original Python bodies of _kv_blocks_*.
+    """
+    import types
+    import hepattn.flex.fast_local_ca as mod
+    # Save original
+    orig_compile = torch.compile
+
+    # Make compile a no-op for reload
+    def _identity_compile(fn, *args, **kwargs):
+        return fn
+
+    try:
+        setattr(torch, "compile", _identity_compile)
+        mod = importlib.reload(mod)
+    finally:
+        # restore for other tests/modules
+        setattr(torch, "compile", orig_compile)
+
+    return mod
+
+
+def test_wrap_has_mixed_rows_and_expected_blocks(flc_eager):
+    """
+    Force both wrap_row and nonwrap_row within a single _kv_blocks_wrap call,
+    then verify selected block indices for each row.
+    """
+    q_blocks = 2
+    kv_blocks = 4
+    block_size = 8
+    window_size = 16  # half=8 -> for row0, spans negative -> wrap_row; for row1, nonwrap
+    stride = torch.tensor(1.0)  # scale by token directly
+    q_len = 16
+    kv_len = 32
+    device = "cpu"
+
+    kv_num, kv_idx = flc_eager._kv_blocks_wrap(
+        q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.float32
+    )
+
+    # Row 0 should wrap: expect blocks {0,1,3} (two from start, one from end)
+    n0 = int(kv_num[0])
+    sel0 = kv_idx[0, :n0].tolist()
+    assert sel0 == [0, 1, 3]
+
+    # Row 1 should be non-wrap: a single interval, expect {0,1,2}
+    n1 = int(kv_num[1])
+    sel1 = kv_idx[1, :n1].tolist()
+    assert sel1 == [0, 1, 2]
+
+
+def test_nonwrap_indices_expected_interval(flc_eager):
+    """
+    Verify _kv_blocks_nonwrap returns a compact single interval of block indices.
+    """
+    q_blocks = 2
+    kv_blocks = 5
+    block_size = 8
+    window_size = 12  # half=6
+    stride = torch.tensor(1.0)
+    q_len = 16
+    kv_len = 40
+    device = "cpu"
+
+    kv_num, kv_idx = flc_eager._kv_blocks_nonwrap(
+        q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.float32
+    )
+
+    # Row 0 center near ~3; token-range should map to blocks {0,1}
+    n0 = int(kv_num[0])
+    assert kv_idx[0, :n0].tolist() == [0, 1]
+
+    # Row 1 center near ~11; token-range should map to blocks {0,1,2}
+    n1 = int(kv_num[1])
+    assert kv_idx[1, :n1].tolist() == [0, 1, 2]
+
+
+def test_all_rows_branch_in_wrap(flc_eager):
+    """
+    Large window triggers 'all_rows' path in _kv_blocks_wrap.
+    """
+    q_blocks, kv_blocks = 3, 7
+    block_size = 16
+    window_size = 10_000  # definitely covers entire kv
+    stride = torch.tensor(2.0)
+    q_len, kv_len = 64, 256
+    device = "cpu"
+
+    kv_num, kv_idx = flc_eager._kv_blocks_wrap(
+        q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, device, torch.float32
+    )
+
+    assert torch.all(kv_num == kv_blocks)
+    for r in range(q_blocks):
+        assert kv_idx[r, :kv_blocks].tolist() == list(range(kv_blocks))
+
+
+# ---------------------------------
+# Extra behaviors hitting mask_mod
+# ---------------------------------
+
+def test_zero_window_size_is_center_only():
+    """
+    window_size=0 is allowed (even). Each query should only attend its center.
+    """
+    q_len, kv_len = 20, 40
+    stride = 1.5
+    m = build_strided_sliding_window_blockmask(
+        window_size=0, stride=stride, q_len=q_len, kv_len=kv_len, device="cpu", wrap=False
+    )
+    d = _dense_from_blockmask(m, q_len, kv_len, "cpu")
+
+    for q_idx in (0, 1, 5, 10, 19):
+        center = round(q_idx * stride)
+        center = min(max(center, 0), kv_len - 1)
+        row = d[0, 0, q_idx]
+        assert row[center].item() is True
+        # neighbors should be False (when in bounds)
+        if center - 1 >= 0:
+            assert row[center - 1].item() is False
+        if center + 1 < kv_len:
+            assert row[center + 1].item() is False
+
+
+def test_fractional_stride_wrap_equivalence_additional():
+    """
+    Another equivalence check for wrap=True with fractional stride.
+    """
+    cfg = dict(window_size=18, stride=1.25, q_len=90, kv_len=140, device="cpu")
+    fast = build_strided_sliding_window_blockmask(wrap=True, **cfg).to_dense().int()
+    ref = sliding_window_mask_strided_wrapped(**cfg).to_dense().int()
+    assert torch.allclose(fast, ref)
+
+
+def test_rounding_half_up_behavior_fixed():
+    """
+    mask_mod uses round(q_idx * stride): for stride=1.5 and q_idx=1 -> 2.
+    """
+    q_len, kv_len = 10, 40
+    stride = 1.5
+    window_size = 6  # half=3
+
+    m = build_strided_sliding_window_blockmask(
+        window_size=window_size, stride=stride, q_len=q_len, kv_len=kv_len, device="cpu", wrap=False
+    )
+    dense = _dense_from_blockmask(m, q_len, kv_len, "cpu")
+
+    q_idx = 1
+    center = round(q_idx * stride)  # 2
+    lo = max(0, center - window_size // 2)
+    hi = min(kv_len - 1, center + window_size // 2)
+
+    q1 = dense[0, 0, q_idx]
+    assert all(q1[i].item() for i in range(lo, hi + 1)), "window should center at round(1.5)=2"
+
+
+def test_dtype_float64_and_negative_stride():
+    """
+    Hit dtype_float path and odd stride sign; just ensure valid shape and any True.
+    """
+    m = build_strided_sliding_window_blockmask(
+        window_size=12, stride=-0.75, q_len=64, kv_len=80, device="cpu", wrap=True, dtype_float=torch.float64
+    )
+    d = _dense_from_blockmask(m, 64, 80, "cpu")
+    assert d.shape == (1, 1, 64, 80)
+    assert d.any()
