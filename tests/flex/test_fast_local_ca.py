@@ -244,8 +244,8 @@ class TestWrapVsNonWrap:
         )
 
         # For small windows, they should be identical
-        dense_nonwrap = blockmask_to_dense(mask_nonwrap, 100, 100, "cpu")
-        dense_wrap = blockmask_to_dense(mask_wrap, 100, 100, "cpu")
+        dense_nonwrap = mask_nonwrap.to_dense()
+        dense_wrap = mask_wrap.to_dense()
         assert torch.allclose(dense_nonwrap, dense_wrap)
 
 
