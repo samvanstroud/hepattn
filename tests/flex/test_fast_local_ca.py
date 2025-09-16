@@ -1,4 +1,5 @@
 import importlib
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -525,22 +526,14 @@ def flc_eager():
     """Reload hepattn.flex.fast_local_ca with torch.compile turned into a no-op,
     so coverage includes the original Python bodies of _kv_blocks_*.
     """
-    # Save original
-    orig_compile = torch.compile
 
     # Make compile a no-op for reload
     def _identity_compile(fn, *_args, **_kwargs):
         return fn
 
-    try:
-        torch.compile = _identity_compile
+    with patch("torch.compile", new=_identity_compile):
         mod = importlib.import_module("hepattn.flex.fast_local_ca")
-        mod = importlib.reload(mod)
-    finally:
-        # restore for other tests/modules
-        torch.compile = orig_compile
-
-    return mod
+        return importlib.reload(mod)
 
 
 def test_wrap_has_mixed_rows_and_expected_blocks(flc_eager):
