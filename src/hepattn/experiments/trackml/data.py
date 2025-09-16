@@ -145,8 +145,9 @@ class TrackMLDataset(Dataset):
         targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
         # Create the hit filter targets
-        for target_feature in self.targets:
-            targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy()).unsqueeze(0)
+        for target_feature, fields in self.targets.items():
+            if "on_valid_particle" in fields:
+                targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy()).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)
