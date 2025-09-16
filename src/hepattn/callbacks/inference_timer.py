@@ -24,7 +24,7 @@ class InferenceTimer(Callback):
         if self.compile:
             compiled_forward = torch.compile(self.old_forward)
 
-        @torch._dynamo.disable(recursive=False) # noqa: SLF001
+        @torch._dynamo.disable(recursive=False)  # noqa: SLF001
         def new_forward(*args, **kwargs):
             self._tmp_dims = sum(v.shape[1] for v in args[0].values())
             start = torch.cuda.Event(enable_timing=True)
