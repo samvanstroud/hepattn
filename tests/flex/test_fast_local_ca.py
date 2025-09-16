@@ -20,6 +20,9 @@ def blockmask_to_dense(block_mask, q_len, kv_len, device):
     """Convert BlockMask to dense tensor using create_mask."""
     return create_mask(block_mask.mask_mod, 1, 1, q_len, kv_len, device)
 
+def _dense_from_blockmask(mask, q_len, kv_len, device):
+    return create_mask(mask.mask_mod, 1, 1, q_len, kv_len, device)
+
 
 class TestKvBlocks:
     """Test the _kv_blocks_nonwrap function."""
@@ -376,3 +379,182 @@ class TestMaskModFunction:
 
         # Wrap should allow at least as many connections as non-wrap
         assert dense_mask.sum() >= dense_nonwrap.sum()
+
+
+# ===== New tests start here =====
+
+class TestEdgeAndRoundingBehavior:
+    def test_wrap_edges_allow_circular_connections(self):
+        """
+        When wrapping is enabled, a window centered near 0 must include indices near kv_len-1.
+        """
+        q_len, kv_len = 8, 32
+        window_size = 8  # half=4
+        stride = 4.0     # centers: 0,4,8,...
+
+        m_wrap = build_strided_sliding_window_blockmask(
+            window_size=window_size, stride=stride, q_len=q_len, kv_len=kv_len, device="cpu", wrap=True
+        )
+        dense = _dense_from_blockmask(m_wrap, q_len, kv_len, "cpu")
+
+        # q_idx=0 -> center ~ 0; with wrap, indices {28,29,30,31,0,1,2,3,4} (window_size is inclusive per mask_mod)
+        q0 = dense[0, 0, 0]
+        expected_idxs = {28, 29, 30, 31, 0, 1, 2, 3, 4}
+        assert all(q0[i].item() for i in expected_idxs), "wrap should include indices across boundary"
+
+    def test_nonwrap_edges_trim_at_zero(self):
+        """
+        Without wrapping, negative indices must be clipped away.
+        """
+        q_len, kv_len = 8, 32
+        window_size = 8  # half=4
+        stride = 4.0
+
+        m_no = build_strided_sliding_window_blockmask(
+            window_size=window_size, stride=stride, q_len=q_len, kv_len=kv_len, device="cpu", wrap=False
+        )
+        dense = _dense_from_blockmask(m_no, q_len, kv_len, "cpu")
+
+        q0 = dense[0, 0, 0]
+        # Should include 0..4 but not kv_len-1 etc.
+        assert all(q0[i].item() for i in range(0, 5))
+        assert not q0[kv_len - 1].item(), "non-wrap must not include wrapped indices"
+
+
+class TestPartialBlocksAndOddBlockSizes:
+    def test_partial_last_blocks_shape_and_bounds(self):
+        """
+        Ensure seq_lengths are respected when q_len/kv_len not multiples of block_size.
+        """
+        mask = build_strided_sliding_window_blockmask(
+            window_size=32, stride=2.0, q_len=257, kv_len=515, device="cpu", wrap=False, block_size=128
+        )
+        dense = _dense_from_blockmask(mask, 257, 515, "cpu")
+        assert dense.shape == (1, 1, 257, 515)
+        # Make sure last query doesn't access out-of-bounds keys
+        assert dense[0, 0, 256].shape[0] == 515
+
+    def test_small_irregular_block_size(self):
+        """
+        Stress division/rounding paths with a tiny, non-power-of-two block size.
+        """
+        q_len, kv_len = 123, 234
+        mask = build_strided_sliding_window_blockmask(
+            window_size=12, stride=1.1, q_len=q_len, kv_len=kv_len, device="cpu", wrap=True, block_size=7
+        )
+        dense = _dense_from_blockmask(mask, q_len, kv_len, "cpu")
+        assert dense.shape == (1, 1, q_len, kv_len)
+        assert dense.sum() > 0  # not degenerate
+
+
+class TestDtypeAndStrideVariants:
+    def test_float64_dtype(self):
+        """
+        Exercise dtype_float pathway with float64.
+        """
+        mask = build_strided_sliding_window_blockmask(
+            window_size=16, stride=0.75, q_len=64, kv_len=80, device="cpu", wrap=False, dtype_float=torch.float64
+        )
+        dense = _dense_from_blockmask(mask, 64, 80, "cpu")
+        assert dense.dtype == torch.bool
+        assert dense.any()
+
+    def test_fractional_stride_less_than_one_equivalence(self):
+        """
+        For stride<1, the fast mask should still match the reference local mask (non-wrap).
+        """
+        params = dict(window_size=20, stride=0.5, q_len=120, kv_len=100, device="cpu")
+        fast = build_strided_sliding_window_blockmask(wrap=False, **params).to_dense().int()
+        ref = sliding_window_mask_strided(**params).to_dense().int()
+        assert torch.allclose(fast, ref), "fast vs local mask mismatch for stride<1"
+
+    def test_negative_stride_stability(self):
+        """
+        Negative stride isn't typical, but the code path should be stable (no exceptions) and produce a valid mask.
+        """
+        mask = build_strided_sliding_window_blockmask(
+            window_size=10, stride=-1.0, q_len=50, kv_len=60, device="cpu", wrap=True
+        )
+        dense = _dense_from_blockmask(mask, 50, 60, "cpu")
+        assert dense.shape == (1, 1, 50, 60)
+        assert dense.any(), "mask should not be empty even with negative stride"
+
+
+class TestKvBlocksInternals:
+    def test_kv_blocks_nonwrap_monotonic_and_in_range(self):
+        """
+        The compacted indices for each row should be within [0, kv_blocks) and monotonic for the first kv_num_blocks entries.
+        """
+        q_blocks, kv_blocks = 6, 11
+        block_size, window_size = 16, 24
+        stride = torch.tensor(1.3)
+        q_len, kv_len = 96, 176  # multiple blocks; last block partial for kv
+
+        kv_num, kv_idx = _kv_blocks_nonwrap(
+            q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, "cpu", torch.float32
+        )
+        assert kv_num.shape == (q_blocks,)
+        assert kv_idx.shape == (q_blocks, kv_blocks)
+
+        for r in range(q_blocks):
+            n = kv_num[r].item()
+            row = kv_idx[r, :n].tolist()
+            assert all(0 <= v < kv_blocks for v in row)
+            assert row == sorted(row), "indices should be non-decreasing after compaction"
+
+    def test_kv_blocks_wrap_monotonic_and_all_rows_branch(self):
+        """
+        Trigger the 'all_rows' branch by making the (per-row) span >= kv_len, then verify compaction.
+        """
+        q_blocks, kv_blocks = 4, 8
+        block_size = 32
+        # Large window -> span >= kv_len for all rows in wrap mode
+        window_size = 10_000
+        stride = torch.tensor(2.0)
+        q_len, kv_len = 100, 256
+
+        kv_num, kv_idx = _kv_blocks_wrap(
+            q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, "cpu", torch.float32
+        )
+        assert torch.all(kv_num == kv_blocks), "all_rows path should select all blocks"
+        for r in range(q_blocks):
+            row = kv_idx[r, : kv_blocks].tolist()
+            # With all blocks selected, we expect {0..kv_blocks-1} in order
+            assert row == list(range(kv_blocks))
+
+    def test_nonwrap_vs_wrap_block_counts_differ_when_expected(self):
+        """
+        For configurations where wrapping should matter, the number of visible blocks per row
+        (coarse envelope) should be >= in wrap mode.
+        """
+        q_blocks, kv_blocks = 5, 9
+        block_size, window_size = 32, 40
+        stride = torch.tensor(2.0)
+        q_len, kv_len = 160, 256
+
+        num_nw, _ = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, "cpu", torch.float32)
+        num_wr, _ = _kv_blocks_wrap(q_blocks, kv_blocks, block_size, window_size, stride, q_len, kv_len, "cpu", torch.float32)
+        assert torch.all(num_wr >= num_nw)
+
+
+class TestEquivalenceMoreRegimes:
+    def test_wrap_equivalence_with_reference_for_fractional_stride(self):
+        """
+        Cross-check fast vs reference (wrap=True) for a fractional stride.
+        """
+        cfg = dict(window_size=18, stride=1.25, q_len=90, kv_len=140, device="cpu")
+        fast = build_strided_sliding_window_blockmask(wrap=True, **cfg).to_dense().int()
+        ref = sliding_window_mask_strided_wrapped(**cfg).to_dense().int()
+        assert torch.allclose(fast, ref)
+
+    def test_dense_sparsity_non_trivial(self):
+        """
+        For mid-size windows, the mask should be sparse (not all True) and non-empty.
+        """
+        m = build_strided_sliding_window_blockmask(
+            window_size=32, stride=1.0, q_len=300, kv_len=300, device="cpu", wrap=False
+        )
+        d = _dense_from_blockmask(m, 300, 300, "cpu")
+        total = d.numel()
+        on = int(d.sum())
+        assert 0 < on < total, "mask should be neither empty nor fully dense"
