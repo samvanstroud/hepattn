@@ -30,6 +30,7 @@ class ITkDataset(Dataset):
         hit_eval_path: str | None = None,
         append_hit_eval_output: bool = False,
         apply_hit_eval_pred: bool = False,
+        one_hot_encodings: dict | None = None,
     ):
         if particle_min_num_hits is None:
             particle_min_num_hits = {"pixel": 3, "strip": 6}
@@ -73,6 +74,8 @@ class ITkDataset(Dataset):
         self.sample_ids = np.array([int(name.split("event")[-1]) for name in self.event_names], dtype=np.int64)
         self.sample_ids_to_event_names = {self.sample_ids[i]: str(self.event_names[i]) for i in range(len(self.sample_ids))}
         self.event_names_to_sample_ids = {v: k for k, v in self.sample_ids_to_event_names.items()}
+
+        self.one_hot_encodings = one_hot_encodings if one_hot_encodings is not None else {}
 
         # Setup hit eval file if specified
         if self.hit_eval_path:
@@ -191,7 +194,14 @@ class ITkDataset(Dataset):
             inputs[f"{hit}_valid"] = np.ones(len(hits[hit]), dtype=bool)
 
             for field in fields:
-                inputs[f"{hit}_{field}"] = hits[hit][field].to_numpy()
+                if field in self.one_hot_encodings:
+                    for val in self.one_hot_encodings[field]:
+                        # val should be list of possible values for the field
+                        # Add small tolerance for floating-point comparisons
+                        epsilon = 1e-6
+                        inputs[f"{hit}_{field}_{val}"] = (np.abs(hits[hit][field] - val) < epsilon).astype(int).to_numpy()
+                else:
+                    inputs[f"{hit}_{field}"] = hits[hit][field].to_numpy()
 
         # Hit filter target
         targets = {}
@@ -229,7 +239,11 @@ class ITkDataset(Dataset):
             # Some tasks might require to know hit padding info for loss masking
             targets_out[f"{input_name}_valid"] = inputs_out[f"{input_name}_valid"]
             for field in fields:
-                inputs_out[f"{input_name}_{field}"] = torch.from_numpy(inputs[f"{input_name}_{field}"]).half().unsqueeze(0)
+                if field in self.one_hot_encodings:
+                    for val in self.one_hot_encodings[field]:
+                        inputs_out[f"{input_name}_{field}_{val}"] = torch.from_numpy(inputs[f"{input_name}_{field}_{val}"]).half().unsqueeze(0)
+                else:
+                    inputs_out[f"{input_name}_{field}"] = torch.from_numpy(inputs[f"{input_name}_{field}"]).half().unsqueeze(0)
 
         # Now pack the targets
         target_shapes = {

@@ -4,7 +4,15 @@ from hepattn.utils.tensor_utils import concat_tensors, get_module_dtype, get_tor
 
 
 class InputNet(nn.Module):
-    def __init__(self, input_name: str, net: nn.Module, fields: list[str], posenc: nn.Module | None = None, input_dtype: str | None = None):
+    def __init__(
+        self,
+        input_name: str,
+        net: nn.Module,
+        fields: list[str],
+        posenc: nn.Module | None = None,
+        input_dtype: str | None = None,
+        one_hot_encodings: dict | None = None,
+    ):
         super().__init__()
         """A wrapper that takes a list of input features, concatenates them, and passes them
         through a dense layer followed by an optional positional encoding module.
@@ -19,13 +27,17 @@ class InputNet(nn.Module):
             posenc: Optional module used for positional encoding.
             input_dtype: If specified, input embedding and positional encoding are performed in
                 the given dtype, then cast back to the global model dtype.
+            one_hot_encodings : dict | None
+                Dictionary specifying which fields should be treated as one-hot encoded.
+                Format: {"field_name": ["value1", "value2", "value3", ...]}
+                If None, no one-hot encoding is applied.
         """
 
         self.input_name = input_name
         self.net = net
         self.fields = fields
         self.posenc = posenc
-
+        self.one_hot_encodings = one_hot_encodings if one_hot_encodings is not None else {}
         # Record the global model dtype incase we want to have the input net at a different precision
         self.output_dtype = get_module_dtype(self)
 
@@ -50,7 +62,18 @@ class InputNet(nn.Module):
         # But must will be scalars, i.e. (batch, keys), so for these we reshape them to (batch, keys, 1)
         # After this we can then concatenate everything together
 
-        x = self.net(concat_tensors([inputs[f"{self.input_name}_{field}"] for field in self.fields]))
+        tensors = []
+
+        for field in self.fields:
+            if field in self.one_hot_encodings:
+                # This field has one-hot encoded variants
+                for val in self.one_hot_encodings[field]:
+                    tensors.append(inputs[f"{self.input_name}_{field}_{val}"])
+            else:
+                tensors.append(inputs[f"{self.input_name}_{field}"])
+
+        # Concatenate all tensors and pass through the network
+        x = self.net(concat_tensors(tensors))
 
         # Perform an optional positional encoding using the positonal encoding fields
         if self.posenc is not None:
