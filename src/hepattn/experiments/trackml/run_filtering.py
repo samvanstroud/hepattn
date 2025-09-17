@@ -17,9 +17,10 @@ class TrackMLFilter(ModelWrapper):
         super().__init__(name, model, lrs_config, optimizer)
 
     def log_custom_metrics(self, preds, targets, stage):
+        assert len(self.model.tasks) == 1
         task = self.model.tasks[0]
-        target_field = getattr(task, "target_field", "on_valid_particle")
-        input_object = getattr(task, "input_object", "hit")
+        target_field = task.target_field
+        input_object = task.input_object
         expected_key = f"{input_object}_{target_field}"
         pred = preds["final"]["hit_filter"][expected_key]
         true = targets[expected_key]
