@@ -8,6 +8,7 @@ from hepattn.models.input import InputNet
 from hepattn.models.maskformer import MaskFormer
 from hepattn.models.norm import LayerNorm, RMSNorm
 from hepattn.models.posenc import FourierPositionEncoder, PositionEncoder
+from hepattn.models.queries import FixedQuerySource, ModulatedQuerySource
 
 __all__ = [
     "Attention",
@@ -24,6 +25,8 @@ __all__ = [
     "MaskFormerDecoder",
     "MaskFormerDecoderLayer",
     "PositionEncoder",
+    "FixedQuerySource",
+    "ModulatedQuerySource",
     "RMSNorm",
     "Residual",
     "SwiGLU",

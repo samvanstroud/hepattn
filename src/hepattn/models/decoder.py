@@ -3,6 +3,7 @@
 - https://github.com/facebookresearch/Mask2Former.
 """
 
+import math
 from functools import partial
 
 import torch
@@ -34,6 +35,7 @@ class MaskFormerDecoder(nn.Module):
         fast_local_ca: bool = False,
         block_size: int = 128,
         unified_decoding: bool = False,
+        query_source: nn.Module = None,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -66,9 +68,10 @@ class MaskFormerDecoder(nn.Module):
         self.window_size = window_size
         self.window_wrap = window_wrap
         self.unified_decoding = unified_decoding
-        self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
+        # self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
         self.fast_local_ca = fast_local_ca
         self.block_size = block_size
+        self.query_source = query_source
 
         if self.local_strided_attn:
             assert self.attn_type in {"torch", "flex"}, (
@@ -92,9 +95,10 @@ class MaskFormerDecoder(nn.Module):
         batch_size = x["key_embed"].shape[0]
         num_constituents = x["key_embed"].shape[-2]
 
+        assert self.query_source is not None, "query_source must be provided"
         # Generate the queries that represent objects
-        x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
-        x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
+        x["query_embed"] = self.query_source(x)["query_embed"]
+        x["query_valid"] = self.query_source(x)["query_valid"]
 
         if self.posenc:
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
@@ -315,10 +319,10 @@ class MaskFormerDecoderLayer(nn.Module):
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)
 
-            if query_posenc is not None:
-                q = q + query_posenc
-            if key_posenc is not None:
-                kv = kv + key_posenc
+            # if query_posenc is not None:
+            #     q = q + query_posenc
+            # if key_posenc is not None:
+            #     kv = kv + key_posenc
 
             kv = self.kv_ca(kv, kv=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
             kv = self.kv_dense(kv)
