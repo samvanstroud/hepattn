@@ -2,13 +2,13 @@ seed_everything: 42
 name: TRK-v0-full
 
 data:
-  train_dir: data/trackml/prepped/
-  val_dir: data/trackml/prepped/
-  test_dir: data/trackml/prepped/
+  train_dir: /data/atlas/users/srettie/data/trackml/prepped/train/
+  test_dir: /data/atlas/users/srettie/data/trackml/prepped/test/
+  val_dir: /data/atlas/users/srettie/data/trackml/prepped/val/
 
-  hit_eval_train: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_train_eval.h5
-  hit_eval_val: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_val_eval.h5
-  hit_eval_test: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_test_eval.h5
+  hit_eval_train: /data/atlas/users/slin/myHepattn/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250818-T211321/ckpts/epoch=029-val_loss=0.34545_train_eval.h5
+  hit_eval_val: /data/atlas/users/slin/myHepattn/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250818-T211321/ckpts/epoch=029-val_loss=0.34545_val_eval.h5
+  hit_eval_test: /data/atlas/users/slin/myHepattn/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250818-T211321/ckpts/epoch=029-val_loss=0.34545_test_eval.h5
   num_workers: 10
   num_train: -1
   num_test: 10
@@ -59,6 +59,10 @@ data:
       - pt
       - eta
       - phi
+      - px
+      - py
+      - pz
+      - vz
 
 trainer:
   # Training stuff here
@@ -120,7 +124,7 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 256
-      encoder_input_sort_field: phi
+      #encoder_input_sort_field: phi
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -215,9 +219,23 @@ model:
                   mask_focal: 50.0
                 dim: *dim
                 null_weight: 1.0
+            - class_path: hepattn.models.task.ObjectRegressionTask
+              init_args:
+                name: track_regr
+                input_object: query
+                output_object: track
+                target_object: particle
+                fields:
+                  - px
+                  - py
+                  - pz
+                  - vz
+                loss_weight: 1.0
+                cost_weight: 1.0
+                dim: *dim
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
         init_args:
           default_solver: scipy
-          adaptive_solver: true
+          adaptive_solver: false
