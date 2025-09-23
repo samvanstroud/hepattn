@@ -22,6 +22,7 @@ class TrackMLDataset(Dataset):
         targets: dict,
         num_events: int = -1,
         hit_volume_ids: list | None = None,
+        feature_volume_ids: dict | None = None,
         particle_min_pt: float = 1.0,
         particle_max_abs_eta: float = 2.5,
         particle_min_num_hits=3,
@@ -86,6 +87,8 @@ class TrackMLDataset(Dataset):
 
         # Hit level cuts
         self.hit_volume_ids = hit_volume_ids
+        # Optional per-feature hit volume selections
+        self.feature_volume_ids = feature_volume_ids
 
         # Particle level cuts
         self.particle_min_pt = particle_min_pt
@@ -111,11 +114,18 @@ class TrackMLDataset(Dataset):
 
         # Build the input hits
         for feature, fields in self.inputs.items():
-            inputs[f"{feature}_valid"] = torch.full((len(hits),), True).unsqueeze(0)
+            # Determine per-feature hit subset
+            if self.feature_volume_ids is not None and feature in self.feature_volume_ids:
+                feature_hits = hits[hits["volume_id"].isin(self.feature_volume_ids[feature])]
+            else:
+                feature_hits = hits
+
+            # Valid mask is all True for the feature-specific subset
+            inputs[f"{feature}_valid"] = torch.full((len(feature_hits),), True).unsqueeze(0)
             targets[f"{feature}_valid"] = inputs[f"{feature}_valid"]
 
             for field in fields:
-                inputs[f"{feature}_{field}"] = torch.from_numpy(hits[field].values).unsqueeze(0).half()
+                inputs[f"{feature}_{field}"] = torch.from_numpy(feature_hits[field].values).unsqueeze(0).half()
 
         # Build the targets for whether a particle slot is used or not
         targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
@@ -135,7 +145,9 @@ class TrackMLDataset(Dataset):
         targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
         # Create the hit filter targets
-        targets["hit_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy()).unsqueeze(0)
+        for target_feature, fields in self.targets.items():
+            if "on_valid_particle" in fields:
+                targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy()).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)
