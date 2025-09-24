@@ -96,10 +96,12 @@ class MaskFormerDecoder(nn.Module):
         num_constituents = x["key_embed"].shape[-2]
 
         assert self.query_source is not None, "query_source must be provided"
-        # Generate the queries that represent objects
-        x["query_embed"] = self.query_source(x)["query_embed"]
-        x["query_valid"] = self.query_source(x)["query_valid"]
-        x["query_phi"] = self.query_source(x)["query_phi"]
+        # Generate queries unless they are already provided (allows aux base branch injection)
+        if ("query_embed" not in x) or ("query_valid" not in x) or ("query_phi" not in x):
+            qs = self.query_source(x)
+            x["query_embed"] = qs["query_embed"]
+            x["query_valid"] = qs["query_valid"]
+            x["query_phi"] = qs["query_phi"]
         self.num_queries = x["query_embed"].shape[1]
 
         if self.posenc:

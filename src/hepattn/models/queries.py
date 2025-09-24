@@ -2,7 +2,7 @@ import math
 
 import torch
 from torch import nn
-import math
+
 
 class QuerySource(nn.Module):
     """Base interface: produce queries from the current features dict `x`."""
@@ -41,7 +41,7 @@ class QuerySource(nn.Module):
 
 #             # Bank assumed shape: (self.num_queries, d); ordered by phi ascending
 #             k = min(num_queries, self.num_queries)
-            
+
 #             # === Even-in-phi index selection (bin centers) ===
 #             # centers = (i + 0.5) * (self.num_queries / k), i = 0..k-1
 #             step = self.num_queries / float(k)
@@ -77,6 +77,7 @@ class QuerySource(nn.Module):
 
 #         return {"query_embed": q, "query_valid": q_valid, "query_phi": phi_vals}
 
+
 class FixedQuerySource(QuerySource):
     """
     Produces k dynamic queries from M base queries by:
@@ -88,6 +89,7 @@ class FixedQuerySource(QuerySource):
     For window modes, choose window='hann' (compact support) or 'gaussian' (soft tails).
     Bandwidth in index units is ~ bw_scale * (M / k).
     """
+
     def __init__(
         self,
         num_queries: int,
@@ -95,10 +97,10 @@ class FixedQuerySource(QuerySource):
         init: str = "",
         hit_particle_ratio: float = 0.0,
         phi_shift: float = 0.0,
-        method: str = "pick",       # "pick", "window", "window_adaptive"
-        window: str = "hann",       # used in window modes
-        bw_scale: float = 0.6,      # window bandwidth scale (index units)
-        eps: float = 1e-8
+        method: str = "pick",  # "pick", "window", "window_adaptive"
+        window: str = "hann",  # used in window modes
+        bw_scale: float = 0.6,  # window bandwidth scale (index units)
+        eps: float = 1e-8,
     ):
         super().__init__(num_queries, dim)
         if init == "randn":
@@ -116,6 +118,41 @@ class FixedQuerySource(QuerySource):
         self.bw_scale = float(bw_scale)
         self.eps = float(eps)
 
+    def get_base_queries(self, x: dict, subset_stride: int = 1) -> dict:
+        """
+        Build a training-only branch input that uses the raw base bank as queries.
+
+        Args:
+            x: features dict expected to include key "key_embed" with shape (B, N, d_key)
+            subset_stride: take every `subset_stride`-th base query (>=1). Use 1 to take all M.
+
+        Returns:
+            dict with keys:
+              - "query_embed": (B, M_sel, D)
+              - "query_valid": (B, M_sel) all True
+              - "query_phi": (B, M_sel) φ positions for selected bases with phi_shift applied
+        """
+        B = x["key_embed"].shape[0]
+        device = self.bank.device
+        M = self.num_queries
+
+        if subset_stride is None or subset_stride < 1:
+            subset_stride = 1
+
+        if subset_stride == 1:
+            idx = torch.arange(M, device=device)
+        else:
+            idx = torch.arange(0, M, subset_stride, device=device)
+
+        bank_sel = self.bank.index_select(0, idx)  # (M_sel, D)
+        q_base = bank_sel.unsqueeze(0).expand(B, -1, -1)  # (B, M_sel, D)
+        q_valid = torch.full((B, idx.numel()), True, device=device)
+
+        base_phi = 2 * torch.pi * (idx.float() / float(M) - self.phi_shift)  # (M_sel,)
+        base_phi = base_phi.unsqueeze(0).expand(B, -1)  # (B, M_sel)
+
+        return {"query_embed": q_base, "query_valid": q_valid, "query_phi": base_phi}
+
     # ---------------- window helpers ----------------
     @staticmethod
     def _circular_index_distance(centers, indices, M: int):
@@ -128,11 +165,9 @@ class FixedQuerySource(QuerySource):
         return torch.minimum(diff, M - diff)
 
     def _window_weights(self, dists, s):
-        """
-        dists: (k, M) circular distances (index units)
-        s: bandwidth radius (index units)
-        returns: (k, M) nonnegative weights
-        """
+        """dists: (k, M) circular distances (index units).
+        s: bandwidth radius (index units).
+        returns: (k, M) nonnegative weights."""
         s = max(float(s), 1e-6)
         if self.window == "hann":
             w = torch.clamp(1.0 + torch.cos(math.pi * dists / s), min=0.0)
@@ -261,23 +296,22 @@ class FixedQuerySource(QuerySource):
 
                 # Build weights and queries for this batch item
                 dists = self._circular_index_distance(centers_idx, indices, M)  # (k, M)
-                W = self._window_weights(dists, s)                              # (k, M)
+                W = self._window_weights(dists, s)  # (k, M)
                 W = W / (W.sum(dim=1, keepdim=True) + self.eps)
 
-                q_dyn = W @ self.bank                                           # (k, d)
+                q_dyn = W @ self.bank  # (k, d)
                 q_out.append(q_dyn.unsqueeze(0))
                 # Report φ centers with phi_shift applied
                 phi_vals = 2 * torch.pi * (centers_idx / M - self.phi_shift)
                 phi_out.append(phi_vals.unsqueeze(0))
 
-            q = torch.cat(q_out, dim=0)                  # (B, k, d)
-            phi_vals = torch.cat(phi_out, dim=0)         # (B, k)
+            q = torch.cat(q_out, dim=0)  # (B, k, d)
+            phi_vals = torch.cat(phi_out, dim=0)  # (B, k)
             q_valid = torch.full((B, k), True, device=device)
             return {"query_embed": q, "query_valid": q_valid, "query_phi": phi_vals}
 
         else:
             raise ValueError(f"Unknown method: {self.method}. Use 'pick', 'window', or 'window_adaptive'.")
-
 
 
 class ModulatedQuerySource(QuerySource):

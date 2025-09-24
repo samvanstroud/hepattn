@@ -22,6 +22,8 @@ class MaskFormer(nn.Module):
         input_sort_field: str | None = None,
         sorter: nn.Module | None = None,
         unified_decoding: bool = False,
+        beta: float = 0.0,
+        base_subset_stride: int | None = None,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object reconstruction with attention-based decoding and optional encoder blocks.
@@ -51,6 +53,9 @@ class MaskFormer(nn.Module):
         self.target_object = target_object
         self.matcher = matcher
         self.unified_decoding = unified_decoding
+        # Aux branch config
+        self.beta = float(beta)
+        self.base_subset_stride = 1 if (base_subset_stride is None or base_subset_stride < 1) else int(base_subset_stride)
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
@@ -116,7 +121,7 @@ class MaskFormer(nn.Module):
         if not self.unified_decoding:
             x = unmerge_inputs(x, self.input_names)
 
-        # Pass through decoder layers
+        # Pass through decoder layers (dynamic queries)
         x, outputs = self.decoder(x, self.input_names)
 
         # Do any pooling if desired
@@ -142,6 +147,24 @@ class MaskFormer(nn.Module):
             sort = self.sorter.input_sort_field
             sort_dict = {f"{name}_{sort}": inputs[f"{name}_{sort}"] for name in self.input_names}
             outputs["final"][sort] = sort_dict
+
+        # Optionally run base aux branch during training only
+        if self.training and self.beta > 0.0 and hasattr(self.decoder, "query_source") and hasattr(self.decoder.query_source, "get_base_queries"):
+            # Build a fresh x_base with same inputs/embeds but injected base queries
+            x_base = x.copy()
+            # Remove any existing query_* to avoid reuse and inject base queries
+            x_base.pop("query_embed", None)
+            x_base.pop("query_valid", None)
+            x_base.pop("query_phi", None)
+            base_q = self.decoder.query_source.get_base_queries(x_base, subset_stride=self.base_subset_stride)
+            x_base.update(base_q)
+
+            # Decode with base queries
+            x_base, outputs_base_layers = self.decoder(x_base, self.input_names)
+            # Final task heads on base branch
+            outputs["final_base"] = {}
+            for task in self.tasks:
+                outputs["final_base"][task.name] = task(x_base)
 
         return outputs
 
@@ -242,5 +265,10 @@ class MaskFormer(nn.Module):
                 if layer_name != "final" and not task.has_intermediate_loss:
                     continue
                 losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
+        # If aux base branch present, scale its loss dictionary by beta and add into total reporting
+        if self.training and self.beta > 0.0 and "final_base" in losses:
+            for task_name, task_losses in losses["final_base"].items():
+                for k in task_losses:
+                    losses["final_base"][task_name][k] = self.beta * losses["final_base"][task_name][k]
 
         return losses, targets
