@@ -130,17 +130,18 @@ class TrackMLDataset(Dataset):
             for field in fields:
                 inputs[f"{feature}_{field}"] = torch.from_numpy(feature_hits[field].values).unsqueeze(0).half()
 
-        # if self.hit_particle_ratio:
-        #     self.event_max_num_particles = math.ceil(len(hits) / self.hit_particle_ratio)
-        #     rank_zero_info(f"Event {idx} has {len(hits)} hits and {num_particles} particles, setting to {self.event_max_num_particles}")
+        if self.hit_particle_ratio:
+            max_parts = math.ceil(len(hits) / self.hit_particle_ratio)
+            event_max_num_particles = min(max_parts, self.event_max_num_particles)
+            rank_zero_info(f"Event {idx} has {len(hits)} hits and {num_particles} particles, setting to {self.event_max_num_particles}")
         # Limit the number of particles to event_max_num_particles
-        if num_particles > self.event_max_num_particles:
+        if num_particles > event_max_num_particles:
             rank_zero_info(f"Event {idx} has {num_particles} particles, limiting to {self.event_max_num_particles}")
-            particles = particles.iloc[: self.event_max_num_particles]
-            num_particles = self.event_max_num_particles
+            particles = particles.iloc[: event_max_num_particles]
+            num_particles = event_max_num_particles
 
         # Build the targets for whether a particle slot is used or not
-        targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
+        targets["particle_valid"] = torch.full((event_max_num_particles,), False)
         targets["particle_valid"][:num_particles] = True
         targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
 
@@ -148,7 +149,7 @@ class TrackMLDataset(Dataset):
         particle_ids = torch.from_numpy(particles["particle_id"].values)
 
         # Fill in empty slots with -1s and get the IDs of the particle on each hit
-        particle_ids = torch.cat([particle_ids, -999 * torch.ones(self.event_max_num_particles - len(particle_ids))])
+        particle_ids = torch.cat([particle_ids, -999 * torch.ones(event_max_num_particles - len(particle_ids))])
         hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
 
         # Create the mask targets
@@ -167,8 +168,8 @@ class TrackMLDataset(Dataset):
             for field in self.targets["particle"]:
                 # Null target/particle slots are filled with nans
                 # This acts as a sanity check that we correctly mask out null slots in the loss
-                x = torch.full((self.event_max_num_particles,), torch.nan)
-                x[:num_particles] = torch.from_numpy(particles[field].to_numpy()[: self.event_max_num_particles])
+                x = torch.full((event_max_num_particles,), torch.nan)
+                x[:num_particles] = torch.from_numpy(particles[field].to_numpy()[: event_max_num_particles])
                 targets[f"particle_{field}"] = x.unsqueeze(0)
 
         return inputs, targets

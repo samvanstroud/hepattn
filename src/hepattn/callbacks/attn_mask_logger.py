@@ -11,7 +11,7 @@ class AttnMaskLogger(Callback):
     def __init__(
         self,
         log_train: bool = True,
-        log_val: bool = True,
+        log_val: bool = False,
         log_stats: bool = False,
         log_every_n_batches: int = 1000,
         lca_window_sizes: list[int] | None = None,

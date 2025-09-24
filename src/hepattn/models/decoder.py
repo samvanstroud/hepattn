@@ -99,6 +99,8 @@ class MaskFormerDecoder(nn.Module):
         # Generate the queries that represent objects
         x["query_embed"] = self.query_source(x)["query_embed"]
         x["query_valid"] = self.query_source(x)["query_valid"]
+        x["query_phi"] = self.query_source(x)["query_phi"]
+        self.num_queries = x["query_embed"].shape[1]
 
         if self.posenc:
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
@@ -222,7 +224,6 @@ class MaskFormerDecoder(nn.Module):
         return window_mask_func(self.window_size, stride=stride, q_len=q_len, kv_len=kv_len, device=str(device))
 
     def generate_positional_encodings(self, x: dict):
-        x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
         query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
