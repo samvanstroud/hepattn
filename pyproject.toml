@@ -65,10 +65,10 @@ no-build-isolation = ["flash-attn"]
 extra-index-urls = ["https://download.pytorch.org/whl/cu128"]
 
 [tool.pixi.feature.gpu.pypi-dependencies]
-torch = { version = "==2.7.1", index = "https://download.pytorch.org/whl/cu128"}
+torch = { version = "==2.8.0", index = "https://download.pytorch.org/whl/cu128"}
 
 [tool.pixi.feature.cpu.pypi-dependencies]
-torch = { version = "==2.7.1", index = "https://download.pytorch.org/whl/cpu" }
+torch = { version = "==2.8.0", index = "https://download.pytorch.org/whl/cpu" }
 
 [tool.pixi.environments]
 default = { features = ["gpu", "fa2"] }
@@ -87,7 +87,7 @@ gxx = ">=14.3.0,<14.4"
 git = ">=2.51.0,<3"
 git-lfs = ">=3.7.0,<4"
 ninja = ">=1.13.1,<2"
-cuda = "12.8.*"
+cuda = "12.9.*"
 
 [tool.pixi.tasks.test]
 cmd = "pytest"
