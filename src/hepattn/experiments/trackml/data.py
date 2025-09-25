@@ -136,7 +136,11 @@ class TrackMLDataset(Dataset):
         targets["particle_valid"][:num_particles] = True
         targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
         message = f"Event {idx} has {num_particles}, but limit is {self.event_max_num_particles}"
-        assert num_particles <= self.event_max_num_particles, message
+        # assert num_particles <= self.event_max_num_particles, message
+        if num_particles > self.event_max_num_particles:
+            rank_zero_info(f"Event {idx} has {num_particles} particles, limiting to {self.event_max_num_particles}")
+            particles = particles.iloc[: self.event_max_num_particles]
+            num_particles = self.event_max_num_particles
 
         # Build the particle regression targets
         particle_ids = torch.from_numpy(particles["particle_id"].values)
@@ -211,7 +215,11 @@ class TrackMLDataset(Dataset):
                 assert str(self.sample_ids[idx]) in hit_eval_file, f"Key {self.sample_ids[idx]} not found in file {self.hit_eval_path}"
 
                 # The dataset has shape (1, num_hits)
-                hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
+                hit_filter_eval = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/"]
+                if "hit_on_valid_particle" in hit_filter_eval.keys():
+                    hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
+                else:
+                    hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/key_on_valid_particle"][0]
                 hits = hits[hit_filter_pred]
 
         # TODO: Add back truth based hit filtering

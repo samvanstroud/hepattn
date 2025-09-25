@@ -291,8 +291,9 @@ class ObjectHitMaskTask(Task):
 
         # Zero out entries for any padded input constituents
         valid_key = "key_valid" if self.unified_decoding else f"{self.input_constituent}_valid"
-        valid_mask = x[valid_key].unsqueeze(-2).expand_as(object_hit_logit)
-        object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
+        if x[valid_key] is not None:
+            valid_mask = x[valid_key].unsqueeze(-2).expand_as(object_hit_logit)
+            object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
 
         return {self.output_object_hit + "_logit": object_hit_logit}
 
@@ -317,7 +318,10 @@ class ObjectHitMaskTask(Task):
         output = outputs[self.output_object_hit + "_logit"].detach().to(torch.float32)
         target = targets[self.target_object_hit + "_" + self.target_field].detach().to(output.dtype)
 
-        hit_pad = targets[self.input_constituent + "_valid"]
+        hit_pad_key = self.input_constituent + "_valid"
+        hit_pad = None
+        if hit_pad_key in targets:
+            hit_pad = targets[hit_pad_key]
 
         costs = {}
         # sample_weight = target + self.null_weight * (1 - target)
@@ -329,7 +333,10 @@ class ObjectHitMaskTask(Task):
         output = outputs[self.output_object_hit + "_logit"]
         target = targets[self.target_object_hit + "_" + self.target_field].type_as(output)
 
-        hit_pad = targets[self.input_constituent + "_valid"]
+        hit_pad_key = self.input_constituent + "_valid"
+        hit_pad = None
+        if hit_pad_key in targets:
+            hit_pad = targets[hit_pad_key]
         object_pad = targets[self.target_object + "_valid"]
 
         sample_weight = target + self.null_weight * (1 - target)
