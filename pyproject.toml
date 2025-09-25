@@ -18,7 +18,7 @@ dependencies = [
     "pytest-repeat>=0.9.4,<0.10",
     "pytest-cov>=7.0.0,<8",
     "coverage[toml]>=7.10.6,<8",
-    "ruff==0.13.0",
+    "ruff==0.13.2",
     "pre-commit>=4.3.0,<5",
     "matplotlib>=3.10.6,<4",
     "lightning==2.5.2",
