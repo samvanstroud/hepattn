@@ -2,9 +2,9 @@ seed_everything: 42
 name: HC-v3-lite-extended-epochs200-eta4-strips-separate-encoders
 
 data:
-  train_dir:  /home/u5ar/pduckett.u5ar/data/trackml/official/prepped/train/
-  val_dir: /home/u5ar/pduckett.u5ar/data/trackml/official/prepped/val/
-  test_dir: /home/u5ar/pduckett.u5ar/data/trackml/official/prepped/test/
+  train_dir:  /lus/lfs1aip2/home/u5ar/pduckett.u5ar/data/trackml/official/prepped/train/
+  val_dir: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/data/trackml/official/prepped/val/
+  test_dir: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/data/trackml/official/prepped/test/
 
   num_workers: 10
   num_train: -1
@@ -27,7 +27,7 @@ data:
   particle_max_abs_eta: 4
 
   # Minimum number of true hits for a particle to be deemed reconstructible
-  particle_min_num_hits: 3
+  particle_min_num_hits: 7
 
   # Maximum number of reconstructable particles allowed in an event (not relevant for filtering)
   event_max_num_particles: 4000

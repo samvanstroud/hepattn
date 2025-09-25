@@ -2,13 +2,13 @@ seed_everything: 42
 name: TRK-ISAMBARD-120925-epochs10-local-ca-w512-flex-eta4-strips
 
 data:
-  train_dir:  /home/u5ar/pduckett.u5ar/data/trackml/official/prepped/train/
-  val_dir: /home/u5ar/pduckett.u5ar/data/trackml/official/prepped/val/
-  test_dir: /home/u5ar/pduckett.u5ar/data/trackml/official/prepped/test/
+  train_dir:  /lus/lfs1aip2/home/u5ar/pduckett.u5ar/data/trackml/official/prepped/train/
+  val_dir: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/data/trackml/official/prepped/val/
+  test_dir: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/data/trackml/official/prepped/test/
 
-  hit_eval_train: 
-  hit_eval_val: 
-  hit_eval_test: 
+  hit_eval_train: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/hepattn-strips/logs/HC-v3-lite-extended-epochs200-eta4-strips-separate-encoders_20250918-T115813/ckpts/epoch=100-val_loss=0.25162_train_eval.h5
+  hit_eval_val: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/hepattn-strips/logs/HC-v3-lite-extended-epochs200-eta4-strips-separate-encoders_20250918-T115813/ckpts/epoch=100-val_loss=0.25162_val_eval.h5
+  hit_eval_test: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/hepattn-strips/logs/HC-v3-lite-extended-epochs200-eta4-strips-separate-encoders_20250918-T115813/ckpts/epoch=100-val_loss=0.25162_train_eval.h5
   
   num_workers: 10
   num_train: -1
@@ -31,10 +31,10 @@ data:
   particle_max_abs_eta: 4
 
   # Minimum number of true hits for a particle to be deemed reconstructible
-  particle_min_num_hits: 3
+  particle_min_num_hits: 7
 
   # Maximum number of reconstructable particles allowed in an event
-  event_max_num_particles: &num_objects 8000
+  event_max_num_particles: &num_objects 3600
 
   # Define which inputs will be available to the model
   inputs:
@@ -75,6 +75,8 @@ data:
       - pt
       - eta
       - phi
+    key:
+      - on_valid_particle
 
 trainer:
   # Training stuff here

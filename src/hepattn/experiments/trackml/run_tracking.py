@@ -42,15 +42,33 @@ class TrackMLTracker(ModelWrapper):
         # True number of hits on the track
         hit_t = true_hit_masks.sum(-1)
 
+        print("hit_tp", hit_tp)
+        print("hit_t", hit_t)
+        print("hit_p", hit_p)
+        print(true_valid.sum())
+        print(pred_valid.sum())
+        print((true_valid & pred_valid).sum())
+
         # Calculate the efficiency and purity at differnt matching working points
         for wp in [0.5, 0.75, 1.0]:
             both_valid = true_valid & pred_valid
 
+            print("hit_tp / hit_t", hit_tp / hit_t)
+            print("hit_tp / hit_p", hit_tp / hit_p)
+
             effs = (hit_tp / hit_t >= wp) & both_valid
             purs = (hit_tp / hit_p >= wp) & both_valid
 
+            print("effs.float().sum(-1)", effs.float().sum(-1))
+            print("true_valid.float().sum(-1)", true_valid.float().sum(-1))
+            print("purs.float().sum(-1)", purs.float().sum(-1))
+            print("pred_valid.float().sum(-1)",  pred_valid.float().sum(-1))
+
             roi_effs = effs.float().sum(-1) / true_valid.float().sum(-1)
             roi_purs = purs.float().sum(-1) / pred_valid.float().sum(-1)
+
+            print("roi_effs", roi_effs)
+            print("roi_purs", roi_purs)
 
             mean_eff = roi_effs.nanmean()
             mean_pur = roi_purs.nanmean()

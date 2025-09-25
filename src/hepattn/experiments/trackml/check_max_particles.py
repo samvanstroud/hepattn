@@ -171,7 +171,7 @@ def main():
 
         # Plot and save histogram of particles per event
         bin_width = 30
-        bins = np.arange(0, 4000 + bin_width, bin_width)
+        bins = np.arange(0, 6000 + bin_width, bin_width)
         fig, ax = plt.subplots(figsize=(8, 5))
         ax.hist(particles_per_event, bins=bins, color="C0", edgecolor="black")
         ax.set_xlabel("Particles per event")

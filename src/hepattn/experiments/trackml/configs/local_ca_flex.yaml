@@ -2,18 +2,18 @@ seed_everything: 42
 name: TRK-ISAMBARD-120925-epochs10-local-ca-w512-flex-eta4-test-max-particles
 
 data:
-  train_dir:  /home/u5ar/pduckett.u5ar/data/trackml/official/prepped/train/
-  val_dir: /home/u5ar/pduckett.u5ar/data/trackml/official/prepped/val/
-  test_dir: /home/u5ar/pduckett.u5ar/data/trackml/official/prepped/test/
+  train_dir:  /lus/lfs1aip2/home/u5ar/pduckett.u5ar/data/trackml/official/prepped/train/
+  val_dir: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/data/trackml/official/prepped/val/
+  test_dir: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/data/trackml/official/prepped/test/
 
   hit_eval_train: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/hepattn-scale-up/logs/HC-v3-lite-extended_20250905-T095353/ckpts/epoch=088-val_loss=0.19166_train_eval.h5
   hit_eval_val: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/hepattn-scale-up/logs/HC-v3-lite-extended_20250905-T095353/ckpts/epoch=088-val_loss=0.19166_val_eval.h5
   hit_eval_test: /lus/lfs1aip2/home/u5ar/pduckett.u5ar/hepattn-scale-up/logs/HC-v3-lite-extended_20250905-T095353/ckpts/epoch=088-val_loss=0.19166_test_eval.h5
 
   num_workers: 10
-  num_train: -1
+  num_train: 10
   num_test: -1
-  num_val: -1
+  num_val: 10
 
   # Select only hits from these detector volumes
   # pix barrel: 8, pix endcap: 7, 9
@@ -173,7 +173,6 @@ model:
             dim: *dim
             norm: RMSNorm
             hybrid_norm: true
-            bidirectional_posenc: false
             attn_kwargs:
               attn_type: flex
           local_strided_attn: true
