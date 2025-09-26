@@ -16,8 +16,10 @@ class TrackMLTracker(ModelWrapper):
         lrs_config: dict,
         optimizer: str = "AdamW",
         mtl: bool = False,
+        input_hit: str = "hit",
     ):
         super().__init__(name, model, lrs_config, optimizer, mtl)
+        self.input_hit = input_hit
 
     def log_custom_metrics(self, preds, targets, stage):
         # Just log predictions from the final layer
@@ -29,8 +31,8 @@ class TrackMLTracker(ModelWrapper):
         true_valid = targets["particle_valid"]
 
         # Set the masks of any track slots that are not used as null
-        pred_hit_masks = preds["track_hit_valid"]["track_hit_valid"] & pred_valid.unsqueeze(-1)
-        true_hit_masks = targets["particle_hit_valid"] & true_valid.unsqueeze(-1)
+        pred_hit_masks = preds[f"track_{self.input_hit}_valid"][f"track{self.input_hit}_valid"] & pred_valid.unsqueeze(-1)
+        true_hit_masks = targets[f"particle_{self.input_hit}_valid"] & true_valid.unsqueeze(-1)
 
         # Calculate the true/false positive rates between the predicted and true masks
         # Number of hits that were correctly assigned to the track
@@ -42,15 +44,33 @@ class TrackMLTracker(ModelWrapper):
         # True number of hits on the track
         hit_t = true_hit_masks.sum(-1)
 
+        print("hit_tp", hit_tp)
+        print("hit_t", hit_t)
+        print("hit_p", hit_p)
+        print(true_valid.sum())
+        print(pred_valid.sum())
+        print((true_valid & pred_valid).sum())
+
         # Calculate the efficiency and purity at differnt matching working points
         for wp in [0.5, 0.75, 1.0]:
             both_valid = true_valid & pred_valid
 
+            print("hit_tp / hit_t", hit_tp / hit_t)
+            print("hit_tp / hit_p", hit_tp / hit_p)
+
             effs = (hit_tp / hit_t >= wp) & both_valid
             purs = (hit_tp / hit_p >= wp) & both_valid
 
+            print("effs.float().sum(-1)", effs.float().sum(-1))
+            print("true_valid.float().sum(-1)", true_valid.float().sum(-1))
+            print("purs.float().sum(-1)", purs.float().sum(-1))
+            print("pred_valid.float().sum(-1)",  pred_valid.float().sum(-1))
+
             roi_effs = effs.float().sum(-1) / true_valid.float().sum(-1)
             roi_purs = purs.float().sum(-1) / pred_valid.float().sum(-1)
+
+            print("roi_effs", roi_effs)
+            print("roi_purs", roi_purs)
 
             mean_eff = roi_effs.nanmean()
             mean_pur = roi_purs.nanmean()

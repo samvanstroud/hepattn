@@ -112,6 +112,10 @@ class TrackMLDataset(Dataset):
         hits, particles = self.load_event(idx)
         num_particles = len(particles)
 
+        # # Valid mask is all True for the feature-specific subset
+        # inputs["hit_valid"] = torch.full((len(hits),), True).unsqueeze(0)
+        # targets["hit_valid"] = inputs[f"hit_valid"]
+        
         # Build the input hits
         for feature, fields in self.inputs.items():
             # Determine per-feature hit subset
@@ -126,6 +130,14 @@ class TrackMLDataset(Dataset):
 
             for field in fields:
                 inputs[f"{feature}_{field}"] = torch.from_numpy(feature_hits[field].values).unsqueeze(0).half()
+
+        # Limit the number of particles to event_max_num_particles
+        if num_particles > self.event_max_num_particles:
+            rank_zero_info(
+                f"Event {idx} has {num_particles} particles, limiting to {self.event_max_num_particles}"
+            )
+            particles = particles.iloc[: self.event_max_num_particles]
+            num_particles = self.event_max_num_particles
 
         # Build the targets for whether a particle slot is used or not
         targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
@@ -142,7 +154,8 @@ class TrackMLDataset(Dataset):
         hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
 
         # Create the mask targets
-        targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+        # targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+        targets["particle_key_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
         # Create the hit filter targets
         for target_feature, fields in self.targets.items():
@@ -207,8 +220,13 @@ class TrackMLDataset(Dataset):
             with h5py.File(self.hit_eval_path, "r") as hit_eval_file:
                 assert str(self.sample_ids[idx]) in hit_eval_file, f"Key {self.sample_ids[idx]} not found in file {self.hit_eval_path}"
 
+                hit_filter_eval = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/"]
+                if "hit_on_valid_particle" in hit_filter_eval.keys():
+                    hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
+                else:
+                    hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/key_on_valid_particle"][0]
+   
                 # The dataset has shape (1, num_hits)
-                hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
                 hits = hits[hit_filter_pred]
 
         # TODO: Add back truth based hit filtering
@@ -234,61 +252,62 @@ class TrackMLDataset(Dataset):
 
         return hits, particles
 
-    def _generate_dummy_data(self, idx):
-        """Generate completely random dummy data for CI testing."""
-        inputs = {}
-        targets = {}
+    # def _generate_dummy_data(self, idx):
+    #     """Generate completely random dummy data for CI testing."""
+    #     inputs = {}
+    #     targets = {}
 
-        # Create random number generator
-        rng = np.random.default_rng(self.sampling_seed + idx)
+    #     # Create random number generator
+    #     rng = np.random.default_rng(self.sampling_seed + idx)
 
-        # Generate random number of hits (between 10 and 100)
-        num_hits = rng.integers(10, 101)
+    #     # Generate random number of hits (between 10 and 100)
+    #     num_hits = rng.integers(10, 101)
 
-        # Generate random number of particles (up to event_max_num_particles)
-        num_particles = rng.integers(1, min(self.event_max_num_particles + 1, 101))
+    #     # Generate random number of particles (up to event_max_num_particles)
+    #     num_particles = rng.integers(1, min(self.event_max_num_particles + 1, 101))
 
-        # Build the input hits with random data
-        for feature, fields in self.inputs.items():
-            inputs[f"{feature}_valid"] = torch.full((num_hits,), True).unsqueeze(0)
-            targets[f"{feature}_valid"] = inputs[f"{feature}_valid"]
+    #     # Build the input hits with random data
+    #     for feature, fields in self.inputs.items():
+    #         inputs[f"{feature}_valid"] = torch.full((num_hits,), True).unsqueeze(0)
+    #         targets[f"{feature}_valid"] = inputs[f"{feature}_valid"]
 
-            for field in fields:
-                # Generate random normal data for all fields
-                data = rng.standard_normal(num_hits)
-                inputs[f"{feature}_{field}"] = torch.from_numpy(data).unsqueeze(0).to(torch.float32)
+    #         for field in fields:
+    #             # Generate random normal data for all fields
+    #             data = rng.standard_normal(num_hits)
+    #             inputs[f"{feature}_{field}"] = torch.from_numpy(data).unsqueeze(0).to(torch.float32)
 
-        # Build the targets for whether a particle slot is used or not
-        targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
-        targets["particle_valid"][:num_particles] = True
-        targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
+    #     # Build the targets for whether a particle slot is used or not
+    #     targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
+    #     targets["particle_valid"][:num_particles] = True
+    #     targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
 
-        # Build dummy particle IDs
-        particle_ids = torch.arange(num_particles, dtype=torch.long)
-        particle_ids = torch.cat([particle_ids, -999 * torch.ones(self.event_max_num_particles - num_particles)])
+    #     # Build dummy particle IDs
+    #     particle_ids = torch.arange(num_particles, dtype=torch.long)
+    #     particle_ids = torch.cat([particle_ids, -999 * torch.ones(self.event_max_num_particles - num_particles)])
 
-        # Assign random particle IDs to hits
-        hit_particle_ids = torch.randint(0, num_particles, (num_hits,))
+    #     # Assign random particle IDs to hits
+    #     hit_particle_ids = torch.randint(0, num_particles, (num_hits,))
 
-        # Create the mask targets
-        targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+    #     # Create the mask targets
+    #     targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+    #     targets["particle_key_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
-        # Create the hit filter targets (random boolean)
-        targets["hit_on_valid_particle"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
+    #     # Create the hit filter targets (random boolean)
+    #     targets["hit_on_valid_particle"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
 
-        # Add sample ID
-        targets["sample_id"] = torch.tensor([idx], dtype=torch.int32)
+    #     # Add sample ID
+    #     targets["sample_id"] = torch.tensor([idx], dtype=torch.int32)
 
-        # Build the regression targets
-        if "particle" in self.targets:
-            for field in self.targets["particle"]:
-                # Generate random particle data
-                x = torch.full((self.event_max_num_particles,), torch.nan)
-                data = rng.standard_normal(num_particles)
-                x[:num_particles] = torch.from_numpy(data)
-                targets[f"particle_{field}"] = x.unsqueeze(0)
+    #     # Build the regression targets
+    #     if "particle" in self.targets:
+    #         for field in self.targets["particle"]:
+    #             # Generate random particle data
+    #             x = torch.full((self.event_max_num_particles,), torch.nan)
+    #             data = rng.standard_normal(num_particles)
+    #             x[:num_particles] = torch.from_numpy(data)
+    #             targets[f"particle_{field}"] = x.unsqueeze(0)
 
-        return inputs, targets
+    #     return inputs, targets
 
 
 class TrackMLDataModule(LightningDataModule):
