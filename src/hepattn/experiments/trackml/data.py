@@ -115,14 +115,18 @@ class TrackMLDataset(Dataset):
         # # Valid mask is all True for the feature-specific subset
         # inputs["hit_valid"] = torch.full((len(hits),), True).unsqueeze(0)
         # targets["hit_valid"] = inputs[f"hit_valid"]
-        
-        # Build the input hits
+
+        # Build the input hits and collect feature-specific hit subsets
+        feature_hit_subsets = []
         for feature, fields in self.inputs.items():
             # Determine per-feature hit subset
             if self.feature_volume_ids is not None and feature in self.feature_volume_ids:
                 feature_hits = hits[hits["volume_id"].isin(self.feature_volume_ids[feature])]
             else:
                 feature_hits = hits
+
+            # Store the feature hits for later merging
+            feature_hit_subsets.append(feature_hits)
 
             # Valid mask is all True for the feature-specific subset
             inputs[f"{feature}_valid"] = torch.full((len(feature_hits),), True).unsqueeze(0)
@@ -131,11 +135,13 @@ class TrackMLDataset(Dataset):
             for field in fields:
                 inputs[f"{feature}_{field}"] = torch.from_numpy(feature_hits[field].values).unsqueeze(0).half()
 
+        # Create merged hit order that matches what the model will use
+        # This is the same order as concatenating feature_hit_subsets in the same order as self.inputs
+        merged_hits = pd.concat(feature_hit_subsets, ignore_index=True)
+
         # Limit the number of particles to event_max_num_particles
         if num_particles > self.event_max_num_particles:
-            rank_zero_info(
-                f"Event {idx} has {num_particles} particles, limiting to {self.event_max_num_particles}"
-            )
+            rank_zero_info(f"Event {idx} has {num_particles} particles, limiting to {self.event_max_num_particles}")
             particles = particles.iloc[: self.event_max_num_particles]
             num_particles = self.event_max_num_particles
 
@@ -151,16 +157,18 @@ class TrackMLDataset(Dataset):
 
         # Fill in empty slots with -1s and get the IDs of the particle on each hit
         particle_ids = torch.cat([particle_ids, -999 * torch.ones(self.event_max_num_particles - len(particle_ids))])
-        hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
+
+        # Use the merged hit order for creating particle targets
+        hit_particle_ids = torch.from_numpy(merged_hits["particle_id"].values)
 
         # Create the mask targets
         # targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
         targets["particle_key_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
-        # Create the hit filter targets
+        # Create the hit filter targets using the merged hit order
         for target_feature, fields in self.targets.items():
             if "on_valid_particle" in fields:
-                targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy()).unsqueeze(0)
+                targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(merged_hits["on_valid_particle"].to_numpy()).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)
@@ -221,11 +229,11 @@ class TrackMLDataset(Dataset):
                 assert str(self.sample_ids[idx]) in hit_eval_file, f"Key {self.sample_ids[idx]} not found in file {self.hit_eval_path}"
 
                 hit_filter_eval = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/"]
-                if "hit_on_valid_particle" in hit_filter_eval.keys():
+                if "hit_on_valid_particle" in hit_filter_eval:
                     hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
                 else:
                     hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/key_on_valid_particle"][0]
-   
+
                 # The dataset has shape (1, num_hits)
                 hits = hits[hit_filter_pred]
 
