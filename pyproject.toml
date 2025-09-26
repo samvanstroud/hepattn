@@ -83,7 +83,7 @@ libc = "2.28"
 cuda = "12.3"
 
 [tool.pixi.dependencies]
-gxx = ">=14.3.0,<14.4"
+gxx = ">=15.1,<15.2"
 git = ">=2.51.0,<3"
 git-lfs = ">=3.7.0,<4"
 ninja = ">=1.13.1,<2"
