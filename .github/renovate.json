@@ -3,20 +3,14 @@
     "extends": [
         "config:recommended"
     ],
-    "packageRules": [
-        {
-            "description": "Ignore specific packages that should be updated manually",
-            "matchPackageNames": [
-                "packaging",
-                "cuda",
-                "torch",
-                "lightning",
-                "jsonargparse",
-                "comet-ml",
-                "ruff"
-            ],
-            "enabled": false
-        }
+    "ignoreDeps": [
+        "packaging",
+        "cuda",
+        "torch",
+        "lightning",
+        "jsonargparse",
+        "comet-ml",
+        "ruff"
     ],
     "lockFileMaintenance": {
         "enabled": true
