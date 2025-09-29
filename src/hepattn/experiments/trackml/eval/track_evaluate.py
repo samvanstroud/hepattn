@@ -112,7 +112,7 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None):
             continue
         mask_bytes = mask.tobytes()
         if mask_bytes in seen_masks:
-            tracks.loc[i, "duplicates"] = True
+            tracks.loc[i, "duplicate"] = True
             tracks.loc[i, "eff_dm"] = False
             tracks.loc[i, "eff_perfect"] = False
             tracks.loc[i, "eff_lhc"] = False
