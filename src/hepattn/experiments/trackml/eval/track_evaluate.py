@@ -59,7 +59,7 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None):
                         tracks["track_pz"] / np.sqrt(tracks["track_px"] ** 2 + tracks["track_py"] ** 2 + tracks["track_pz"] ** 2)
                     )
     for x in particle_targets:
-        parts[x] = np.array(np.array(f[idx]["targets"][x][:][0]))
+        parts[x] = np.array(f[idx]["targets"][x][:][0])
 
     # extract hit mask and its target
     # predicted tracks and associated hits, shape = (n_max_particles, n_hits)
