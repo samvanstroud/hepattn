@@ -54,12 +54,14 @@ def binned(selection, qty, bin_edges, underflow=True, overflow=True, binomial=Fa
         valid_n = np.sum(in_pt_bin)
         # calculate SEM
         bin_n = 0 if total_n == 0 else valid_n / total_n
-        if binomial:
+        if total_n == 0:
+            bin_err = 0.0
+        elif binomial:
             # calculate (sqrt)variance of the sample mean
             bin_err = np.sqrt(bin_n * (1 - bin_n) / total_n)
         else:
             # calculate SEM
-            bin_err = 0 if total_n == 0 else np.std(in_pt_bin) / np.sqrt(total_n)
+            bin_err = np.std(in_pt_bin) / np.sqrt(total_n)
         bin_count.append(bin_n)
         bin_error.append(bin_err)
         
