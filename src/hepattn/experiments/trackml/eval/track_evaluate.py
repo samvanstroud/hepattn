@@ -149,8 +149,6 @@ def load_events(fname, num_events=None, randomize=False, index_list=None, eta_cu
         Predicted information of each track in an event. shape = (n_events * n_max_particles, )
     parts: DataFrame
         Truth information of each track in this event. shape = (n_events * n_max_particles, )
-    metrics: dict
-        dict containing track matching metrics.
 
     """
 
