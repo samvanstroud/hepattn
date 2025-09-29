@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 
 
-def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=["particle_pt", "particle_eta", "particle_phi"]):
+def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None):
+
     """Load an event from an evaluation file and create a DataFrame
 
     Arguments:
@@ -26,8 +27,13 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=["particle_pt", "
     tracks: DataFrame
         Predicted information of each track in an event. shape = (n_max_particles, )
     parts: DataFrame
-        Truth information of each track in this event. shape = (n_max_particles, ).
+        Truth information of each track in this event. shape = (n_max_particles, )
+
     """
+
+    if particle_targets is None:
+        particle_targets = ["particle_pt", "particle_eta", "particle_phi"]
+
     # load hit masks, targets,  and declare DataFrame for tracks, particles
     tracks = pd.DataFrame()
     parts = pd.DataFrame()
@@ -56,28 +62,35 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=["particle_pt", "
         parts[x] = np.array(np.array(f[idx]["targets"][x][:][0]))
 
     # extract hit mask and its target
-    masks = np.array(
-        f[idx]["preds"]["final"]["track_hit_valid"]["track_hit_valid"][:][0]
-    )  # predicted tracks and associated hits, shape = (n_max_particles, n_hits)
-    targets = np.array(f[idx]["targets"]["particle_hit_valid"][:][0])  # truth tracks and associated hits, shape = (n_max_particles, n_hits)
+    # predicted tracks and associated hits, shape = (n_max_particles, n_hits)
+    masks = np.array(f[idx]["preds"]["final"]["track_hit_valid"]["track_hit_valid"][:][0])
+    # truth tracks and associated hits, shape = (n_max_particles, n_hits)
+    targets = np.array(f[idx]["targets"]["particle_hit_valid"][:][0])
 
     # match hit mask to target
-    tracks["n_matched_hits"] = np.sum(
-        masks & targets, axis=-1
-    )  # number of predicted hits that match true hits (true positive hit), shape = (n_max_particles, )
-    tracks["n_pred_hits"] = np.sum(masks, axis=-1)  # number of predicted hits for each track (retained hits), shape = (n_max_particles, )
-    parts["n_true_hits"] = np.sum(targets, axis=-1)  # number of truth hits for each track (true hits), shape = (n_max_particles, )
+    # number of predicted hits that match true hits (true positive hit), shape = (n_max_particles, )
+    tracks["n_matched_hits"] = np.sum(masks & targets, axis=-1)
+    # number of predicted hits for each track (retained hits), shape = (n_max_particles, )
+    tracks["n_pred_hits"] = np.sum(masks, axis=-1)
+    # number of truth hits for each track (true hits), shape = (n_max_particles, )
+    parts["n_true_hits"] = np.sum(targets, axis=-1)
+    
     # calculate track matching metrics
-    precision = np.where(tracks["n_pred_hits"] > 0, tracks["n_matched_hits"] / tracks["n_pred_hits"], 0)  # true positives / predicted positives
-    recall = np.where(parts["n_true_hits"] > 0, tracks["n_matched_hits"] / parts["n_true_hits"], 0)  # true positives / positives
+    # true positives / predicted positives
+    precision = np.where(tracks["n_pred_hits"] > 0, tracks["n_matched_hits"] / tracks["n_pred_hits"], 0)
+    # true positives / positives
+    recall = np.where(parts["n_true_hits"] > 0, tracks["n_matched_hits"] / parts["n_true_hits"], 0)
     tracks["precision"] = precision
     tracks["recall"] = recall
     # perfect match scheme: all hits are assigned to true track (recall and precision == 1)
     tracks["eff_perfect"] = (precision == 1) & (recall == 1)
+    parts["eff_perfect"] = (precision == 1) & (recall == 1)
     # Double Majority scheme: 50% of hits are assigned to true track (recall and precision > 0.5)
     tracks["eff_dm"] = (precision > 0.5) & (recall > 0.5)
+    parts["eff_dm"] = (precision > 0.5) & (recall > 0.5)
     # LHC eff: precision > 0.75
     tracks["eff_lhc"] = precision > 0.75
+    parts["eff_lhc"] = precision > 0.75
     # tag particles that are valid
     parts["valid"] = np.array(f[idx]["targets"]["particle_valid"][:][0])
     parts["reconstructable"] = (
@@ -109,9 +122,8 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=["particle_pt", "
     return tracks, parts
 
 
-def load_events(
-    fname, num_events=None, randomize=False, index_list=None, eta_cut=2.5, pt_cut=1, particle_targets=["particle_pt", "particle_eta", "particle_phi"]
-):
+def load_events(fname, num_events=None, randomize=False, index_list=None, eta_cut=2.5, pt_cut=1, particle_targets=None):
+
     """Sequentially load events from an evaluation file and aggregate into a single DataFrame
 
     Arguments:
@@ -139,7 +151,12 @@ def load_events(
         Truth information of each track in this event. shape = (n_events * n_max_particles, )
     metrics: dict
         dict containing track matching metrics.
+
     """
+
+    if particle_targets is None:
+        particle_targets=["particle_pt", "particle_eta", "particle_phi"]
+        
     f = h5py.File(fname)
     if num_events is None:
         num_events = len(f.keys())
@@ -165,4 +182,5 @@ def load_events(
             tracks = pd.concat([tracks, tmp_tracks])
             parts = pd.concat([parts, tmp_parts])
         print("loaded event #" + idx)
+
     return (tracks, parts)

@@ -8,6 +8,7 @@ import torch
 
 
 def load_event(f, idx, write_inputs=None, write_parts=True, threshold=0.1):
+
     """Load an event from an evaluation file and create a DataFrame
 
     Arguments:
@@ -18,6 +19,10 @@ def load_event(f, idx, write_inputs=None, write_parts=True, threshold=0.1):
         the event identifier (e.g. "29800" to "29899")
     write_inputs: list[str]
         specify a list of input features to load
+    write_parts: bool
+        specify whether to load particle level information
+    threshold: float
+        threshold value between [0,1] set on discriminant to identify valid hits
 
     Returns:
     --------
@@ -27,7 +32,9 @@ def load_event(f, idx, write_inputs=None, write_parts=True, threshold=0.1):
         Truth information of each hit in an event. shape = (hits, )
     parts: DataFrame
         Truth information of particles in this event. shape = (max_particles, )
+
     """
+
     hits = pd.DataFrame()
     targets = pd.DataFrame()
 
@@ -58,6 +65,7 @@ def load_event(f, idx, write_inputs=None, write_parts=True, threshold=0.1):
 
 
 def eval_event(hits, targets, threshold=0.1):
+
     """Calculate matrics for binary classification task
 
     Arguments:
@@ -73,7 +81,9 @@ def eval_event(hits, targets, threshold=0.1):
     ----------
     metrics: dict
         dict containing confusion matrix elements and precision-recall curve
+
     """
+
     y_pred = np.where(hits["score_sigmoid"] >= threshold, True, False)
     y_true = targets["hit_on_valid_particle"]
     metrics = dict()
@@ -99,6 +109,7 @@ def eval_event(hits, targets, threshold=0.1):
 
 
 def load_events(fname, num_events=None, randomize=False, index_list=None, write_inputs=None, write_parts=True, threshold=0.1):
+
     """Sequentially load events from an evaluation file and aggregate into a single DataFrame
 
     Arguments:
@@ -113,6 +124,10 @@ def load_events(fname, num_events=None, randomize=False, index_list=None, write_
         specify a list of indexes to load
     write_inputs: list[str]
         specify a list of input features to load
+    write_parts: bool
+        specify whether to load particle level information
+    threshold: float
+        threshold value between [0,1] set on discriminant to identify valid hits
 
     Returns:
     --------
@@ -126,6 +141,7 @@ def load_events(fname, num_events=None, randomize=False, index_list=None, write_
         dict containing confusion matrix elements and precision-recall curve
 
     """
+
     f = h5py.File(fname)
     if num_events is None:
         num_events = len(f.keys())
@@ -153,4 +169,5 @@ def load_events(fname, num_events=None, randomize=False, index_list=None, write_
             parts = pd.concat([parts, tmp_parts])
         print("loaded event #" + idx)
     metrics = eval_event(hits, targets)
+
     return (hits, targets, parts, metrics)
