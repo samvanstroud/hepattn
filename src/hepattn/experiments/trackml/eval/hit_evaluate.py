@@ -87,7 +87,7 @@ def eval_event(hits, targets, threshold=0.1):
     y_pred = np.where(hits["score_sigmoid"] >= threshold, True, False)
     y_true = targets["hit_on_valid_particle"]
     metrics = dict()
-    tn, fp, fn, tp = sklearn.metrics.confusion_matrix(y_pred, y_true, normalize="all").ravel().tolist()
+    tn, fp, fn, tp = sklearn.metrics.confusion_matrix(y_true, y_pred, normalize="all").ravel().tolist()
     metrics["true_negative_rate"] = tn
     metrics["false_positive_rate"] = fp
     metrics["false_negative_rate"] = fn
