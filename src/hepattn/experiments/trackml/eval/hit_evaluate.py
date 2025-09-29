@@ -155,7 +155,7 @@ def load_events(fname, num_events=None, randomize=False, index_list=None, write_
     if index_list is not None:
         id_list = index_list
     elif randomize and (num_events < len(f.keys())):
-        id_list = np.random.choice(list(f.keys(), num_events, replace=False), num_events)
+        id_list = np.random.choice(list(f.keys()), size=num_events, replace=False)
     else:
         id_list = list(f.keys())
 
