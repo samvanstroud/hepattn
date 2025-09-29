@@ -169,5 +169,5 @@ def load_events(fname, num_events=None, randomize=False, index_list=None, write_
             parts = pd.concat([parts, tmp_parts])
         print("loaded event #" + idx)
     metrics = eval_event(hits, targets)
-
+    f.close()
     return (hits, targets, parts, metrics)
