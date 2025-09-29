@@ -61,7 +61,7 @@ def load_event(f, idx, write_inputs=None, write_parts=True, threshold=0.1):
             parts["pred_hits"] = np.sum(hit_particle[:, hits["score_bool"]], axis=-1)
             parts["valid"] = np.array(f[idx]["targets"]["particle_valid"][:][0])
 
-    return hits, targets, parts
+    return hits, targets, parts if write_parts else None
 
 
 def eval_event(hits, targets, threshold=0.1):
