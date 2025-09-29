@@ -51,10 +51,10 @@ def load_event(f, idx, write_inputs=None, write_parts=True, threshold=0.1):
 
     if (write_inputs is not None) or (write_parts):
         hit_particle = np.array(f[idx]["targets"]["particle_hit_valid"][:][0])
+        targets["particle_id"] = np.argmax(hit_particle, axis=0)
         if write_inputs is not None:
             for x in write_inputs:
                 hits[x] = np.array(f[idx]["inputs"][x][:][0])
-                targets["particle_id"] = np.argmax(hit_particle, axis=0)
         if write_parts:
             parts = pd.DataFrame()
             parts["particle_pt"] = np.array(f[idx]["targets"]["particle_pt"][:][0])
