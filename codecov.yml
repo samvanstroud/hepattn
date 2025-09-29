@@ -1,0 +1,17 @@
+coverage:
+  status:
+    project:
+      default:
+        after_n_builds: 2
+        flags:
+          - unit
+          - integration
+    patch:
+      default:
+        after_n_builds: 2
+        flags:
+          - unit
+          - integration
+
+comment:
+  after_n_builds: 2

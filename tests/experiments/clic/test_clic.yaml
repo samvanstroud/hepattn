@@ -28,10 +28,10 @@ data:
   valid_path: dummy
   test_path: dummy
 
-  num_workers: 2
-  num_train: 10
-  num_test: 10
-  num_val: 10
+  num_workers: 4
+  num_train: 4
+  num_val: 4
+  num_test: 4
 
   batch_size: 1
   incidence_cutval: 0.01
@@ -39,25 +39,22 @@ data:
   scale_dict_path: &scale_dict_path src/hepattn/experiments/clic/configs/clic_var_transform.yaml
 
 trainer:
-  fast_dev_run: 2
-  max_epochs: 200
+  max_epochs: 1
   accelerator: cpu
   devices: 1
   precision: bf16-mixed
   gradient_clip_val: 0.1
   log_every_n_steps: 50
-  default_root_dir: logs
+  default_root_dir: test_logs
   enable_progress_bar: True
   logger: false
 
   callbacks:
-    - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
         save_last: true
-    - class_path: hepattn.experiments.clic.PflowPredictionWriter
     - class_path: lightning.pytorch.callbacks.ModelSummary
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
@@ -70,7 +67,7 @@ model:
     initial: 1e-6
     max: 8e-5
     end: 1e-6
-    pct_start: 0.05
+    pct_start: 0.0
     weight_decay: 1e-4
     skip_scheduler: false
 
