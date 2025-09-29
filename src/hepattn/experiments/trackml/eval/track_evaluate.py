@@ -180,5 +180,5 @@ def load_events(fname, num_events=None, randomize=False, index_list=None, eta_cu
             tracks = pd.concat([tracks, tmp_tracks])
             parts = pd.concat([parts, tmp_parts])
         print("loaded event #" + idx)
-
+    f.close()
     return (tracks, parts)
