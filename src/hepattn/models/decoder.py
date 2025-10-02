@@ -164,9 +164,10 @@ class MaskFormerDecoder(nn.Module):
                     if len(attn_masks) > 1:
                         raise ValueError(f"In merged input mode, expected only one attention mask, got {len(attn_masks)}")
                     attn_mask = next(iter(attn_masks.values()))
+                    assert attn_mask.dim() == 3, f"attn mask should be of shape (batch, num_queries, num_constituents), attn_mask.dim()={attn_mask.dim()}"
                     # Ensure proper shape: (batch, num_queries, num_constituents)
-                    if attn_mask.dim() == 2:  # (batch, num_queries) -> (batch, num_queries, num_constituents)
-                        attn_mask = attn_mask.unsqueeze(-1).expand(-1, -1, num_constituents)
+                    # if attn_mask.dim() == 2:  # (batch, num_queries) -> (batch, num_queries, num_constituents)
+                    #     attn_mask = attn_mask.unsqueeze(-1).expand(-1, -1, num_constituents)
                 else:
                     # Original logic for separate input types
                     attn_mask = torch.full((batch_size, self.num_queries, num_constituents), False, device=x["key_embed"].device)
@@ -177,7 +178,7 @@ class MaskFormerDecoder(nn.Module):
                 # True values indicate a slot will be included in the attention computation, while False will be ignored.
                 # If the attn mask is completely invalid for a given query, allow it to attend everywhere
                 # TODO: check and see see if this is really necessary
-                attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
+                # attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
 
             if attn_mask is not None and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask

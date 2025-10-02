@@ -165,10 +165,14 @@ class TrackMLDataset(Dataset):
         # targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
         targets["particle_key_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
+        for i, feature in enumerate(self.inputs.keys()):
+            feature_hits = feature_hit_subsets[i]
+            feature_particle_ids = torch.from_numpy(feature_hits["particle_id"].values)
+            targets[f"particle_{feature}_valid"] = (particle_ids.unsqueeze(-1) == feature_particle_ids.unsqueeze(-2)).unsqueeze(0)
+            targets[f"{feature}_on_valid_particle"] = torch.from_numpy(feature_hits["on_valid_particle"].to_numpy()).unsqueeze(0)
+
         # Create the hit filter targets using the merged hit order
-        for target_feature, fields in self.targets.items():
-            if "on_valid_particle" in fields:
-                targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(merged_hits["on_valid_particle"].to_numpy()).unsqueeze(0)
+        targets["key_on_valid_particle"] = torch.from_numpy(merged_hits["on_valid_particle"].to_numpy()).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)

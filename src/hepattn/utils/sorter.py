@@ -3,9 +3,10 @@ from torch import Tensor, nn
 
 
 class Sorter(nn.Module):
-    def __init__(self, input_sort_field: str) -> None:
+    def __init__(self, input_sort_field: str, unified_decoding: bool = False) -> None:
         super().__init__()
         self.input_sort_field = input_sort_field
+        self.unified_decoding = unified_decoding
         self.input_names = None  # set by MaskFormer
 
     def sort_inputs(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -27,7 +28,7 @@ class Sorter(nn.Module):
 
                 # input type masks
                 elif "key_is_" in key:
-                    if input_name != "key":
+                    if (input_name != "key"):
                         continue
                     sort_dim = 1
                     this_sort_idx = sort_idx
@@ -39,7 +40,7 @@ class Sorter(nn.Module):
 
                 else:
                     raise ValueError(f"Unexpected key {key} for input type {input_name}")
-
+                
                 shape_before = x.shape
                 inputs[key] = torch.gather(x, sort_dim, this_sort_idx)
                 assert inputs[key].shape == shape_before, f"Shape mismatch after sorting: {inputs[key].shape} != {shape_before} for key {key}"
@@ -47,7 +48,8 @@ class Sorter(nn.Module):
         return inputs
 
     def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
-        for input_name in self.input_names:
+        input_names = [*self.input_names, "key"]
+        for input_name in input_names:
             sort_idx = torch.argsort(sort_fields[f"{input_name}_{self.input_sort_field}"], dim=-1)
 
             for key, x in targets.items():

@@ -31,34 +31,34 @@ class TrackMLTracker(ModelWrapper):
         true_valid = targets["particle_valid"]
 
         # Set the masks of any track slots that are not used as null
-        pred_hit_masks = preds[f"track_{self.input_hit}_valid"][f"track{self.input_hit}_valid"] & pred_valid.unsqueeze(-1)
+        pred_hit_masks = preds[f"track_{self.input_hit}_valid"][f"track_{self.input_hit}_valid"] & pred_valid.unsqueeze(-1)
         true_hit_masks = targets[f"particle_{self.input_hit}_valid"] & true_valid.unsqueeze(-1)
 
         # For pixel-only efficiency and purity comparison, filter to only pixel hits
         # This works by identifying which hits correspond to pixel features vs strip features
         # based on the feature structure and hit ordering in the merged dataset
 
-        # Get the number of hits for each feature type
-        pixel_hit_count = 0
-
-        # Count hits for each feature type based on the input structure
-        for feature_name in ["pixel", "hit"]:  # "hit" is used for pixel-only models
-            if f"{feature_name}_valid" in targets:
-                pixel_hit_count = targets[f"{feature_name}_valid"].sum().item()
-                break
-
-        # Create pixel hit mask based on the hit ordering
-        # In the merged dataset, pixel hits come first, then strip hits
+        # Build a per-sample pixel mask (B, total_hits), assuming pixel hits are first in the merge order
+        batch_size = pred_hit_masks.shape[0]
         total_hits = pred_hit_masks.shape[-1]
-        pixel_hit_mask = torch.zeros(total_hits, dtype=torch.bool, device=pred_hit_masks.device)
+        # Prefer explicit pixel counts if available; fall back to generic hit counts (for pixel-only models)
+        if "pixel_valid" in targets:
+            pixel_counts = targets["pixel_valid"].sum(dim=-1).to(torch.long)  # (B,)
+        elif "hit_valid" in targets:
+            pixel_counts = targets["hit_valid"].sum(dim=-1).to(torch.long)  # (B,)
+        else:
+            # Fallback: treat all hits as non-pixel
+            pixel_counts = torch.zeros(batch_size, dtype=torch.long, device=pred_hit_masks.device)
 
-        if pixel_hit_count > 0:
-            # Pixel hits are the first pixel_hit_count hits in the merged dataset
-            pixel_hit_mask[:pixel_hit_count] = True
+        pixel_hit_mask = torch.zeros(batch_size, total_hits, dtype=torch.bool, device=pred_hit_masks.device)
+        for b in range(batch_size):
+            count_b = int(pixel_counts[b].item())
+            if count_b > 0:
+                pixel_hit_mask[b, :count_b] = True
 
         # Filter hit masks to only include pixel hits
-        pred_pixel_masks = pred_hit_masks & pixel_hit_mask.unsqueeze(0).unsqueeze(0)
-        true_pixel_masks = true_hit_masks & pixel_hit_mask.unsqueeze(0).unsqueeze(0)
+        pred_pixel_masks = pred_hit_masks & pixel_hit_mask.unsqueeze(1)
+        true_pixel_masks = true_hit_masks & pixel_hit_mask.unsqueeze(1)
 
         # Calculate the true/false positive rates between the predicted and true masks
         # Number of hits that were correctly assigned to the track (all hits)
@@ -80,52 +80,24 @@ class TrackMLTracker(ModelWrapper):
         # True number of pixel hits on the track
         pixel_hit_t = true_pixel_masks.sum(-1)
 
-        print("hit_tp", hit_tp)
-        print("hit_t", hit_t)
-        print("hit_p", hit_p)
-        print("pixel_hit_tp", pixel_hit_tp)
-        print("pixel_hit_t", pixel_hit_t)
-        print("pixel_hit_p", pixel_hit_p)
-        print("pixel_hit_count", pixel_hit_count)
-        print("total_hits", total_hits)
-        print("pixel_hit_mask.sum()", pixel_hit_mask.sum())
-        print(true_valid.sum())
-        print(pred_valid.sum())
-        print((true_valid & pred_valid).sum())
 
         # Calculate the efficiency and purity at different matching working points
-        for wp in [0.5, 0.75, 1.0]:
+        eps = 1e-6
+        for wp in [0.1, 0.5, 0.75, 1.0]:
             both_valid = true_valid & pred_valid
 
-            print("hit_tp / hit_t", hit_tp / hit_t)
-            print("hit_tp / hit_p", hit_tp / hit_p)
-            print("pixel_hit_tp / pixel_hit_t", pixel_hit_tp / pixel_hit_t)
-            print("pixel_hit_tp / pixel_hit_p", pixel_hit_tp / pixel_hit_p)
 
-            # All hits efficiency and purity
-            effs = (hit_tp / hit_t >= wp) & both_valid
-            purs = (hit_tp / hit_p >= wp) & both_valid
+            # All hits efficiency and purity (safe division)
+            effs = (hit_tp.float() / (hit_t.float() + eps) >= wp) & both_valid
+            purs = (hit_tp.float() / (hit_p.float() + eps) >= wp) & both_valid
 
-            # Pixel-only efficiency and purity
-            pixel_effs = (pixel_hit_tp / pixel_hit_t >= wp) & both_valid
-            pixel_purs = (pixel_hit_tp / pixel_hit_p >= wp) & both_valid
-
-            print("effs.float().sum(-1)", effs.float().sum(-1))
-            print("true_valid.float().sum(-1)", true_valid.float().sum(-1))
-            print("purs.float().sum(-1)", purs.float().sum(-1))
-            print("pred_valid.float().sum(-1)", pred_valid.float().sum(-1))
-            print("pixel_effs.float().sum(-1)", pixel_effs.float().sum(-1))
-            print("pixel_purs.float().sum(-1)", pixel_purs.float().sum(-1))
-
-            roi_effs = effs.float().sum(-1) / true_valid.float().sum(-1)
-            roi_purs = purs.float().sum(-1) / pred_valid.float().sum(-1)
-            roi_pixel_effs = pixel_effs.float().sum(-1) / true_valid.float().sum(-1)
-            roi_pixel_purs = pixel_purs.float().sum(-1) / pred_valid.float().sum(-1)
-
-            print("roi_effs", roi_effs)
-            print("roi_purs", roi_purs)
-            print("roi_pixel_effs", roi_pixel_effs)
-            print("roi_pixel_purs", roi_pixel_purs)
+            # Pixel-only efficiency and purity (safe division)
+            pixel_effs = (pixel_hit_tp.float() / (pixel_hit_t.float() + eps) >= wp) & both_valid
+            pixel_purs = (pixel_hit_tp.float() / (pixel_hit_p.float() + eps) >= wp) & both_valid
+            roi_effs = effs.float().sum(-1) / (true_valid.float().sum(-1) + eps)
+            roi_purs = purs.float().sum(-1) / (pred_valid.float().sum(-1) + eps)
+            roi_pixel_effs = pixel_effs.float().sum(-1) / (true_valid.float().sum(-1) + eps)
+            roi_pixel_purs = pixel_purs.float().sum(-1) / (pred_valid.float().sum(-1) + eps)
 
             mean_eff = roi_effs.nanmean()
             mean_pur = roi_purs.nanmean()
