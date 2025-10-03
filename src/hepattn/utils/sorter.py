@@ -47,7 +47,8 @@ class Sorter(nn.Module):
         return inputs
 
     def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
-        for input_name in self.input_names:
+        input_names = [*self.input_names, "key"]
+        for input_name in input_names:
             sort_idx = torch.argsort(sort_fields[f"{input_name}_{self.input_sort_field}"], dim=-1)
 
             for key, x in targets.items():

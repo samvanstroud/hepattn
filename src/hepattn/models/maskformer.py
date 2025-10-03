@@ -103,6 +103,7 @@ class MaskFormer(nn.Module):
             x[f"key_{self.sorter.input_sort_field}"] = torch.concatenate(
                 [inputs[input_name + "_" + self.sorter.input_sort_field] for input_name in self.input_names], dim=-1
             )
+            inputs[f"key_{self.sorter.input_sort_field}"] = x[f"key_{self.sorter.input_sort_field}"]
             for input_name in self.input_names:
                 field = f"{input_name}_{self.sorter.input_sort_field}"
                 x[field] = inputs[field]
@@ -140,7 +141,8 @@ class MaskFormer(nn.Module):
         # store info about the input sort field for each input type
         if self.sorter is not None:
             sort = self.sorter.input_sort_field
-            sort_dict = {f"{name}_{sort}": inputs[f"{name}_{sort}"] for name in self.input_names}
+            input_names = [*self.input_names, "key"]
+            sort_dict = {f"{name}_{sort}": inputs[f"{name}_{sort}"] for name in input_names}
             outputs["final"][sort] = sort_dict
 
         return outputs
