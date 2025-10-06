@@ -22,50 +22,44 @@ def binned(selection, qty, bin_edges, underflow=True, overflow=True, binomial=Fa
         standard error of the mean for each bin
     """
 
-    # bin particles based on qty (e.g. pT)
-    bin_id = np.full(shape=len(selection), fill_value=-1)
-    
-    # initialize qty bin id
-    bin_count = []
+    # assign bin_id "i" to entries that belong to the i-th bin (starts from 1)
+    bin_id = np.digitize(qty, bin_edges)
+    if underflow:
+        bin_id = np.where(bin_id == 0, 1, bin_id)
+    if overflow:
+        bin_id = np.where(bin_id == len(bin_edges), len(bin_edges)-1, bin_id)
+
+    bin_count = np.bincount(bin_id, minlength=len(bin_edges))[1::]
+    # bin_id starts from 1 but bin_counts starts from 0
     bin_error = []
+    bin_eff = []
 
     for i in range(len(bin_edges) - 1):
-        # find greater than (or equal to) qty bin lower bound
-        lb = np.where(qty >= bin_edges[i], True, False)
-        if underflow and i == 0:
-            # include underflow into 1st bin
-            lb = np.where(qty < bin_edges[0], True, lb)
-        # find lesser than qty bin upper bound
-        ub = np.where(qty < bin_edges[i + 1], True, False)
-        if overflow and i == len(bin_edges) - 2:
-            # include overflow into last bin
-            ub = np.where(qty >= bin_edges[-1], True, ub)
-        # qty window boolean array
-        bin_select = lb & ub
-        # assign bin_id "i" to entries that belongs to the i-th bin
-        bin_id = np.where(bin_select, int(i), bin_id)
-        
         # calculate efficiency
-        # select particles in the i-th bin
-        in_pt_bin = selection[bin_select]
+        # select particles in the i-th bin (starts from 1...)
+        in_pt_bin = selection[bin_id == i + 1]
         # count total entries
-        total_n = len(in_pt_bin)
+        total_n = bin_count[i]
         # count remaining entries
         valid_n = np.sum(in_pt_bin)
-        # calculate SEM
-        bin_n = 0 if total_n == 0 else valid_n / total_n
+
         if total_n == 0:
+            # if bin is empty
+            bin_n = 0
             bin_err = 0.0
         elif binomial:
-            # calculate (sqrt)variance of the sample mean
+            # calculate sqrt(variance) of the sample mean
+            bin_n = valid_n / total_n
             bin_err = np.sqrt(bin_n * (1 - bin_n) / total_n)
         else:
             # calculate SEM
+            bin_n = valid_n / total_n
             bin_err = np.std(in_pt_bin) / np.sqrt(total_n)
-        bin_count.append(bin_n)
+
+        bin_eff.append(bin_n)
         bin_error.append(bin_err)
-        
-    return bin_count, bin_error
+
+    return bin_eff, bin_error
 
 
 def profile_plot(xs, y_span, x_bins, axes, color, label=None, ls="solid"):
@@ -85,7 +79,7 @@ def profile_plot(xs, y_span, x_bins, axes, color, label=None, ls="solid"):
 
     Returns:
     --------
-    
+
     """
 
     for i in range(len(x_bins) - 1):
@@ -97,11 +91,41 @@ def profile_plot(xs, y_span, x_bins, axes, color, label=None, ls="solid"):
                           color=color, alpha=0.15, edgecolor="none"
         )
 
+def hist_plot(xs, bins, range, name, axes, colour, density=True, lw=1.5):
 
-"""
-==============
-TODO: hist plot for regression evaluation
-==============
-def histplot():
+    """Create a histogram plot at specified subplot axes (for regression residuals)
 
-"""
+    Arguments:
+    ----------
+    xs: array_like
+        Input data
+    bins: int
+        Amount of bins
+    range: (float, float)
+        The lower and upper range of the bins.
+    name: str
+        Label of the input data
+    axes: Axes
+        the subplot axes on which plot is created
+    color: str
+        color of histogram outline
+    density: bool
+        specify whether to normalize the histogram
+
+    Returns:
+    --------
+    label: str
+        Formatted label for the input data
+
+    """
+
+    xs_mean = np.mean(xs)
+    # xs_std = np.std(xs)
+    xs_q25 = np.quantile(xs, 0.25)
+    xs_q75 = np.quantile(xs, 0.75)
+    xs_iqr = xs_q75 - xs_q25
+    xs = np.clip(xs, range[0], range[1])
+    label = name + "\n" + rf"$\mu = {xs_mean:.3f}$" + " " + rf"IQR $ = {xs_iqr:.3f}$"
+    axes.hist(xs, bins=bins, histtype="step", color=colour, density=density, lw=lw)
+
+    return label
