@@ -61,8 +61,8 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
                     tracks["track_phi"] = np.arctan2(tracks["track_py"], tracks["track_px"])
                 if "track_pz" in regr_qty:
                     if "track_eta" not in regr_qty:
-                        P = np.sqrt(tracks["track_px"] ** 2 + tracks["track_py"] ** 2 + tracks["track_pz"] ** 2, dtype=np.float128)
-                        tracks["track_eta"] = 0.5 * np.log((P + tracks["track_pz"]) / (P - tracks["track_pz"]), dtype=np.float128)
+                        P = np.sqrt(tracks["track_px"] ** 2 + tracks["track_py"] ** 2 + tracks["track_pz"] ** 2, dtype=np.float64)
+                        tracks["track_eta"] = 0.5 * np.log((P + tracks["track_pz"]) / (P - tracks["track_pz"]), dtype=np.float64)
 
     # extract hit mask and its target
     # predicted tracks and associated hits, shape = (n_max_particles, n_hits)
