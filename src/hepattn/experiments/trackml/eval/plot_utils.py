@@ -107,7 +107,7 @@ def hist_plot(xs, bins, range, name, axes, colour, density=True, lw=1.5):
         Label of the input data
     axes: Axes
         the subplot axes on which plot is created
-    color: str
+    colour: str
         color of histogram outline
     density: bool
         specify whether to normalize the histogram
