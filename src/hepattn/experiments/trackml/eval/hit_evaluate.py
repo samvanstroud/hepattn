@@ -42,7 +42,7 @@ def load_event(f, idx, write_inputs=None, write_parts=None, threshold=0.1):
     targets["event_id"] = int(idx)
 
     hits["score"] = np.array(f[idx]["outputs"]["final"]["hit_filter"]["hit_logit"][:][0])
-    hits["score_sigmoid"] = 1.0 / (1 + np.exp((hits["score"]).to_numpy(dtype=np.float128) * -1.0))
+    hits["score_sigmoid"] = 1.0 / (1 + np.exp((hits["score"]).to_numpy(dtype=np.float64) * -1.0))
     hits["score_bool"] = np.where(hits["score_sigmoid"] < threshold, False, True)
     hits["pred"] = np.array(f[idx]["preds"]["final"]["hit_filter"]["hit_on_valid_particle"][:][0])
 
