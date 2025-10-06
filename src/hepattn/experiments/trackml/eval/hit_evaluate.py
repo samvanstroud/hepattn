@@ -166,12 +166,12 @@ def load_events(fname, index_list=None, randomize=None, write_inputs=None, write
             hits, targets, parts = load_event(f, idx, write_inputs, write_parts, threshold)
             hits_list.append(hits)
             targets_list.append(targets)
-            if write_parts is not None:
+            if write_parts:
                 parts_list.append(parts)
 
         hits = pd.concat(hits_list)
         targets = pd.concat(targets_list)
-        parts = None if write_parts is None else pd.concat(parts_list)
+        parts = None if not write_parts else pd.concat(parts_list)
         metrics = eval_event(hits, targets, threshold)
 
     return (hits, targets, parts, metrics)
