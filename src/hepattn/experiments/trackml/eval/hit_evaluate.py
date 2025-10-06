@@ -4,10 +4,10 @@ import h5py
 import numpy as np
 import pandas as pd
 import sklearn
-import torch
+from tqdm import tqdm
 
 
-def load_event(f, idx, write_inputs=None, write_parts=True, threshold=0.1):
+def load_event(f, idx, write_inputs=None, write_parts=None, threshold=0.1):
 
     """Load an event from an evaluation file and create a DataFrame
 
@@ -20,7 +20,7 @@ def load_event(f, idx, write_inputs=None, write_parts=True, threshold=0.1):
     write_inputs: list[str]
         specify a list of input features to load
     write_parts: bool
-        specify whether to load particle level information
+        specify whether to load truth level particle information (for pt efficiency binning)
     threshold: float
         threshold value between [0,1] set on discriminant to identify valid hits
 
@@ -42,7 +42,7 @@ def load_event(f, idx, write_inputs=None, write_parts=True, threshold=0.1):
     targets["event_id"] = int(idx)
 
     hits["score"] = np.array(f[idx]["outputs"]["final"]["hit_filter"]["hit_logit"][:][0])
-    hits["score_sigmoid"] = torch.tensor(hits["score"]).float().sigmoid().numpy()
+    hits["score_sigmoid"] = 1.0 / (1 + np.exp((hits["score"]).to_numpy(dtype=np.float128) * -1.0))
     hits["score_bool"] = np.where(hits["score_sigmoid"] < threshold, False, True)
     hits["pred"] = np.array(f[idx]["preds"]["final"]["hit_filter"]["hit_on_valid_particle"][:][0])
 
@@ -66,7 +66,7 @@ def load_event(f, idx, write_inputs=None, write_parts=True, threshold=0.1):
 
 def eval_event(hits, targets, threshold=0.1):
 
-    """Calculate matrics for binary classification task
+    """Calculate metrics for binary classification task
 
     Arguments:
     ----------
@@ -92,8 +92,8 @@ def eval_event(hits, targets, threshold=0.1):
     metrics["false_positive_rate"] = fp
     metrics["false_negative_rate"] = fn
     metrics["true_positive_rate"] = tp
-    metrics["precision_score"] = sklearn.metrics.precision_score(y_pred, y_true)
-    metrics["recall_score"] = sklearn.metrics.recall_score(y_pred, y_true)
+    metrics["precision_score"] = sklearn.metrics.precision_score(y_true, y_pred)
+    metrics["recall_score"] = sklearn.metrics.recall_score(y_true, y_pred)
     pre, rec, thr = sklearn.metrics.precision_recall_curve(y_true, hits["score_sigmoid"])
     metrics["roc_eff"] = rec
     metrics["roc_pur"] = pre
@@ -108,7 +108,7 @@ def eval_event(hits, targets, threshold=0.1):
     return metrics
 
 
-def load_events(fname, num_events=None, randomize=False, index_list=None, write_inputs=None, write_parts=True, threshold=0.1):
+def load_events(fname, index_list=None, randomize=None, write_inputs=None, write_parts=True, threshold=0.1):
 
     """Sequentially load events from an evaluation file and aggregate into a single DataFrame
 
@@ -116,12 +116,10 @@ def load_events(fname, num_events=None, randomize=False, index_list=None, write_
     ----------
     fname: str
         filepath of the evaluation file
-    num_events: int
-        number of events to load
-    randomize: bool
-        create a random set of events from evaluation file
     index_list: list[int or str]
         specify a list of indexes to load
+    randomize: int
+        specify the size for a random set of events from evaluation file
     write_inputs: list[str]
         specify a list of input features to load
     write_parts: bool
@@ -142,32 +140,38 @@ def load_events(fname, num_events=None, randomize=False, index_list=None, write_
 
     """
 
-    f = h5py.File(fname)
-    if num_events is None:
-        num_events = len(f.keys())
-
-    if (num_events <= 0) or (not isinstance(num_events, int)):
-        raise ValueError("Only positive integer amounts allowed.")
-
-    if num_events > len(f.keys()):
-        warnings.warn("Requested amount of events exceeds record. Using all %d events." % (len(f.keys())))
-
-    if index_list is not None:
-        id_list = index_list
-    elif randomize and (num_events < len(f.keys())):
-        id_list = np.random.choice(list(f.keys()), size=num_events, replace=False)
-    else:
-        id_list = list(f.keys())
-
-    for i, idx in enumerate(id_list):
-        if i == 0:
-            hits, targets, parts = load_event(f, idx, write_inputs, write_parts, threshold)
+    with h5py.File(fname, "r") as f:
+        if index_list is not None:
+            # index list takes priority over randomized sample
+            id_list = index_list
+        elif randomize is not None:
+            # if index list is not provided, generate a random sample
+            if (randomize <= 0) or (not isinstance(randomize, int)):
+                raise ValueError("Only positive integer amounts allowed.")
+            elif randomize > len(f.keys()):
+                warnings.warn("Requested amount of events exceeds record. Using all %d events." % (len(f.keys())))
+                # if requested amount exceeds record, use all events sequentially
+                id_list = list(f.keys())
+            else:
+                # generate a random list of indices
+                id_list = np.random.choice(list(f.keys()), size=randomize, replace=False)
         else:
-            tmp_hits, tmp_targets, tmp_parts = load_event(f, idx, write_inputs, write_parts, threshold)
-            hits = pd.concat([hits, tmp_hits])
-            targets = pd.concat([targets, tmp_targets])
-            parts = pd.concat([parts, tmp_parts])
-        print("loaded event #" + idx)
-    metrics = eval_event(hits, targets)
-    f.close()
+            id_list = list(f.keys())
+
+        hits_list = []
+        targets_list = []
+        parts_list = []
+
+        for i, idx in tqdm(enumerate(id_list), total=len(id_list), desc="Events loaded"):
+            hits, targets, parts = load_event(f, idx, write_inputs, write_parts, threshold)
+            hits_list.append(hits)
+            targets_list.append(targets)
+            if write_parts is not None:
+                parts_list.append(parts)
+
+        hits = pd.concat(hits_list)
+        targets = pd.concat(targets_list)
+        parts = None if write_parts is None else pd.concat(parts_list)
+        metrics = eval_event(hits, targets, threshold)
+
     return (hits, targets, parts, metrics)
