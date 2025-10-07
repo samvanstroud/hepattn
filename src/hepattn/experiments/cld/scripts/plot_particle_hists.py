@@ -4,11 +4,11 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
-from hepattn.utils.plotting import plot_hist_to_ax
 from tqdm import tqdm
 
 from hepattn.experiments.cld.data import CLDDataModule
 from hepattn.utils.histogram import CountingHistogram
+from hepattn.utils.plotting import plot_hist_to_ax
 
 plt.rcParams["figure.dpi"] = 300
 
