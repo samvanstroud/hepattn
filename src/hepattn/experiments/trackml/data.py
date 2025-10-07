@@ -24,6 +24,7 @@ class TrackMLDataset(Dataset):
         hit_eval_path: str | None = None,
         dummy_data: bool = False,
         hit_particle_ratio = 0,
+        scale_coords = False,
     ):
         super().__init__()
 
@@ -91,6 +92,7 @@ class TrackMLDataset(Dataset):
 
         # Event level cuts
         self.event_max_num_particles = event_max_num_particles
+        self.scale_coords = scale_coords
 
     def __len__(self):
         return int(self.num_events)
@@ -105,6 +107,11 @@ class TrackMLDataset(Dataset):
         # Load the event
         hits, particles = self.load_event(idx)
         num_particles = len(particles)
+
+        if self.scale_coords:
+            hits.x *= 0.01
+            hits.y *= 0.01
+            hits.z *= 0.01
 
         # Build the input hits
         for feature, fields in self.inputs.items():
@@ -204,7 +211,11 @@ class TrackMLDataset(Dataset):
                 assert str(self.sample_ids[idx]) in hit_eval_file, f"Key {self.sample_ids[idx]} not found in file {self.hit_eval_path}"
 
                 # The dataset has shape (1, num_hits)
-                hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
+                hit_filter_eval = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/"]
+                if "hit_on_valid_particle" in hit_filter_eval.keys():
+                    hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
+                else:
+                    hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/key_on_valid_particle"][0]
                 hits = hits[hit_filter_pred]
 
         # TODO: Add back truth based hit filtering

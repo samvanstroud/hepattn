@@ -36,6 +36,8 @@ class MaskFormerDecoder(nn.Module):
         query_init: str = "",
         fast_local_ca: bool = False,
         block_size: int = 128,
+        phi_shift: float = 0.0,
+        learn_phi_shift: bool = False,  # NEW
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -69,6 +71,16 @@ class MaskFormerDecoder(nn.Module):
         self.fast_local_ca = fast_local_ca
         self.block_size = block_size
         self.dim = decoder_layer_config["dim"]
+        # --- make phi_shift device-aware and optionally learnable ---
+        if learn_phi_shift:
+            # learned scalar in radians fraction (same semantics as before: subtracted inside 2*pi*(.. - phi_shift))
+            self.phi_shift = nn.Parameter(torch.tensor(float(phi_shift)))
+        else:
+            # keep it constant but device/dtype aware
+            self.register_buffer("phi_shift_buffer", torch.tensor(float(phi_shift)), persistent=True)
+            self.phi_shift = self.phi_shift_buffer
+        # ------------------------------------------------------------
+
         if self.query_init == "randn":
             self.register_buffer("initial_queries_bank", torch.randn(self.num_queries, self.dim))
         elif self.query_init == "zero":
@@ -168,6 +180,7 @@ class MaskFormerDecoder(nn.Module):
                         attn_masks[input_name] |= task_attn_mask
                     else:
                         attn_masks[input_name] = task_attn_mask
+                    x["attn_mask_intermediate"] = attn_masks["hit"]
 
                 # Collect query masks
                 if self.use_query_masks:
@@ -215,7 +228,14 @@ class MaskFormerDecoder(nn.Module):
         return window_mask_func(self.window_size, q_len=q_len, kv_len=kv_len, device=str(device))
 
     def generate_positional_encodings(self, x: dict):
-        x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
+        # ensure phi_shift is on the same device/dtype as query embeddings
+        phi_shift = self.phi_shift.to(device=x["query_embed"].device, dtype=x["query_embed"].dtype)
+
+        # query_phi ∈ [-2π*phi_shift, 2π*(1-phi_shift)) as before
+        idx = torch.arange(self.num_queries, device=x["query_embed"].device, dtype=x["query_embed"].dtype)
+        x["query_phi"] = 2 * torch.pi * (idx / self.num_queries - phi_shift)
+
+        # x["query_phi"] = 2 * torch.pi * (torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries - self.phi_shift)
         query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
