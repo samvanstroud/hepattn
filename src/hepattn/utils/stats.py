@@ -33,17 +33,17 @@ def combine_mean_std(mu1, sigma1, n1, mu2, sigma2, n2):
     mu_combined = np.full(shape, np.nan, dtype=float)
     sigma_combined = np.full(shape, np.nan, dtype=float)
 
-    # Case: n1 == 0 & n2 > 0 → take group 2's stats
+    # Case: n1 == 0 & n2 > 0 - take group 2's stats
     mask_1_empty = (n1 == 0) & (n2 > 0)
     mu_combined[mask_1_empty] = mu2[mask_1_empty]
     sigma_combined[mask_1_empty] = sigma2[mask_1_empty]
 
-    # Case: n2 == 0 & n1 > 0 → take group 1's stats
+    # Case: n2 == 0 & n1 > 0 - take group 1's stats
     mask_2_empty = (n2 == 0) & (n1 > 0)
     mu_combined[mask_2_empty] = mu1[mask_2_empty]
     sigma_combined[mask_2_empty] = sigma1[mask_2_empty]
 
-    # Case: both > 0 → combine normally
+    # Case: both > 0 - combine normally
     mask_both = (n1 > 0) & (n2 > 0)
     if np.any(mask_both):
         mu_c = (n1[mask_both] * mu1[mask_both] + n2[mask_both] * mu2[mask_both]) / total_n[mask_both]

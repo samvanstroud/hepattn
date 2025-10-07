@@ -42,7 +42,7 @@ def plot_cld_event(data, axes_spec, object_name, batch_idx=0, valid=True, mark_t
                     alpha = 1.0
                     linestyle = "-"
 
-                    if mark_transparent is not None:
+                    if mark_transparent is not None:  # noqa: SIM102
                         if not data[f"{object_name}_{mark_transparent}"][batch_idx][object_idx].item():
                             alpha = 0.5
                             linestyle = ":"

@@ -5,12 +5,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import yaml
+from hepattn.experiments.cld.plot_event import plot_cld_event_reconstruction
+from hepattn.utils.eval_plots import bayesian_binomial_error, plot_hist_to_ax
 from scipy.stats import binned_statistic
 from tqdm import tqdm
 
 from hepattn.experiments.cld.data import CLDDataset
-from hepattn.experiments.cld.plot_event import plot_cld_event_reconstruction
-from hepattn.utils.eval_plots import bayesian_binomial_error, plot_hist_to_ax
 
 plt.rcParams["text.usetex"] = False
 plt.rcParams["figure.dpi"] = 300

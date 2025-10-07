@@ -3,7 +3,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-
 # Specify which eval you want to plot here
 times_path = Path("/share/rcifdata/maxhart/hepattn/logs/CLD_8_320_10MeV_neutrals_muon_20250809-T183715/times/CLD_8_320_10MeV_neutrals_muon_times.npy")
 dims_path = Path("/share/rcifdata/maxhart/hepattn/logs/CLD_8_320_10MeV_neutrals_muon_20250809-T183715/times/CLD_8_320_10MeV_neutrals_muon_dims.npy")
