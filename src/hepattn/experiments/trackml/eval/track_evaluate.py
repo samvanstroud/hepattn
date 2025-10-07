@@ -163,7 +163,6 @@ def load_events(fname, index_list=None, randomize=None, eta_cut=2.5, pt_cut=1, p
         particle_targets = ["particle_pt", "particle_eta", "particle_phi"]
 
     with h5py.File(fname, "r") as f:
-
         if index_list is not None:
             # index list takes priority over randomized sample
             id_list = index_list

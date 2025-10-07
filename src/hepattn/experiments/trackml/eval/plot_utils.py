@@ -92,9 +92,8 @@ def profile_plot(xs, y_span, x_bins, axes, colour, label=None, ls="solid"):
         label = label if i == 0 else None
         lb, ub = x_bins[i], x_bins[i + 1]
         axes.hlines(y=xs[i], xmin=lb, xmax=ub, color=colour, ls=ls, label=label)
-        axes.fill_between([lb, ub], [xs[i] - y_span[i], xs[i] - y_span[i]],
-                          [xs[i] + y_span[i], xs[i] + y_span[i]],
-                          color=colour, alpha=0.15, edgecolor="none"
+        axes.fill_between(
+            [lb, ub], [xs[i] - y_span[i], xs[i] - y_span[i]], [xs[i] + y_span[i], xs[i] + y_span[i]], color=colour, alpha=0.15, edgecolor="none"
         )
 
 

@@ -31,7 +31,7 @@ qty_bins = {
     # "eta": np.array([-2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5]),
     "eta": np.array([-4, -3.5, -3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]),
     "phi": np.array([-math.pi, -2.36, -1.57, -0.79, 0, 0.79, 1.57, 2.36, math.pi]),
-    "vz": np.array([-100, -50, -20, -10, 0, 10, 20, 50, 100])
+    "vz": np.array([-100, -50, -20, -10, 0, 10, 20, 50, 100]),
 }
 
 qty_symbols = {"pt": "p_\\mathrm{T}", "eta": "\\eta", "phi": "\\phi", "vz": "v_z"}
@@ -46,13 +46,11 @@ with pathlib.Path("/data/atlas/users/slin/myHepattn/hepattn/src/hepattn/experime
     fconfig = yaml.safe_load(f)
 
 
-tracking_configs = {
-    "0.9 GeV": fconfig
-}
+tracking_configs = {"0.9 GeV": fconfig}
 
 tracking_fnames = {
     "0.9 GeV": "/data/atlas/users/slin/myHepattn/hepattn/src/hepattn/experiments/trackml/logs/"
-               "TRK-v0-full_20250906-T205842/ckpts/epoch=029-val_loss=50.09092_test_eval.h5"
+    "TRK-v0-full_20250906-T205842/ckpts/epoch=029-val_loss=50.09092_test_eval.h5"
 }
 
 # ----------------------------------------------------
@@ -91,28 +89,38 @@ for qty in particle_targets:
         """Efficiency plots"""
         reconstructable = parts["reconstructable"]
         # double majority
-        bin_count, bin_error = binned(tracks["eff_dm"][reconstructable], parts["particle_" + qty][reconstructable], qty_bins[qty],
-                                      underflow=True, overflow=True, binomial=False
-                                     )
+        bin_count, bin_error = binned(
+            tracks["eff_dm"][reconstructable], parts["particle_" + qty][reconstructable], qty_bins[qty], underflow=True, overflow=True, binomial=False
+        )
         profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax, colour=training_colours[name], ls="solid")
         # perfect
-        bin_count, bin_error = binned(tracks["eff_perfect"][reconstructable], parts["particle_" + qty][reconstructable], qty_bins[qty],
-                                      underflow=True, overflow=True, binomial=False
-                                     )
+        bin_count, bin_error = binned(
+            tracks["eff_perfect"][reconstructable],
+            parts["particle_" + qty][reconstructable],
+            qty_bins[qty],
+            underflow=True,
+            overflow=True,
+            binomial=False,
+        )
         profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax, colour=training_colours[name], ls="dotted")
         if "track_" + qty in tracks.columns:
             """Fake rate plots"""
             reconstructable = tracks["reconstructable"]
             # fake rate
             fakes = (~tracks["eff_dm"]) & (~tracks["duplicate"])
-            bin_count, bin_error = binned(fakes[reconstructable], tracks["track_" + qty][reconstructable], qty_bins[qty],
-                                          underflow=True, overflow=True, binomial=False
-                                         )
+            bin_count, bin_error = binned(
+                fakes[reconstructable], tracks["track_" + qty][reconstructable], qty_bins[qty], underflow=True, overflow=True, binomial=False
+            )
             profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax1, colour=training_colours[name], ls="solid")
             # duplicate
-            bin_count, bin_error = binned(tracks["duplicate"][reconstructable], tracks["track_" + qty][reconstructable], qty_bins[qty],
-                                          underflow=True, overflow=True, binomial=False
-                                         )
+            bin_count, bin_error = binned(
+                tracks["duplicate"][reconstructable],
+                tracks["track_" + qty][reconstructable],
+                qty_bins[qty],
+                underflow=True,
+                overflow=True,
+                binomial=False,
+            )
             profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax1, colour=training_colours[name], ls="dotted")
 
     # custom legends
@@ -162,11 +170,12 @@ for qty in particle_targets:
 
 if has_regression:
     nbins = 55
-    qty_res_bins = {"pt": np.linspace(-1, 1, nbins),
-                    "eta": np.linspace(-0.1, 0.1, nbins),
-                    "phi": np.linspace(-0.1, 0.1, nbins),
-                    "vz": np.linspace(-15, 15, nbins)
-                   }
+    qty_res_bins = {
+        "pt": np.linspace(-1, 1, nbins),
+        "eta": np.linspace(-0.1, 0.1, nbins),
+        "phi": np.linspace(-0.1, 0.1, nbins),
+        "vz": np.linspace(-15, 15, nbins),
+    }
     fig, ax = plt.subplots(nrows=2, ncols=2, constrained_layout=True)
     fig.set_size_inches(10, 4)
     ax = ax.flatten()
@@ -187,9 +196,7 @@ if has_regression:
             colours.append(colour)
 
         ax[i].grid(zorder=0, alpha=0.25, linestyle="--")
-        ax[i].set_xlabel(
-            rf"${qty_symbols[qty]}^\mathrm{{Reco}} - {qty_symbols[qty]}^\mathrm{{True}}$ {qty_units[qty]}"
-            )
+        ax[i].set_xlabel(rf"${qty_symbols[qty]}^\mathrm{{Reco}} - {qty_symbols[qty]}^\mathrm{{True}}$ {qty_units[qty]}")
         ax[i].set_ylabel("Density")
 
         ticks = None
