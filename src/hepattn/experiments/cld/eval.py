@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import yaml
-from hepattn.experiments.cld.event_display import plot_cld_event
 from scipy.stats import binned_statistic
 from tqdm import tqdm
 
 from hepattn.experiments.cld.data import CLDDataset
+from hepattn.experiments.cld.event_display import plot_cld_event
 from hepattn.utils.plotting import plot_hist_to_ax
 from hepattn.utils.stats import bayesian_binomial_error
 
