@@ -169,7 +169,9 @@ class LRSMDataset(IterableDataset):
                 k = f"{item_name}_{field}"
 
                 # Handle the case where the field is a vector by adjusting the target shape accordingly
-                if prepped_sample[k].dim() - 1 > len(target_size):
+                # E.g. the sample dim is (20, 100, 2) and target_size is (64, 128), then the target size
+                # needs to be (64, 128, 2)
+                if prepped_sample[k].dim() > len(target_size):
                     target_size = (*target_size, prepped_sample[k].shape[-1])
 
                 # Check whether this is an input or target so we know the pad value
@@ -198,14 +200,19 @@ class LRSMDataset(IterableDataset):
 
     def __iter__(self) -> Iterator[tuple[dict[str, Tensor], dict[str, Tensor]]]:
         worker_info = get_worker_info()
-        num_workers = worker_info.num_workers if worker_info is not None else 1
-        worker_id = worker_info.id if worker_info is not None else 0
-
-        # Shuffle using worker ID as seed
         sample_ids = list(self.sample_ids)
-        random.Random(worker_id + self.sampling_seed).shuffle(sample_ids)
 
-        for idx, sample_id in enumerate(self.sample_ids):
+        if worker_info is not None:
+            num_workers = worker_info.num_workers
+            worker_id = worker_info.id
+
+            # Split sample_ids evenly between workers
+            per_worker = int(math.ceil(len(sample_ids) / num_workers))
+            start = worker_id * per_worker
+            end = min(start + per_worker, len(sample_ids))
+            sample_ids = sample_ids[start:end]
+
+        for idx, sample_id in enumerate(sample_ids):
             # Check that this sample_id has been assigned to this worker
             if idx % num_workers != worker_id:
                 continue
