@@ -35,7 +35,9 @@ def test_cld_event_display(cld_datamodule):
     Path("tests/outputs/cld/").mkdir(parents=True, exist_ok=True)
 
     for _i in range(1):
-        inputs, targets = test_dataloader.dataset[0]
+        sample_id = test_dataloader.dataset.sample_ids[0]
+        sample = test_dataloader.dataset.load_sample(sample_id)
+        inputs, targets = test_dataloader.dataset.prep_sample(sample)
         data = inputs | targets
 
         # Plot the full event with all subsytems
