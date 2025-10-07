@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import yaml
-from hepatrn.experiments.cld.event_display import plot_cld_event
+from hepattn.experiments.cld.event_display import plot_cld_event
 from scipy.stats import binned_statistic
 from tqdm import tqdm
 
