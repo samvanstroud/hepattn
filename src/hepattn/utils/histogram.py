@@ -149,9 +149,7 @@ class GaussianHistogram:
         sig_new, _, _ = binned_statistic(x, vals, statistic="std", bins=self.bins)
 
         # Merge with existing stats. Assumes combine_mean_std returns (mu, sigma, n).
-        mu_comb, sig_comb, n_comb = combine_mean_std(
-            self.mu, self.sigma, self.n, mu_new, sig_new, n_new
-        )
+        mu_comb, sig_comb, n_comb = combine_mean_std(self.mu, self.sigma, self.n, mu_new, sig_new, n_new)
 
         self.n = n_comb.astype(np.float32)
         self.mu = mu_comb.astype(np.float32)
