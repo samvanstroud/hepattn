@@ -1,5 +1,6 @@
 import random
 from abc import abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -109,7 +110,7 @@ class LRSMDataset(IterableDataset):
         # We will load more samples on demand as needed
 
     @abstractmethod
-    def load_sample(self, sample_id: int) -> dict[str:ndarray] | None:
+    def load_sample(self, sample_id: int) -> dict[str, ndarray] | None:
         """Attempts to load a single sample from disk and validate it against selection criteria.
 
         Parameters
@@ -142,13 +143,15 @@ class LRSMDataset(IterableDataset):
         return int(self.num_samples)
 
     def prep_sample(self, sample: dict[str, np.ndarray]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
+        # First convert everything to tensors
+        prepped_sample: dict[str, Tensor] = {}
         for item_name, fields in (self.inputs | self.targets).items():
             k = f"{item_name}_valid"
-            sample[k] = torch.from_numpy(sample[k])
+            prepped_sample[k] = torch.from_numpy(sample[k])
 
             for field in fields:
                 k = f"{item_name}_{field}"
-                sample[k] = torch.from_numpy(sample[k])
+                prepped_sample[k] = torch.from_numpy(sample[k])
 
         # Apply any manual padding now, need to do it before collate stage incase no batching / collation is used
         for item_name, fields in (self.inputs | self.targets).items():
@@ -160,40 +163,40 @@ class LRSMDataset(IterableDataset):
 
             # Pad the valid mask, remember that we have a leading singleton batch dim
             k = f"{item_name}_valid"
-            sample[k] = pad_to_size(sample[k], target_size, False)
+            prepped_sample[k] = pad_to_size(prepped_sample[k], target_size, False)
 
             for field in fields:
                 k = f"{item_name}_{field}"
 
                 # Handle the case where the field is a vector by adjusting the target shape accordingly
-                if sample[k].dim() - 1 > len(target_size):
-                    target_size = (*target_size, sample[k].shape[-1])
+                if prepped_sample[k].dim() - 1 > len(target_size):
+                    target_size = (*target_size, prepped_sample[k].shape[-1])
 
                 # Check whether this is an input or target so we know the pad value
                 pad_value = self.input_pad_value if item_name in self.inputs else self.target_pad_value
 
                 # Now apply the padding
-                sample[k] = pad_to_size(sample[k], target_size, pad_value)
+                prepped_sample[k] = pad_to_size(prepped_sample[k], target_size, pad_value)
 
         # Convert to a torch tensor of the correct dtype and add the batch dimension
         inputs = {}
         targets = {}
         for input_name, fields in self.inputs.items():
-            inputs[f"{input_name}_valid"] = sample[f"{input_name}_valid"].bool().unsqueeze(0)
+            inputs[f"{input_name}_valid"] = prepped_sample[f"{input_name}_valid"].bool().unsqueeze(0)
             # Some tasks might require to know hit padding info for loss masking
             targets[f"{input_name}_valid"] = inputs[f"{input_name}_valid"]
             for field in fields:
-                inputs[f"{input_name}_{field}"] = sample[f"{input_name}_{field}"].to(self.input_dtype).unsqueeze(0)
+                inputs[f"{input_name}_{field}"] = prepped_sample[f"{input_name}_{field}"].to(self.input_dtype).unsqueeze(0)
 
         # Convert the targets
         for target_name, fields in self.targets.items():
-            targets[f"{target_name}_valid"] = sample[f"{target_name}_valid"].bool().unsqueeze(0)
+            targets[f"{target_name}_valid"] = prepped_sample[f"{target_name}_valid"].bool().unsqueeze(0)
             for field in fields:
-                targets[f"{target_name}_{field}"] = sample[f"{target_name}_{field}"].to(self.target_dtype).unsqueeze(0)
+                targets[f"{target_name}_{field}"] = prepped_sample[f"{target_name}_{field}"].to(self.target_dtype).unsqueeze(0)
 
         return inputs, targets
 
-    def __iter__(self) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
+    def __iter__(self) -> Iterator[tuple[dict[str, Tensor], dict[str, Tensor]]]:
         worker_info = get_worker_info()
         num_workers = worker_info.num_workers if worker_info is not None else 1
         worker_id = worker_info.id if worker_info is not None else 0
