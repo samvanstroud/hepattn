@@ -1,4 +1,4 @@
-import random
+import math
 from abc import abstractmethod
 from collections.abc import Iterator
 from pathlib import Path
@@ -207,7 +207,7 @@ class LRSMDataset(IterableDataset):
             worker_id = worker_info.id
 
             # Split sample_ids evenly between workers
-            per_worker = int(math.ceil(len(sample_ids) / num_workers))
+            per_worker = math.ceil(len(sample_ids) / num_workers)
             start = worker_id * per_worker
             end = min(start + per_worker, len(sample_ids))
             sample_ids = sample_ids[start:end]
