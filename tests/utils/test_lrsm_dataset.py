@@ -2,14 +2,13 @@ import numpy as np
 import pytest
 import torch
 
-from hepattn.utils.lrsm_dataset import LRSMDataset, LRSMDataModule  # noqa: F401
-
+from hepattn.utils.lrsm_dataset import LRSMDataModule, LRSMDataset
 
 # ----- Test helpers -----
 
+
 class DummyDataset(LRSMDataset):
-    """
-    Minimal concrete subclass so we can call prep_sample/collate_fn without
+    """Minimal concrete subclass so we can call prep_sample/collate_fn without
     depending on filesystem. You can set .sample_ids if you want to test __iter__.
     """
 
@@ -29,12 +28,6 @@ def make_sample(
     include_event=False,
     target_kind="labels",
 ):
-    """
-    Build a numpy sample dict consistent with the dataset field naming convention.
-    target_kind:
-      - "labels": per-sample scalar target
-      - "truth": per-hit target aligned with 'hits' (same length as n_hits)
-    """
     sample = {
         "hits_valid": np.ones((n_hits,), dtype=bool),
         "hits_px": np.arange(n_hits, dtype=np.float32),
@@ -210,7 +203,7 @@ def test_collate_fn_skip_pad_items(io_specs_with_skip):
 def test_datamodule_setup_and_dataloaders(io_specs_basic):
     inputs, targets = io_specs_basic
     dm = LRSMDataModule(
-        dataset_class=DummyDataset, # ty: ignore [invalid-argument-type]
+        dataset_class=DummyDataset,  # ty: ignore [invalid-argument-type]
         batch_size=4,
         train_dir=".",
         val_dir=".",
@@ -244,7 +237,7 @@ def test_datamodule_setup_and_dataloaders(io_specs_basic):
 def test_datamodule_setup_test_requires_dir(io_specs_basic):
     inputs, targets = io_specs_basic
     dm = LRSMDataModule(
-        dataset_class=DummyDataset, # ty: ignore [invalid-argument-type]
+        dataset_class=DummyDataset,  # ty: ignore [invalid-argument-type]
         batch_size=1,
         train_dir=".",
         val_dir=".",
@@ -259,4 +252,3 @@ def test_datamodule_setup_test_requires_dir(io_specs_basic):
 
     with pytest.raises(AssertionError):
         dm.setup("test")
-
