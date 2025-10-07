@@ -8,8 +8,7 @@ from tqdm import tqdm
 
 
 def load_event(f, idx, write_inputs=None, write_parts=None, threshold=0.1):
-
-    """Load an event from an evaluation file and create a DataFrame
+    """Load an event from an evaluation file and create a DataFrame.
 
     Arguments:
     ----------
@@ -34,7 +33,6 @@ def load_event(f, idx, write_inputs=None, write_parts=None, threshold=0.1):
         Truth information of particles in this event. shape = (max_particles, )
 
     """
-
     hits = pd.DataFrame()
     targets = pd.DataFrame()
 
@@ -65,8 +63,7 @@ def load_event(f, idx, write_inputs=None, write_parts=None, threshold=0.1):
 
 
 def eval_event(hits, targets, threshold=0.1):
-
-    """Calculate metrics for binary classification task
+    """Calculate metrics for binary classification task.
 
     Arguments:
     ----------
@@ -83,10 +80,9 @@ def eval_event(hits, targets, threshold=0.1):
         dict containing confusion matrix elements and precision-recall curve
 
     """
-
     y_pred = np.where(hits["score_sigmoid"] >= threshold, True, False)
     y_true = targets["hit_on_valid_particle"]
-    metrics = dict()
+    metrics = {}
     tn, fp, fn, tp = sklearn.metrics.confusion_matrix(y_true, y_pred, normalize="all").ravel().tolist()
     metrics["true_negative_rate"] = tn
     metrics["false_positive_rate"] = fp
@@ -109,8 +105,7 @@ def eval_event(hits, targets, threshold=0.1):
 
 
 def load_events(fname, index_list=None, randomize=None, write_inputs=None, write_parts=True, threshold=0.1):
-
-    """Sequentially load events from an evaluation file and aggregate into a single DataFrame
+    """Sequentially load events from an evaluation file and aggregate into a single DataFrame.
 
     Arguments:
     ----------
@@ -138,8 +133,12 @@ def load_events(fname, index_list=None, randomize=None, write_inputs=None, write
     metrics:
         dict containing confusion matrix elements and precision-recall curve
 
-    """
+    Raises:
+    --------
+    ValueError:
+        If specified size for a random sample is non-positive
 
+    """
     with h5py.File(fname, "r") as f:
         if index_list is not None:
             # index list takes priority over randomized sample
@@ -148,13 +147,13 @@ def load_events(fname, index_list=None, randomize=None, write_inputs=None, write
             # if index list is not provided, generate a random sample
             if (randomize <= 0) or (not isinstance(randomize, int)):
                 raise ValueError("Only positive integer amounts allowed.")
-            elif randomize > len(f.keys()):
-                warnings.warn("Requested amount of events exceeds record. Using all %d events." % (len(f.keys())))
+            if randomize > len(f.keys()):
+                warnings.warn(f"Requested amount of events exceeds record. Using all {len(f.keys())} events.")
                 # if requested amount exceeds record, use all events sequentially
                 id_list = list(f.keys())
             else:
                 # generate a random list of indices
-                id_list = np.random.choice(list(f.keys()), size=randomize, replace=False)
+                id_list = np.random.Generator.choice(list(f.keys()), size=randomize, replace=False)
         else:
             id_list = list(f.keys())
 
@@ -162,7 +161,7 @@ def load_events(fname, index_list=None, randomize=None, write_inputs=None, write
         targets_list = []
         parts_list = []
 
-        for i, idx in tqdm(enumerate(id_list), total=len(id_list), desc="Events loaded"):
+        for _i, idx in tqdm(enumerate(id_list), total=len(id_list), desc="Events loaded"):
             hits, targets, parts = load_event(f, idx, write_inputs, write_parts, threshold)
             hits_list.append(hits)
             targets_list.append(targets)

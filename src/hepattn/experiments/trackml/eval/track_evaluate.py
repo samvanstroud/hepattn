@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=False):
 
-    """Load an event from an evaluation file and create a DataFrame
+def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=False):
+    """Load an event from an evaluation file and create a DataFrame.
 
     Arguments:
     ----------
@@ -32,7 +32,6 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
         Truth information of each track in this event. shape = (n_max_particles, )
 
     """
-
     if particle_targets is None:
         particle_targets = ["pt", "eta", "phi"]
 
@@ -45,7 +44,7 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
 
     # physical quantity regression values/targets (and derived quantities)
     for x in particle_targets:
-        parts["particle_"+x] = np.array(f[idx]["targets"]["particle_"+x][:][0])
+        parts["particle_" + x] = np.array(f[idx]["targets"]["particle_" + x][:][0])
 
     if regression:
         if "track_regr" not in list(f[idx]["preds"]["final"]):
@@ -59,10 +58,9 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
                     tracks["track_pt"] = np.sqrt(tracks["track_px"] ** 2 + tracks["track_py"] ** 2)
                 if "track_phi" not in regr_qty:
                     tracks["track_phi"] = np.arctan2(tracks["track_py"], tracks["track_px"])
-                if "track_pz" in regr_qty:
-                    if "track_eta" not in regr_qty:
-                        P = np.sqrt(tracks["track_px"] ** 2 + tracks["track_py"] ** 2 + tracks["track_pz"] ** 2, dtype=np.float64)
-                        tracks["track_eta"] = 0.5 * np.log((P + tracks["track_pz"]) / (P - tracks["track_pz"]), dtype=np.float64)
+                if ("track_pz" in regr_qty) and ("track_eta" not in regr_qty):
+                    p = np.sqrt(tracks["track_px"] ** 2 + tracks["track_py"] ** 2 + tracks["track_pz"] ** 2, dtype=np.float64)
+                    tracks["track_eta"] = 0.5 * np.log((p + tracks["track_pz"]) / (p - tracks["track_pz"]), dtype=np.float64)
 
     # extract hit mask and its target
     # predicted tracks and associated hits, shape = (n_max_particles, n_hits)
@@ -98,10 +96,10 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
     parts["valid"] = np.array(f[idx]["targets"]["particle_valid"][:][0])
     parts["reconstructable"] = (parts["valid"]) & (parts["n_true_hits"] >= 3)
     if "particle_eta" in parts.columns:
-        parts["reconstructable"] = (parts["reconstructable"]) & (parts["particle_eta"].abs() < eta_cut) 
+        parts["reconstructable"] = (parts["reconstructable"]) & (parts["particle_eta"].abs() < eta_cut)
     if "particle_pt" in parts.columns:
         parts["reconstructable"] = (parts["reconstructable"]) & (parts["particle_pt"] > pt_cut)
-    
+
     # tag tracks that are valid
     tracks["valid"] = np.array(f[idx]["preds"]["final"]["track_valid"]["track_valid"][:][0])
     tracks["reconstructable"] = (tracks["valid"]) & (tracks["n_pred_hits"] >= 3)
@@ -129,8 +127,7 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
 
 
 def load_events(fname, index_list=None, randomize=None, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=False):
-
-    """Sequentially load events from an evaluation file and aggregate into a single DataFrame
+    """Sequentially load events from an evaluation file and aggregate into a single DataFrame.
 
     Arguments:
     ----------
@@ -156,10 +153,14 @@ def load_events(fname, index_list=None, randomize=None, eta_cut=2.5, pt_cut=1, p
     parts: DataFrame
         Truth information of each track in this event. shape = (n_events * n_max_particles, )
 
-    """
+    Raises:
+    --------
+    ValueError:
+        If specified size for a random sample is non-positive
 
+    """
     if particle_targets is None:
-        particle_targets=["particle_pt", "particle_eta", "particle_phi"]
+        particle_targets = ["particle_pt", "particle_eta", "particle_phi"]
 
     with h5py.File(fname, "r") as f:
 
@@ -170,20 +171,20 @@ def load_events(fname, index_list=None, randomize=None, eta_cut=2.5, pt_cut=1, p
             if (randomize <= 0) or (not isinstance(randomize, int)):
                 raise ValueError("Only positive integer amounts allowed.")
 
-            elif randomize > len(f.keys()):
-                warnings.warn("Requested amount of events exceeds record. Using all %d events." % (len(f.keys())))
+            if randomize > len(f.keys()):
+                warnings.warn(f"Requested amount of events exceeds record. Using all {len(f.keys())} events.")
                 # if requested amount exceeds record, use all events sequentially
                 id_list = list(f.keys())
             else:
                 # generate a random list of indices
-                id_list = np.random.choice(list(f.keys()), size=randomize, replace=False)
+                id_list = np.random.Generator.choice(list(f.keys()), size=randomize, replace=False)
         else:
             id_list = list(f.keys())
 
         tracks_list = []
         parts_list = []
 
-        for i, idx in tqdm(enumerate(id_list), total=len(id_list), desc="Events loaded"):
+        for _i, idx in tqdm(enumerate(id_list), total=len(id_list), desc="Events loaded"):
             tracks, parts = load_event(f, idx, eta_cut, pt_cut, particle_targets, regression)
             tracks_list.append(tracks)
             parts_list.append(parts)

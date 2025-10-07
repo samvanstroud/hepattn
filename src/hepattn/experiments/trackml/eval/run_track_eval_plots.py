@@ -1,11 +1,11 @@
-import h5py
-import matplotlib as mpl
+import math
+import pathlib
+
+import numpy as np
+import yaml
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
-import numpy as np
-import pandas as pd
-import yaml
-from plot_utils import binned, profile_plot, hist_plot
+from plot_utils import binned, hist_plot, profile_plot
 from track_evaluate import load_events
 
 # ----------------------------------------------------
@@ -30,8 +30,8 @@ qty_bins = {
     "pt": np.array([0.6, 0.75, 1.0, 1.5, 2, 3, 4, 6, 10]),
     # "eta": np.array([-2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5]),
     "eta": np.array([-4, -3.5, -3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]),
-    "phi": np.array([-3.14, -2.36, -1.57, -0.79, 0, 0.79, 1.57, 2.36, 3.14]),
-    "vz": np.array([-100, -50, -20, -10, 0, 10, 20, 50, 100]),
+    "phi": np.array([-math.pi, -2.36, -1.57, -0.79, 0, 0.79, 1.57, 2.36, math.pi]),
+    "vz": np.array([-100, -50, -20, -10, 0, 10, 20, 50, 100])
 }
 
 qty_symbols = {"pt": "p_\\mathrm{T}", "eta": "\\eta", "phi": "\\phi", "vz": "v_z"}
@@ -42,7 +42,7 @@ out_dir = "plots/"
 # Read configuration file information
 # ----------------------------------------------------
 
-with open("/data/atlas/users/slin/myHepattn/hepattn/src/hepattn/experiments/trackml/configs/tracking.yaml", "r") as f:
+with pathlib.Path("/data/atlas/users/slin/myHepattn/hepattn/src/hepattn/experiments/trackml/configs/tracking.yaml").open() as f:
     fconfig = yaml.safe_load(f)
 
 
@@ -51,7 +51,8 @@ tracking_configs = {
 }
 
 tracking_fnames = {
-    "0.9 GeV": "/data/atlas/users/slin/myHepattn/hepattn/src/hepattn/experiments/trackml/logs/TRK-v0-full_20250906-T205842/ckpts/epoch=029-val_loss=50.09092_test_eval.h5"
+    "0.9 GeV": "/data/atlas/users/slin/myHepattn/hepattn/src/hepattn/experiments/trackml/logs/"
+               "TRK-v0-full_20250906-T205842/ckpts/epoch=029-val_loss=50.09092_test_eval.h5"
 }
 
 # ----------------------------------------------------
@@ -60,7 +61,7 @@ tracking_fnames = {
 
 has_regression = True
 tracking_results = {}
-num_events=None
+num_events = None
 for name, fname in tracking_fnames.items():
     eta_cut = tracking_configs[name]["data"]["particle_max_abs_eta"]
     pt_cut = tracking_configs[name]["data"]["particle_min_pt"]
@@ -71,50 +72,58 @@ for name, fname in tracking_fnames.items():
 # Efficiency and fake rate plots
 # ----------------------------------------------------
 
-for qty in particle_targets :
-    if qty not in ["pt", "eta", "phi", "vz"]:
+for qty in particle_targets:
+    if qty not in {"pt", "eta", "phi", "vz"}:
         continue
 
     axlist = []
     if has_regression:
-        fig, (ax, ax1) = plt.subplots(ncols=2, figsize=(10,3), constrained_layout=True)
-        axlist.extend([ax,ax1])
+        fig, (ax, ax1) = plt.subplots(ncols=2, figsize=(10, 3), constrained_layout=True)
+        axlist.extend([ax, ax1])
         ax1.set_xlabel(rf"Track ${qty_symbols[qty]}^\mathrm{{Reco}}$ {qty_units[qty]}")
         ax1.set_ylabel("Fake Rate")
 
     else:
-        fig, ax = plt.subplots(ncols=1, figsize=(5,3), constrained_layout=True)
+        fig, ax = plt.subplots(ncols=1, figsize=(5, 3), constrained_layout=True)
         axlist.append(ax)
 
     for name, (tracks, parts) in tracking_results.items():
         """Efficiency plots"""
         reconstructable = parts["reconstructable"]
         # double majority
-        bin_count, bin_error = binned(tracks["eff_dm"][reconstructable], parts["particle_"+qty][reconstructable], qty_bins[qty], underflow=True, overflow=True, binomial=False)
-        profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax, color=training_colours[name], ls="solid")
+        bin_count, bin_error = binned(tracks["eff_dm"][reconstructable], parts["particle_" + qty][reconstructable], qty_bins[qty],
+                                      underflow=True, overflow=True, binomial=False
+                                     )
+        profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax, colour=training_colours[name], ls="solid")
         # perfect
-        bin_count, bin_error = binned(tracks["eff_perfect"][reconstructable], parts["particle_"+qty][reconstructable], qty_bins[qty], underflow=True, overflow=True, binomial=False)
-        profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax, color=training_colours[name], ls="dotted")
-        if "track_"+qty in tracks.columns:
+        bin_count, bin_error = binned(tracks["eff_perfect"][reconstructable], parts["particle_" + qty][reconstructable], qty_bins[qty],
+                                      underflow=True, overflow=True, binomial=False
+                                     )
+        profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax, colour=training_colours[name], ls="dotted")
+        if "track_" + qty in tracks.columns:
             """Fake rate plots"""
             reconstructable = tracks["reconstructable"]
             # fake rate
             fakes = (~tracks["eff_dm"]) & (~tracks["duplicate"])
-            bin_count, bin_error = binned(fakes[reconstructable], tracks["track_"+qty][reconstructable], qty_bins[qty], underflow=True, overflow=True, binomial=False)
-            profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax1, color=training_colours[name], ls="solid")
+            bin_count, bin_error = binned(fakes[reconstructable], tracks["track_" + qty][reconstructable], qty_bins[qty],
+                                          underflow=True, overflow=True, binomial=False
+                                         )
+            profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax1, colour=training_colours[name], ls="solid")
             # duplicate
-            bin_count, bin_error = binned(tracks["duplicate"][reconstructable], tracks["track_"+qty][reconstructable], qty_bins[qty], underflow=True, overflow=True, binomial=False)
-            profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax1, color=training_colours[name], ls="dotted")
+            bin_count, bin_error = binned(tracks["duplicate"][reconstructable], tracks["track_" + qty][reconstructable], qty_bins[qty],
+                                          underflow=True, overflow=True, binomial=False
+                                         )
+            profile_plot(bin_count, bin_error, qty_bins[qty], axes=ax1, colour=training_colours[name], ls="dotted")
 
     # custom legends
     legend_elements_0 = [Line2D([0], [0], color=training_colours[name], label=training) for training in tracking_results]
     leg1_0 = ax.legend(handles=legend_elements_0, frameon=False, loc="upper left")
     ax.add_artist(leg1_0)
-    
+
     legend_elements_eff = [Line2D([0], [0], color="black", label="DM"), Line2D([0], [0], color="black", ls="dotted", label="Perfect")]
     leg2_0 = ax.legend(handles=legend_elements_eff, frameon=False, loc="upper right")
     ax.add_artist(leg2_0)
-    if "track_"+qty in tracks.columns:
+    if "track_" + qty in tracks.columns:
         leg1_1 = ax1.legend(handles=legend_elements_0, frameon=False, loc="upper left")
         ax1.add_artist(leg1_1)
         legend_elements_fake = [Line2D([0], [0], color="black", label="Fake"), Line2D([0], [0], color="black", ls="dotted", label="Duplicate")]
@@ -131,7 +140,7 @@ for qty in particle_targets :
         if qty == "pt":
             i.set_xlim([0, 10.5])
             i.set_xticks(np.arange(start=2, stop=11, step=2))
-            #ax1.set_ylim(0.0, 0.03)
+            # ax1.set_ylim(0.0, 0.03)
         if qty == "eta":
             i.set_xlim([-4.5, 4.5])
             i.set_xticks(np.arange(start=-4, stop=4.5, step=1))
@@ -139,11 +148,11 @@ for qty in particle_targets :
         if qty == "phi":
             i.set_xlim([-3.5, 3.5])
             i.set_xticks(np.arange(start=-3, stop=3.5, step=1))
-            #ax1.set_ylim(0.0, 0.02)
+            # ax1.set_ylim(0.0, 0.02)
         if qty == "vz":
             i.set_xlim([-112, 112])
             i.set_xticks(np.arange(start=-100, stop=110, step=25))
-            #ax1.set_ylim(0.0, 0.02)
+            # ax1.set_ylim(0.0, 0.02)
 
     fig.savefig(out_dir + f"{qty}_eff_fr.pdf")
 
@@ -153,28 +162,34 @@ for qty in particle_targets :
 
 if has_regression:
     nbins = 55
-    qty_res_bins = {"pt": np.linspace(-1, 1, nbins), "eta": np.linspace(-0.1, 0.1, nbins), "phi": np.linspace(-0.1, 0.1, nbins), "vz": np.linspace(-15, 15, nbins)}
+    qty_res_bins = {"pt": np.linspace(-1, 1, nbins),
+                    "eta": np.linspace(-0.1, 0.1, nbins),
+                    "phi": np.linspace(-0.1, 0.1, nbins),
+                    "vz": np.linspace(-15, 15, nbins)
+                   }
     fig, ax = plt.subplots(nrows=2, ncols=2, constrained_layout=True)
     fig.set_size_inches(10, 4)
     ax = ax.flatten()
 
-    for i, qty in enumerate(["pt", "eta", "phi", "vz"]) :
+    for i, qty in enumerate(["pt", "eta", "phi", "vz"]):
         labels = []
         colours = []
         for name, (tracks, parts) in tracking_results.items():
             bins = qty_res_bins[qty]
             colour = training_colours[name]
             # track physicsal quantity regression predicted value
-            tracks_qty = tracks["track_"+qty][tracks["eff_dm"] & parts["reconstructable"]]
+            tracks_qty = tracks["track_" + qty][tracks["eff_dm"] & parts["reconstructable"]]
             # particle physical quantity true value
-            parts_qty = parts["particle_"+qty][tracks["eff_dm"] & parts["reconstructable"]]
+            parts_qty = parts["particle_" + qty][tracks["eff_dm"] & parts["reconstructable"]]
             res = tracks_qty - parts_qty
-            label = hist_plot(xs=res, bins=bins, range=(bins[0], bins[-1]), name=name, axes=ax[i], colour=colour)
+            label = hist_plot(xs=res, bins=bins, xrange=(bins[0], bins[-1]), name=name, axes=ax[i], colour=colour)
             labels.append(label)
             colours.append(colour)
 
         ax[i].grid(zorder=0, alpha=0.25, linestyle="--")
-        ax[i].set_xlabel(rf"${qty_symbols[qty]}^\mathrm{{Reco}} - {qty_symbols[qty]}^\mathrm{{True}}$ {qty_units[qty]}")
+        ax[i].set_xlabel(
+            rf"${qty_symbols[qty]}^\mathrm{{Reco}} - {qty_symbols[qty]}^\mathrm{{True}}$ {qty_units[qty]}"
+            )
         ax[i].set_ylabel("Density")
 
         ticks = None
@@ -214,7 +229,7 @@ for name, (tracks, parts) in tracking_results.items():
     integrated_fr = (~tracks.eff_dm & ~tracks.duplicate).mean()
 
     # print summary
-    print(f"N events: {100}, N particles: {len(parts)}, N tracks: {len(tracks)}")
+    print(f"N events: {num_events if num_events is not None else 100}, N particles: {len(parts)}, N tracks: {len(tracks)}")
     print(f"DM Integrated efficiency: {tgts.eff_dm.mean():.1%}")
     print(f"DM Efficiency for pT > 1.0 GeV: {high_pt_eff:.1%}")
     print(f"DM Efficiency for pT > 0.9 GeV: {high_pt_eff_900:.1%}")
