@@ -35,38 +35,33 @@ def make_sample(
     }
 
     if target_kind == "labels":
-        sample.update(
-            {
-                "labels_valid": np.ones((1,), dtype=bool),
-                "labels_y": np.array([1.0], dtype=np.float32),
-            }
-        )
+        sample.update({
+            "labels_valid": np.ones((1,), dtype=bool),
+            "labels_y": np.array([1.0], dtype=np.float32),
+        })
     elif target_kind == "truth":
-        sample.update(
-            {
-                "truth_valid": np.ones((n_hits,), dtype=bool),
-                "truth_y": np.arange(n_hits, dtype=np.float32),
-            }
-        )
+        sample.update({
+            "truth_valid": np.ones((n_hits,), dtype=bool),
+            "truth_y": np.arange(n_hits, dtype=np.float32),
+        })
     else:
         raise ValueError("Unknown target_kind")
 
     if include_event:
-        sample.update(
-            {
-                "event_valid": np.ones((1,), dtype=bool),
-                "event_z": np.array([42.0], dtype=np.float32),
-            }
-        )
+        sample.update({
+            "event_valid": np.ones((1,), dtype=bool),
+            "event_z": np.array([42.0], dtype=np.float32),
+        })
 
     return sample
 
 
 # ----- Fixtures -----
 
+
 @pytest.fixture
 def io_specs_basic():
-    inputs = {"hits": ["px", "feat"]}          # NOTE: list of field names
+    inputs = {"hits": ["px", "feat"]}  # NOTE: list of field names
     targets = {"labels": ["y"]}
     return inputs, targets
 
@@ -86,6 +81,7 @@ def io_specs_with_skip():
 
 
 # ----- Tests for basic properties -----
+
 
 def test_len_returns_num_samples(io_specs_basic):
     inputs, targets = io_specs_basic
@@ -122,6 +118,7 @@ def test_dtype_mapping_and_force_padding(io_specs_basic):
 
 
 # ----- Tests for dynamic padding in collate_fn -----
+
 
 def test_collate_fn_dynamic_pad_scalar_and_vector(io_specs_basic):
     inputs, targets = io_specs_basic
@@ -200,6 +197,7 @@ def test_collate_fn_skip_pad_items(io_specs_with_skip):
 
 # ----- LRSMDataModule wiring tests (no iteration) -----
 
+
 def test_datamodule_setup_and_dataloaders(io_specs_basic):
     inputs, targets = io_specs_basic
     dm = LRSMDataModule(
@@ -208,7 +206,7 @@ def test_datamodule_setup_and_dataloaders(io_specs_basic):
         train_dir=".",
         val_dir=".",
         test_dir=".",
-        num_workers=0,   # important: don't spawn workers in unit tests
+        num_workers=0,  # important: don't spawn workers in unit tests
         num_train=10,
         num_val=5,
         num_test=3,
