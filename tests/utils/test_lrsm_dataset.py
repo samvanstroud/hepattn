@@ -1,6 +1,10 @@
+import sys
+from collections import defaultdict
+
 import numpy as np
 import pytest
 import torch
+from torch.utils.data import DataLoader, get_worker_info
 
 from hepattn.utils.lrsm_dataset import LRSMDataModule, LRSMDataset
 
@@ -18,7 +22,7 @@ class DummyDataset(LRSMDataset):
         self.sample_ids = []
 
     def load_sample(self, sample_id: int):
-        # Not used by most tests (we build samples manually via prep_sample)
+        # Not used by these unit tests (we build samples manually via prep_sample)
         raise NotImplementedError("Not used in these unit tests.")
 
 
@@ -250,3 +254,81 @@ def test_datamodule_setup_test_requires_dir(io_specs_basic):
 
     with pytest.raises(AssertionError):
         dm.setup("test")
+
+
+# ----- Parallel worker sampling test (num_workers > 0) -----
+
+
+class WorkerDataset(LRSMDataset):
+    """Minimal dataset for exercising __iter__ across DataLoader workers.
+    Uses in-memory sample_ids [0..num_samples-1] and adds a 'meta.worker_id'
+    target so we can attribute each yielded sample_id to a worker in the parent.
+    """
+    def __init__(self, num_samples: int, **kwargs):
+        super().__init__(
+            dirpath=".",  # unused
+            num_samples=num_samples,
+            inputs={"x": ["feat"]},
+            targets={"y": ["label"], "meta": ["worker_id"]},
+            **kwargs,
+        )
+        self.sample_ids = list(range(num_samples))
+
+    def load_sample(self, sample_id: int):
+        wi = get_worker_info()
+        worker_id = wi.id if wi is not None else 0
+
+        n = 3  # small positive number; shapes don't really matter
+        return {
+            # inputs
+            "x_valid": np.ones((n,), dtype=bool),
+            "x_feat": np.arange(n, dtype=np.float32),
+
+            # targets
+            "y_valid": np.ones((n,), dtype=bool),
+            "y_label": np.zeros((n,), dtype=np.float32),
+
+            # meta: encode worker id as length-1 vector so it flows through collate_fn
+            "meta_valid": np.array([True], dtype=bool),
+            "meta_worker_id": np.array([worker_id], dtype=np.int64),
+        }
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Multiprocess DataLoader is flaky on Windows in CI")
+def test_distinct_sample_ids_across_workers():
+    """With num_workers=2, ensure different workers yield different sample_ids.
+    We don't require covering all sample_ids—just that no two workers
+    produce the same sample_id.
+    """
+    torch.multiprocessing.set_sharing_strategy("file_system")
+
+    num_samples = 12
+    num_workers = 2
+    batch_size = 1
+
+    dset = WorkerDataset(num_samples=num_samples, sampling_seed=123)
+    loader = DataLoader(
+        dataset=dset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=False,
+        collate_fn=dset.collate_fn,
+        pin_memory=False,
+    )
+
+    by_worker = defaultdict(list)
+
+    for _inputs, targets in loader:
+        worker_id = int(targets["meta_worker_id"].view(-1)[0].item())
+        sample_id = int(targets["sample_id"].view(-1)[0].item())
+        by_worker[worker_id].append(sample_id)
+
+    # Sanity: both workers participated
+    assert set(by_worker.keys()) == {0, 1}, f"Expected workers 0 and 1, got {set(by_worker.keys())}"
+
+    # Disjointness check: no duplicate sample_ids across workers
+    all_ids = [sid for sids in by_worker.values() for sid in sids]
+    assert len(all_ids) == len(set(all_ids)), f"Duplicate sample_ids across workers! by_worker={dict(by_worker)}"
+
+    # Each worker actually yielded something
+    assert all(len(sids) > 0 for sids in by_worker.values()), f"Some worker yielded no samples: {dict(by_worker)}"
