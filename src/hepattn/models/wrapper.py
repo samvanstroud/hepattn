@@ -30,7 +30,7 @@ class ModelWrapper(LightningModule):
 
         if mtl:
             # Donated buffers can cause issues with graph retention needed for MTL
-            torch._functorch.config.donated_buffer = False
+            torch._functorch.config.donated_buffer = False  # noqa: SLF001
             # If we are doing multi-task-learning, optimisation step must be done manually
             self.automatic_optimization = False
             # MTL does not currently support intermediate losses
