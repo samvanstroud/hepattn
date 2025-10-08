@@ -4,7 +4,7 @@
 #SBATCH -p GPU
 #SBATCH --nodes=1
 #SBATCH --export=ALL
-#SBATCH --gres=gpu:l40s:1
+#SBATCH --gres=gpu:a100:1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=24G
@@ -37,10 +37,10 @@ export TMPDIR=/share/rcifdata/maxhart/tmp/
 echo "Running training script..."
 
 # Python command that will be run
-CONFIG_PATH="/share/rcifdata/maxhart/hepattn/logs/CLD_TRKECALHCAL_16_96_TF_charged_10MeV_F16_scaled_20250526-T120023/config.yaml"
-CKPT_PATH="/share/rcifdata/maxhart/hepattn/logs/CLD_TRKECALHCAL_16_96_TF_charged_10MeV_F16_scaled_20250526-T120023/ckpts/epoch=009-train_loss=1.45212.ckpt"
-PYTORCH_CMD="python src/hepattn/experiments/cld/main.py fit --config $CONFIG_PATH --ckpt_path $CKPT_PATH"
-# PYTORCH_CMD="python src/hepattn/experiments/cld/main.py fit --config src/hepattn/experiments/cld/configs/tracking.yaml "
+#CONFIG_PATH="/share/rcifdata/maxhart/hepattn/logs/CLD_TRKECALHCAL_16_96_TF_charged_10MeV_F16_scaled_20250526-T120023/config.yaml"
+#CKPT_PATH="/share/rcifdata/maxhart/hepattn/logs/CLD_TRKECALHCAL_16_96_TF_charged_10MeV_F16_scaled_20250526-T120023/ckpts/epoch=009-train_loss=1.45212.ckpt"
+#PYTORCH_CMD="python src/hepattn/experiments/cld/main.py fit --config $CONFIG_PATH --ckpt_path $CKPT_PATH"
+PYTORCH_CMD="python src/hepattn/experiments/cld/main.py fit --config src/hepattn/experiments/cld/configs/base.yaml "
 
 # Pixi commnand that runs the python command inside the pixi env
 PIXI_CMD="pixi run $PYTORCH_CMD"
