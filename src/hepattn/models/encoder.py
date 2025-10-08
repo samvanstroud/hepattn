@@ -216,8 +216,12 @@ class Encoder(nn.Module):
         # We don't need to use the stable sort assuming that the sort values are unique
         x_sort_idx = None
         if x_sort_value is not None:
-            x_sort_idx = torch.argsort(x_sort_value, dim=-1)
-            x = torch.gather(x, -2, x_sort_idx.unsqueeze(-1).expand_as(x))
+            x_sort_idx = torch.argsort(x_sort_value, axis=-1)
+            x = torch.gather(x, dim=-2, index=x_sort_idx.unsqueeze(-1).expand_as(x))
+
+            # Also permute the kv mask if we have one
+            if kv_mask is not None:
+                kv_mask = torch.gather(kv_mask, dim=-1, index=x_sort_idx)
 
         # Add register tokens at the beginning of the sequence
         if self.register_tokens is not None:
