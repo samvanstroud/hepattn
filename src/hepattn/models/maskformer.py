@@ -70,10 +70,6 @@ class MaskFormer(nn.Module):
         batch_size = inputs[self.input_names[0] + "_valid"].shape[0]
         x = {"inputs": inputs}
 
-        # print("------------SORTER--------------")
-        # print(self.sorter.input_names)
-        # print("------------SORTER--------------")
-
         # Embed the input constituents
         for input_net in self.input_nets:
             input_name = input_net.input_name

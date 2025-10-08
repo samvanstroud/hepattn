@@ -8,7 +8,7 @@ from torch import Tensor, nn
 from hepattn.models.dense import Dense
 from hepattn.models.loss import cost_fns, loss_fns, mask_focal_loss
 from hepattn.utils.masks import topk_attn
-from hepattn.utils.scaling import FeatureScaler
+from hepattn.utils.scaling import FeatureScaler, RegressionTargetScaler
 
 # Mapping of loss function names to torch.nn.functional loss functions
 REGRESSION_LOSS_FNS = {
@@ -28,10 +28,11 @@ class Task(nn.Module, ABC):
     that can be trained as part of a multi-task learning setup.
     """
 
-    def __init__(self, has_intermediate_loss: bool, permute_loss: bool = True):
+    def __init__(self, has_intermediate_loss: bool, permute_loss: bool = True, use_attn_mask=True):
         super().__init__()
         self.has_intermediate_loss = has_intermediate_loss
         self.permute_loss = permute_loss
+        self.use_attn_mask = use_attn_mask
 
     @abstractmethod
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -229,6 +230,7 @@ class ObjectHitMaskTask(Task):
         logit_scale: float = 1.0,
         pred_threshold: float = 0.5,
         has_intermediate_loss: bool = True,
+        use_attn_mask: bool = True,
     ):
         """Task for predicting associations between objects and hits.
 
@@ -249,7 +251,7 @@ class ObjectHitMaskTask(Task):
             pred_threshold: Prediction threshold.
             has_intermediate_loss: Whether the task has intermediate loss.
         """
-        super().__init__(has_intermediate_loss=has_intermediate_loss)
+        super().__init__(has_intermediate_loss=has_intermediate_loss, use_attn_mask=use_attn_mask)
 
         self.name = name
         self.input_constituent = input_constituent
@@ -296,6 +298,7 @@ class ObjectHitMaskTask(Task):
             return {}
 
         attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= threshold
+
         return {self.input_constituent: attn_mask}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -1199,3 +1202,120 @@ class IncidenceBasedRegressionTask(RegressionTask):
         proxy_feats = proxy_feats_charged + proxy_feats_neutral
 
         return proxy_feats, is_charged
+
+
+class ObjectHepformerRegressionTask(RegressionTask):
+    def __init__(
+        self,
+        name: str,
+        input_object: str,
+        output_object: str,
+        target_object: str,
+        fields: list[str],
+        loss_weight: float,
+        cost_weight: float,
+        dim: int,
+        loss: RegressionLossType = "smooth_l1",
+        has_intermediate_loss: bool = True,
+        add_momentum: bool = False,
+        scaler: RegressionTargetScaler | None = None,
+    ):
+        """Regression task for objects.
+
+        Args:
+            name: Name of the task.
+            input_object: Name of the input object.
+            output_object: Name of the output object.
+            target_object: Name of the target object.
+            fields: List of fields to regress.
+            loss_weight: Weight for the loss function.
+            cost_weight: Weight for the cost function.
+            dim: Embedding dimension.
+            loss: Type of loss function to use.
+            has_intermediate_loss: Whether the task has intermediate loss.
+        """
+        super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, loss=loss, has_intermediate_loss=has_intermediate_loss)
+
+        self.input_object = input_object
+        self.inputs = [input_object + "_embed"]
+        self.outputs = [output_object + "_regr"]
+
+        self.dim = dim
+        self.net = Dense(self.dim, self.ndofs)
+        self.add_momentum = add_momentum
+
+        if self.add_momentum:
+            if all([t in self.fields for t in ["px", "py", "pz"]]):
+                self.fields.append("p")
+                self.i_px = self.fields.index("px")
+                self.i_py = self.fields.index("py")
+                self.i_pz = self.fields.index("pz")
+            else:
+                self.add_momentum = False
+
+        self.scaler = scaler
+
+    def latent(self, x: dict[str, Tensor]) -> Tensor:
+        return self.net(x[self.input_object + "_embed"])
+
+    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+        # For a standard regression task, the raw network output is the final prediction
+        latent = self.latent(x)
+        # get the predictions
+        if self.add_momentum:
+            latent = self.add_momentum_to_preds(latent)
+        return {self.output_object + "_regr": latent}
+
+    def predict(self, outputs: dict[str, Tensor], **kwargs) -> dict[str, Tensor]:
+        # Produce per-field predictions, inverse-scaling to original units when a scaler is provided
+        latent = outputs[self.output_object + "_regr"].detach()
+        field_values: dict[str, Tensor] = {}
+        for i, field in enumerate(self.fields):
+            value = latent[..., i]
+            if self.scaler is not None:
+                value = self.scaler.inverse(field)(value)
+            field_values[self.output_object + "_" + field] = value
+        return field_values
+
+    def add_momentum_to_preds(self, preds: Tensor):
+        momentum = torch.sqrt(preds[..., self.i_px] ** 2 + preds[..., self.i_py] ** 2 + preds[..., self.i_pz] ** 2)
+        return torch.cat([preds, momentum.unsqueeze(-1)], dim=-1)
+
+    def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor], **kwargs) -> dict[str, Tensor]:
+        output = outputs[self.output_object + "_regr"].detach().to(torch.float32)
+        # Scale targets per field if a scaler is provided
+        if self.scaler is not None:
+            target_fields = [self.scaler.scale(field)(targets[self.target_object + "_" + field]) for field in self.fields]
+        else:
+            target_fields = [targets[self.target_object + "_" + field] for field in self.fields]
+        target = torch.stack(target_fields, dim=-1).to(torch.float32)
+        num_objects = output.shape[1]
+        # Index from the front so it works for both object and mask regression
+        # The expand is not necessary but stops a broadcasting warning from smooth_l1_loss
+        costs = self.loss_fn(
+            output.unsqueeze(2).expand(-1, -1, num_objects, -1),
+            target.unsqueeze(1).expand(-1, num_objects, -1, -1),
+            reduction="none",
+        )
+        # Average over the regression fields dimension
+        costs = costs.mean(-1)
+        return {f"regr_{self.loss_fn_name}": self.cost_weight * costs}
+
+    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor], **kwargs) -> dict[str, Tensor]:
+        # Stack and optionally scale targets to match network output space
+        if self.scaler is not None:
+            target_fields = [self.scaler.scale(field)(targets[self.target_object + "_" + field]) for field in self.fields]
+        else:
+            target_fields = [targets[self.target_object + "_" + field] for field in self.fields]
+        target = torch.stack(target_fields, dim=-1)
+        output = outputs[self.output_object + "_regr"]
+
+        # Only compute loss for valid targets
+        mask = targets[self.target_object + "_valid"].clone()
+        target = target[mask]
+        output = output[mask]
+
+        # Compute the loss
+        loss = self.loss_fn(output, target, reduction="none")
+        loss = torch.mean(loss, dim=-1)
+        return {self.loss_fn_name: self.loss_weight * loss.mean()}
