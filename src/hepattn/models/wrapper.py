@@ -4,6 +4,7 @@ import torch
 from lightning import LightningModule
 from lion_pytorch import Lion
 from torch import Tensor, nn
+from torch._functorch import config as functorch_config  # noqa: PLC2701
 from torch.optim import AdamW
 from torchjd import mtl_backward
 from torchjd.aggregation import UPGrad
@@ -30,7 +31,7 @@ class ModelWrapper(LightningModule):
 
         if mtl:
             # Donated buffers can cause issues with graph retention needed for MTL
-            torch._functorch.config.donated_buffer = False  # noqa: SLF001
+            functorch_config.donated_buffer = False
             # If we are doing multi-task-learning, optimisation step must be done manually
             self.automatic_optimization = False
             # MTL does not currently support intermediate losses
@@ -43,7 +44,8 @@ class ModelWrapper(LightningModule):
         return self.model.predict(outputs)
 
     def aggregate_losses(self, losses: dict[str, Tensor], stage: str | None = None) -> Tensor:
-        total_loss = 0
+        device = next(self.model.parameters()).device
+        total_loss = torch.tensor(0.0, device=device)
 
         for layer_name, layer_losses in losses.items():
             layer_loss = 0
@@ -80,7 +82,7 @@ class ModelWrapper(LightningModule):
         if hasattr(self, "log_custom_metrics"):
             self.log_custom_metrics(preds, targets, stage)
 
-    def training_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]], batch_idx: int) -> Tensor | None:
+    def training_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]], batch_idx: int) -> dict[str, Tensor] | None:
         inputs, targets = batch
 
         # Get the model outputs
@@ -101,7 +103,7 @@ class ModelWrapper(LightningModule):
 
         return {"loss": total_loss, **outputs}
 
-    def validation_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> Tensor:
+    def validation_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> dict[str, Tensor]:
         inputs, targets = batch
 
         # Get the raw model outputs
@@ -117,7 +119,7 @@ class ModelWrapper(LightningModule):
 
         return {"loss": total_loss, **outputs}
 
-    def test_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> tuple[dict[str, Tensor]]:
+    def test_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
         inputs, targets = batch
         outputs = self.model(inputs)
 
@@ -173,11 +175,9 @@ class ModelWrapper(LightningModule):
         # Remove any duplicate features that are used by multiple tasks
         features = [outputs["final"][feature_name] for feature_name in feature_names]
 
-        # Sum the losses from each task, so we get one loss per task
-        losses = [sum(losses["final"][task.name].values()) for task in self.model.tasks]
-
         # TODO: Figure out if we can set retain_graph to false somehow, since it uses a lot of memory
-        mtl_backward(losses=losses, features=features, aggregator=UPGrad(), retain_graph=True)
+        task_losses = [sum(losses["final"][task.name].values()) for task in self.model.tasks]
+        mtl_backward(losses=task_losses, features=features, aggregator=UPGrad(), retain_graph=True)
 
         # Manually perform the optimizer step
         opt.step()
