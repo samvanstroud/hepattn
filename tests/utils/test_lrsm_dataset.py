@@ -264,6 +264,7 @@ class WorkerDataset(LRSMDataset):
     Uses in-memory sample_ids [0..num_samples-1] and adds a 'meta.worker_id'
     target so we can attribute each yielded sample_id to a worker in the parent.
     """
+
     def __init__(self, num_samples: int, **kwargs):
         super().__init__(
             dirpath=".",  # unused
@@ -283,11 +284,9 @@ class WorkerDataset(LRSMDataset):
             # inputs
             "x_valid": np.ones((n,), dtype=bool),
             "x_feat": np.arange(n, dtype=np.float32),
-
             # targets
             "y_valid": np.ones((n,), dtype=bool),
             "y_label": np.zeros((n,), dtype=np.float32),
-
             # meta: encode worker id as length-1 vector so it flows through collate_fn
             "meta_valid": np.array([True], dtype=bool),
             "meta_worker_id": np.array([worker_id], dtype=np.int64),
