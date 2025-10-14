@@ -4,7 +4,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoder
-from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
+from hepattn.models.task import IncidenceRegressionTask, ObjectValidTask
 from hepattn.utils.model_utils import unmerge_inputs
 
 
@@ -133,7 +133,7 @@ class MaskFormer(nn.Module):
             if isinstance(task, IncidenceRegressionTask):
                 # Assume that the incidence task has only one output
                 x["incidence"] = outputs["final"][task.name][task.outputs[0]].detach()
-            if isinstance(task, ObjectClassificationTask):
+            if isinstance(task, ObjectValidTask):
                 # Assume that the classification task has only one output
                 x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
 

@@ -67,25 +67,41 @@ class ObjectValidTask(Task):
         target_object: str,
         losses: dict[str, float],
         costs: dict[str, float],
-        dim: int,
+        net: nn.Module,
+        num_classes: int = 1,
+        class_weights: list[float] | None = None,
         null_weight: float = 1.0,
         mask_queries: bool = False,
         has_intermediate_loss: bool = True,
     ):
-        """Task used for classifying whether object candidates/seeds should be taken as reconstructed/predicted objects or not.
+        """Task for object detection and classification in set prediction scenarios.
+
+        Handles both binary object detection (num_classes=1) and multi-class object
+        detection+classification (num_classes>1). Always includes an implicit null class
+        for empty object slots. Outputs both logits and class probabilities.
+
+        Class Layout:
+        - Valid classes: indices 0, 1, 2, ..., num_classes-1
+        - Null class: index num_classes (always the LAST class)
+        - For binary case (num_classes=1): [valid_class=0, null_class=1]
+        - For multi-class case: [class_0, class_1, ..., class_N-1, null_class=N]
 
         Args:
             name: Name of the task, used as the key to separate task outputs.
             input_object: Name of the input object.
-            output_object: Name of the output object, which will denote if the predicted object slot is used or not.
-            target_object: Name of the target object that we want to predict is valid or not.
+            output_object: Name of the output object.
+            target_object: Name of the target object.
             losses: Dict specifying which losses to use. Keys are loss function names and values are loss weights.
             costs: Dict specifying which costs to use. Keys are cost function names and values are cost weights.
-            dim: Embedding dimension of the input objects.
-            null_weight: Weight applied to the null class in the loss. Useful if many instances of the target class are null, and we need to reweight
-                to overcome class imbalance.
-            mask_queries: Whether to mask queries.
+            net: Network that will be used for classification. Should output num_classes+1 logits.
+            num_classes: Number of object classes (excluding null). For binary detection, use 1.
+            class_weights: Weights for each non-null class in the loss.
+            null_weight: Weight applied to the null class in the loss.
+            mask_queries: Whether to mask queries based on predictions.
             has_intermediate_loss: Whether the task has intermediate loss.
+
+        Raises:
+            ValueError: If the number of class_weights doesn't match num_classes.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
 
@@ -95,46 +111,100 @@ class ObjectValidTask(Task):
         self.target_object = target_object
         self.losses = losses
         self.costs = costs
-        self.dim = dim
-        self.null_weight = null_weight
+        self.num_classes = num_classes
         self.mask_queries = mask_queries
 
-        # Internal
+        # Set up class weights: [class_0, class_1, ..., class_N, null_class]
+        loss_weights = torch.ones(self.num_classes + 1, dtype=torch.float32)
+        if class_weights is not None:
+            if len(class_weights) != self.num_classes:
+                raise ValueError(f"Length of class_weights ({len(class_weights)}) does not match number of classes ({self.num_classes})")
+            loss_weights[: self.num_classes] = torch.tensor(class_weights, dtype=torch.float32)
+        loss_weights[-1] = null_weight  # Last class is the null class
+        self.register_buffer("loss_weights", loss_weights)
+
+        # Internal - output both logits and class probabilities
         self.inputs = [input_object + "_embed"]
-        self.outputs = [output_object + "_logit"]
-        self.net = Dense(dim, 1)
+        self.outputs = [output_object + "_logit", output_object + "_class_prob"]
+        self.net = net
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        # Network projects the embedding down into a scalar
-        x_logit = self.net(x[self.input_object + "_embed"])
-        return {self.output_object + "_logit": x_logit.squeeze(-1)}
+        # Output both logits and class probabilities
+        x_logits = self.net(x[self.input_object + "_embed"])
+
+        # For backward compatibility, handle both binary and multi-class cases
+        if self.num_classes == 1:
+            # Binary case - output single logit and 2-class probabilities
+            x_logit = x_logits.squeeze(-1)
+            # Convert single logit to 2-class probabilities [valid_prob, null_prob]
+            x_probs = torch.stack([torch.sigmoid(x_logit), 1 - torch.sigmoid(x_logit)], dim=-1)
+            return {self.output_object + "_logit": x_logit, self.output_object + "_class_prob": x_probs}
+
+        # Multi-class case - logits are already correct shape
+        return {
+            self.output_object + "_logit": x_logits,  # Keep for any legacy use
+            self.output_object + "_class_prob": x_logits,  # Use logits as "class_prob" for consistency
+        }
 
     def predict(self, outputs: dict[str, Tensor], threshold: float = 0.5) -> dict[str, Tensor]:
-        # Objects that have a predicted probability above the threshold are marked as predicted to exist
-        return {self.output_object + "_valid": outputs[self.output_object + "_logit"].detach().sigmoid() >= threshold}
+        class_probs = outputs[self.output_object + "_class_prob"].detach()
+        classes = class_probs.argmax(-1)
+
+        # The null class is always the LAST class (index = num_classes)
+        # Valid classes are indices 0, 1, ..., num_classes-1
+        # Null class is index num_classes
+        valid_mask = classes < self.num_classes
+
+        return {
+            self.output_object + "_class": classes,
+            self.output_object + "_valid": valid_mask,
+        }
 
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        output = outputs[self.output_object + "_logit"].detach().to(torch.float32)
-        target = targets[self.target_object + "_valid"].to(torch.float32)
         costs = {}
+
+        if self.num_classes == 1:
+            # Binary detection case
+            output = outputs[self.output_object + "_logit"].detach().to(torch.float32)
+            target = targets[self.target_object + "_valid"].to(torch.float32)
+        else:
+            # Multi-class detection case
+            output = outputs[self.output_object + "_class_prob"].detach().to(torch.float32)
+            target = targets[self.target_object + "_class"].long()
+
         for cost_fn, cost_weight in self.costs.items():
             costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target)
         return costs
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         losses = {}
-        output = outputs[self.output_object + "_logit"]
-        target = targets[self.target_object + "_valid"].type_as(output)
-        sample_weight = target + self.null_weight * (1 - target)
-        for loss_fn, loss_weight in self.losses.items():
-            losses[loss_fn] = loss_weight * loss_fns[loss_fn](output, target, sample_weight=sample_weight)
+
+        if self.num_classes == 1:
+            # Binary detection case - use logits for loss computation
+            output = outputs[self.output_object + "_logit"]
+            target = targets[self.target_object + "_valid"].float()
+            sample_weight = target + self.loss_weights[-1] * (1 - target)
+
+            for loss_fn, loss_weight in self.losses.items():
+                losses[loss_fn] = loss_weight * loss_fns[loss_fn](output, target, sample_weight=sample_weight)
+        else:
+            # Multi-class detection case - use logits for loss computation
+            output = outputs[self.output_object + "_logit"]
+            target = targets[self.target_object + "_class"].long()
+
+            for loss_fn, loss_weight in self.losses.items():
+                losses[loss_fn] = loss_weight * loss_fns[loss_fn](output, target, mask=None, weight=self.loss_weights)
+
         return losses
 
     def query_mask(self, outputs: dict[str, Tensor], threshold: float = 0.1) -> Tensor | None:
         if not self.mask_queries:
             return None
 
-        return outputs[self.output_object + "_logit"].detach().sigmoid() >= threshold
+        class_probs = outputs[self.output_object + "_class_prob"].detach()
+
+        # Valid if predicted class is not null (null class is always the last class at index num_classes)
+        return class_probs.argmax(-1) < self.num_classes
 
 
 class HitFilterTask(Task):
@@ -706,23 +776,34 @@ class ClassificationTask(Task):
         output_object: str,
         target_object: str,
         classes: list[str],
-        dim: int,
+        net: nn.Module,
         class_weights: dict[str, float] | None = None,
         loss_weight: float = 1.0,
         multilabel: bool = False,
         permute_loss: bool = True,
         has_intermediate_loss: bool = True,
     ):
-        """Classification task for objects.
+        """Standard classification task for existing objects.
+
+        This task is for scenarios where all input objects are already known to be valid,
+        and the goal is to classify them into specific categories. Unlike ObjectValidTask,
+        this task does NOT handle object detection (valid/invalid) and assumes all inputs
+        represent real objects that just need categorization.
+
+        Use cases:
+        - Jet flavor tagging (b-jet, c-jet, tau-jet, other)
+        - Particle type classification for known particles
+
+        For object detection + classification (where slots can be empty), use ObjectValidTask instead.
 
         Args:
             name: Name of the task.
             input_object: Name of the input object.
             output_object: Name of the output object.
             target_object: Name of the target object.
-            classes: List of class names.
-            dim: Embedding dimension.
-            class_weights: Weights for each class.
+            classes: List of class names (no null class - all inputs assumed valid).
+            net: Network for classification. Should output len(classes) logits.
+            class_weights: Weights for each class in the loss function.
             loss_weight: Weight for the loss function.
             multilabel: Whether this is a multilabel classification.
             permute_loss: Whether to permute loss.
@@ -735,11 +816,10 @@ class ClassificationTask(Task):
         self.output_object = output_object
         self.target_object = target_object
         self.classes = classes
-        self.dim = dim
         self.class_weights = class_weights
         self.loss_weight = loss_weight
         self.multilabel = multilabel
-        self.class_net = Dense(dim, len(classes))
+        self.net = net
 
         if self.class_weights is not None:
             self.class_weights_values = torch.tensor([self.class_weights[class_name] for class_name in self.classes])
@@ -748,8 +828,8 @@ class ClassificationTask(Task):
         self.outputs = [output_object + "_logits"]
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        # Now get the class logits from the embedding (..., N, ) -> (..., E)
-        x = self.class_net(x[f"{self.input_object}_embed"])
+        # Get class logits from the configurable network
+        x = self.net(x[f"{self.input_object}_embed"])
         return {f"{self.output_object}_logits": x}
 
     def predict(self, outputs: dict[str, Tensor], threshold: float = 0.5) -> dict[str, Tensor]:
@@ -793,103 +873,6 @@ class ClassificationTask(Task):
             metrics[f"{class_name}_pur"] = (target & pred).sum() / pred.sum()
 
         return metrics
-
-
-class ObjectClassificationTask(Task):
-    def __init__(
-        self,
-        name: str,
-        input_object: str,
-        output_object: str,
-        target_object: str,
-        losses: dict[str, float],
-        costs: dict[str, float],
-        net: nn.Module,
-        num_classes: int,
-        loss_class_weights: list[float] | None = None,
-        null_weight: float = 1.0,
-        mask_queries: bool = False,
-        has_intermediate_loss: bool = True,
-    ):
-        """Task used for object classification.
-
-        Args:
-            name: Name of the task, used as the key to separate task outputs.
-            input_object: Name of the input object feature.
-            output_object: Name of the output object feature which will denote if the predicted object slot is used or not.
-            target_object: Name of the target object feature that we want to predict is valid or not.
-            losses: Dict specifying which losses to use. Keys denote the loss function name, value denotes loss weight.
-            costs: Dict specifying which costs to use. Keys denote the cost function name, value denotes cost weight.
-            net: Network that will be used to classify the object classes.
-            num_classes: Number of classes.
-            loss_class_weights: Weights for each class in the loss.
-            null_weight: Weight applied to the null class in the loss.
-            mask_queries: Whether to mask queries.
-            has_intermediate_loss: Whether the task has intermediate loss.
-
-        Raises:
-            ValueError: If the number of classes is not positive.
-        """
-        super().__init__(has_intermediate_loss=has_intermediate_loss)
-
-        self.name = name
-        self.input_object = input_object
-        self.output_object = output_object
-        self.target_object = target_object
-        self.losses = losses
-        self.costs = costs
-        self.num_classes = num_classes
-
-        class_weights = torch.ones(self.num_classes + 1, dtype=torch.float32)
-        if loss_class_weights is not None:
-            # If class weights are provided, use them to weight the loss
-            if len(loss_class_weights) != self.num_classes:
-                raise ValueError(f"Length of loss_class_weights ({len(loss_class_weights)}) does not match number of classes ({self.num_classes})")
-            class_weights[: self.num_classes] = torch.tensor(loss_class_weights, dtype=torch.float32)
-        class_weights[-1] = null_weight  # Last class is the null class, so set its weight to the null weight
-        self.register_buffer("class_weights", class_weights)
-        self.mask_queries = mask_queries
-
-        # Internal
-        self.inputs = [input_object + "_embed"]
-        self.outputs = [output_object + "_class_prob"]
-
-        self.net = net
-
-    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        # Network projects the embedding down into a class probability
-        x_class_prob = self.net(x[self.input_object + "_embed"])
-        return {self.output_object + "_class_prob": x_class_prob}
-
-    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
-        classes = outputs[self.output_object + "_class_prob"].detach().argmax(-1)
-        return {
-            self.output_object + "_class": classes,
-            self.output_object + "_valid": classes < self.num_classes,  # Valid if class is less than num_classes
-        }
-
-    def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        output = outputs[self.output_object + "_class_prob"].detach().to(torch.float32)
-        target = targets[self.target_object + "_class"].long()
-        costs = {}
-        for cost_fn, cost_weight in self.costs.items():
-            costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target)
-        return costs
-
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        losses = {}
-        output = outputs[self.output_object + "_class_prob"]
-        target = targets[self.target_object + "_class"].long()
-        # Calculate the loss from each specified loss function.
-        for loss_fn, loss_weight in self.losses.items():
-            losses[loss_fn] = loss_weight * loss_fns[loss_fn](output, target, mask=None, weight=self.class_weights)
-        return losses
-
-    def query_mask(self, outputs: dict[str, Tensor]) -> Tensor | None:
-        if not self.mask_queries:
-            return None
-
-        return outputs[self.output_object + "_class_prob"].detach().argmax(-1) < self.num_classes  # Valid if class is less than num_classes
 
 
 class IncidenceRegressionTask(Task):
