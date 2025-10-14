@@ -12,8 +12,6 @@ data:
       - "theta"
       - "phi"
 
-  targets:
-    particle:
       - e
       - pt
       - eta
@@ -148,7 +146,7 @@ model:
         class_path: torch.nn.ModuleList
         init_args:
           modules:
-            - class_path: hepattn.models.task.ObjectClassificationTask
+            - class_path: hepattn.models.task.ObjectValidTask
               init_args:
                 name: classification
                 input_object: query
