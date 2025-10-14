@@ -12,6 +12,8 @@ data:
       - "theta"
       - "phi"
 
+  targets:
+    particle:
       - e
       - pt
       - eta
