@@ -132,18 +132,17 @@ class ObjectValidTask(Task):
         # Output both logits and class probabilities
         x_logits = self.net(x[self.input_object + "_embed"])
 
-        # For backward compatibility, handle both binary and multi-class cases
+        # Handle both binary and multi-class cases
         if self.num_classes == 1:
-            # Binary case - output single logit and 2-class probabilities
-            x_logit = x_logits.squeeze(-1)
             # Convert single logit to 2-class probabilities [valid_prob, null_prob]
-            x_probs = torch.stack([torch.sigmoid(x_logit), 1 - torch.sigmoid(x_logit)], dim=-1)
-            return {self.output_object + "_logit": x_logit, self.output_object + "_class_prob": x_probs}
+            x_logits = x_logits.squeeze(-1)
+            x_probs = torch.stack([torch.sigmoid(x_logits), 1 - torch.sigmoid(x_logits)], dim=-1)
+        else:
+            x_probs = torch.softmax(x_logits, dim=-1)
 
-        # Multi-class case - logits are already correct shape
         return {
-            self.output_object + "_logit": x_logits,  # Keep for any legacy use
-            self.output_object + "_class_prob": x_logits,  # Use logits as "class_prob" for consistency
+            self.output_object + "_logit": x_logits,
+            self.output_object + "_class_prob": x_probs,
         }
 
     def predict(self, outputs: dict[str, Tensor], threshold: float = 0.5) -> dict[str, Tensor]:
