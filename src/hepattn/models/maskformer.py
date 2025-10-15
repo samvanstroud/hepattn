@@ -88,8 +88,9 @@ class MaskFormer(nn.Module):
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in self.input_names], dim=-1)
 
-        # if all key_valid are true, then we can just set it to None
-        if batch_size == 1 and x["key_valid"].all():
+        # If all key_valid are true, then we can just set it to None, however,
+        # if we are using flash-varlen, we have to always provide a kv_mask argument
+        if batch_size == 1 and x["key_valid"].all() and self.encoder.attn_type != "flash_varlen":
             x["key_valid"] = None
 
         # LEGACY. TODO: remove
