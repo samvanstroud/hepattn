@@ -93,7 +93,8 @@ class ObjectValidTask(Task):
             target_object: Name of the target object.
             losses: Dict specifying which losses to use. Keys are loss function names and values are loss weights.
             costs: Dict specifying which costs to use. Keys are cost function names and values are cost weights.
-            net: Network that will be used for classification. Should output num_classes+1 logits.
+            net: Network that will be used for classification. For binary case (num_classes=1), should output 1 logit.
+                For multi-class case (num_classes>1), should output num_classes+1 logits.
             num_classes: Number of object classes (excluding null). For binary detection, use 1.
             class_weights: Weights for each non-null class in the loss.
             null_weight: Weight applied to the null class in the loss.

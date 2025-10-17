@@ -200,7 +200,7 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: *dim
-                    output_size: 2
+                    output_size: 1
                 null_weight: 1.0
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
