@@ -37,7 +37,7 @@ dependencies = [
     "onnxruntime>=1.22.1,<2",
     "einops>=0.8.1,<0.9",
     "atlas-ftag-tools>=0.2.9,<0.3",
-    "ty>=0.0.1a20,<0.0.1a21",
+    "ty>=0.0.1a20,<0.0.1a21", "py-lap-solver>=0.1.0,<0.2",
 ]
 
 [dependency-groups]
@@ -84,7 +84,6 @@ cuda = "12.3"
 
 [tool.pixi.dependencies]
 gxx = ">=14.3.0,<14.4"
-git = ">=2.51.0,<3"
 git-lfs = ">=3.7.0,<4"
 ninja = ">=1.13.1,<2"
 cuda = "12.8.*"
