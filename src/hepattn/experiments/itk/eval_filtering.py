@@ -11,7 +11,8 @@ from scipy.stats import binned_statistic
 from tqdm import tqdm
 
 from hepattn.experiments.itk.data import ITkDataset
-from hepattn.utils.eval_plots import bayesian_binomial_error, plot_hist_to_ax
+from hepattn.utils.plotting import plot_hist_to_ax
+from hepattn.utils.stats import bayesian_binomial_error
 
 plt.rcParams["figure.dpi"] = 300
 plt.rcParams["font.size"] = 8

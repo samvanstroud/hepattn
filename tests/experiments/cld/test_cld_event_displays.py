@@ -6,7 +6,7 @@ import torch
 import yaml
 
 from hepattn.experiments.cld.data import CLDDataModule
-from hepattn.experiments.cld.plot_event import plot_cld_event_reconstruction
+from hepattn.experiments.cld.event_display import plot_cld_event
 
 plt.rcParams["figure.dpi"] = 300
 
@@ -35,7 +35,10 @@ def test_cld_event_display(cld_datamodule):
     Path("tests/outputs/cld/").mkdir(parents=True, exist_ok=True)
 
     for _i in range(1):
-        inputs, targets = test_dataloader.dataset[0]
+        sample_id = test_dataloader.dataset.sample_ids[0]
+        sample = test_dataloader.dataset.load_sample(sample_id)
+        inputs, targets = test_dataloader.dataset.prep_sample(sample)
+        data = inputs | targets
 
         # Plot the full event with all subsytems
         axes_spec = [
@@ -65,7 +68,7 @@ def test_cld_event_display(cld_datamodule):
             },
         ]
 
-        fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
+        fig = plot_cld_event(data, axes_spec, "particle")
         fig.savefig(Path("tests/outputs/cld/cld_event.png"))
 
         # Plot just the inner and outter tracker
@@ -90,7 +93,7 @@ def test_cld_event_display(cld_datamodule):
             },
         ]
 
-        fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
+        fig = plot_cld_event(data, axes_spec, "particle")
         fig.savefig(Path("tests/outputs/cld/cld_event_trkr.png"))
 
         # Plot just the vertex detector
@@ -115,5 +118,5 @@ def test_cld_event_display(cld_datamodule):
             },
         ]
 
-        fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
+        fig = plot_cld_event(data, axes_spec, "particle")
         fig.savefig(Path("tests/outputs/cld/cld_event_vtxd.png"))

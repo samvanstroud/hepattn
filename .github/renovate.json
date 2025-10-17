@@ -3,80 +3,16 @@
     "extends": [
         "config:recommended"
     ],
-    "timezone": "UTC",
-    "schedule": [
-        "before 8am on Tuesday"
-    ],
-    "prHourlyLimit": 0,
-    "prConcurrentLimit": 10,
-    "branchPrefix": "renovate/",
-    "commitMessagePrefix": "[deps]",
-    "semanticCommits": "enabled",
-    "commitMessageTopic": "{{depName}}",
-    "commitMessageExtra": "to {{newVersion}}",
-    "commitMessageSuffix": "",
-    "packageRules": [
-        {
-            "description": "Ignore specific packages that should be updated manually",
-            "matchPackageNames": [
-                "torch",
-                "lightning",
-                "comet-ml"
-            ],
-            "enabled": false
-        },
-        {
-            "description": "Group Python dependency updates from pyproject.toml",
-            "matchManagers": [
-                "pep621"
-            ],
-            "matchFiles": [
-                "pyproject.toml"
-            ],
-            "groupName": "Python dependencies",
-            "commitMessageTopic": "Python dependencies",
-            "schedule": [
-                "before 8am on Tuesday"
-            ]
-        },
-        {
-            "description": "Group pixi conda dependencies and lock file updates",
-            "matchManagers": [
-                "pixi"
-            ],
-            "groupName": "pixi conda dependencies",
-            "commitMessageTopic": "pixi conda dependencies",
-            "schedule": [
-                "before 8am on Tuesday"
-            ],
-            "lockFileMaintenance": {
-                "enabled": true
-            }
-        },
-        {
-            "description": "Update pixi.lock alongside source dependency changes",
-            "matchFiles": [
-                "pixi.lock"
-            ],
-            "enabled": true,
-            "schedule": [
-                "before 8am on Tuesday"
-            ],
-            "commitMessageTopic": "pixi lock file"
-        }
+    "ignoreDeps": [
+        "packaging",
+        "cuda",
+        "torch",
+        "lightning",
+        "jsonargparse",
+        "comet-ml",
+        "ruff"
     ],
     "lockFileMaintenance": {
-        "enabled": true,
-        "schedule": [
-            "before 8am on Tuesday"
-        ],
-        "commitMessageAction": "Lock file maintenance",
-        "branchTopic": "lock-file-maintenance"
-    },
-    "pixi": {
-        "enabled": true
-    },
-    "pep621": {
         "enabled": true
     }
 }

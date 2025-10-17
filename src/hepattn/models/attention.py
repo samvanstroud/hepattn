@@ -10,8 +10,8 @@ except ImportError:
         # FA2 (from wheel)
         from flash_attn import flash_attn_func, flash_attn_varlen_func  # ty: ignore [unresolved-import]
     except ImportError:
-        flash_attn_func = None
-        flash_attn_varlen_func = None
+        flash_attn_func = None  # ty: ignore [conflicting-declarations]
+        flash_attn_varlen_func = None  # ty: ignore [conflicting-declarations]
 
 from torch import Size, Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention

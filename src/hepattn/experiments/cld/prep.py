@@ -56,6 +56,10 @@ item_names = [
     "HCalRingCollectionContributions",
     "YokeBarrelCollectionContributions",
     "YokeEndcapCollectionContributions",
+    # Reco info
+    "PandoraPFOs",
+    "PandoraClusters",
+    "SiTracks_Refitted",
 ]
 
 ###############################################################
@@ -98,17 +102,6 @@ relations_links = {
     ],
 }
 
-# Specify masks/links which use start/end indexing to specify linkage
-start_end_links = [
-    ("ECalBarrelCollection", "ECalBarrelCollectionContributions"),
-    ("ECalEndcapCollection", "ECalEndcapCollectionContributions"),
-    ("HCalBarrelCollection", "HCalBarrelCollectionContributions"),
-    ("HCalEndcapCollection", "HCalEndcapCollectionContributions"),
-    ("HCalRingCollection", "HCalRingCollectionContributions"),
-    ("YokeBarrelCollection", "YokeBarrelCollectionContributions"),
-    ("YokeEndcapCollection", "YokeEndcapCollectionContributions"),
-]
-
 # Specify the mask/links which use particle based links
 particle_links = [
     "VertexBarrelCollection",
@@ -125,6 +118,43 @@ particle_links = [
     "YokeEndcapCollectionContributions",
     "YokeBarrelCollectionContributions",
 ]
+
+
+# These links only work if there is a one-to-one mapping
+start_end_links_single = {
+    # Link the collections to collection contributions
+    ("ECalBarrelCollection", "contributions"): "ECalBarrelCollectionContributions",
+    ("ECalEndcapCollection", "contributions"): "ECalEndcapCollectionContributions",
+    ("HCalBarrelCollection", "contributions"): "HCalBarrelCollectionContributions",
+    ("HCalEndcapCollection", "contributions"): "HCalEndcapCollectionContributions",
+    ("HCalRingCollection", "contributions"): "HCalRingCollectionContributions",
+    ("YokeBarrelCollection", "contributions"): "YokeBarrelCollectionContributions",
+    ("YokeEndcapCollection", "contributions"): "YokeEndcapCollectionContributions",
+}
+
+# Specify links that specify start/end indices of some shared collection
+start_end_links_multi = {
+    ("PandoraPFOs", "clusters"): ["PandoraClusters"],
+    ("PandoraPFOs", "tracks"): ["SiTracks_Refitted"],
+    ("PandoraPFOs", "particles"): ["MCParticles"],
+    # Link the reco objects to the hits
+    ("SiTracks_Refitted", "trackerHits"): [
+        "VXDTrackerHits",
+        "VXDEndcapTrackerHits",
+        "ITrackerHits",
+        "ITrackerEndcapHits",
+        "OTrackerHits",
+        "OTrackerEndcapHits",
+    ],
+    ("PandoraClusters", "hits"): [
+        "ECALBarrel",
+        "ECALEndcap",
+        "HCALBarrel",
+        "HCALEndcap",
+        "HCALOther",
+        "MUON",
+    ],
+}
 
 ###############################################################
 # Which masks we have to build by glueing together the other masks
@@ -144,6 +174,19 @@ mask_joins = [
     ("HCALOther", "HCalRingCollection", "HCalRingCollectionContributions"),
     ("MUON", "YokeBarrelCollection", "YokeBarrelCollectionContributions"),
     ("MUON", "YokeEndcapCollection", "YokeEndcapCollectionContributions"),
+    # Reco links
+    ("PandoraPFOs", "SiTracks_Refitted", "VXDTrackerHits"),
+    ("PandoraPFOs", "SiTracks_Refitted", "VXDEndcapTrackerHits"),
+    ("PandoraPFOs", "SiTracks_Refitted", "ITrackerHits"),
+    ("PandoraPFOs", "SiTracks_Refitted", "ITrackerEndcapHits"),
+    ("PandoraPFOs", "SiTracks_Refitted", "OTrackerHits"),
+    ("PandoraPFOs", "SiTracks_Refitted", "OTrackerEndcapHits"),
+    ("PandoraPFOs", "PandoraClusters", "ECALBarrel"),
+    ("PandoraPFOs", "PandoraClusters", "ECALEndcap"),
+    ("PandoraPFOs", "PandoraClusters", "HCALBarrel"),
+    ("PandoraPFOs", "PandoraClusters", "HCALEndcap"),
+    ("PandoraPFOs", "PandoraClusters", "HCALOther"),
+    ("PandoraPFOs", "PandoraClusters", "MUON"),
 ]
 
 ###############################################################
@@ -207,6 +250,9 @@ item_aliases = {
     "HCalRingCollectionContributions": "hco_con",
     "YokeBarrelCollectionContributions": "msb_con",
     "YokeEndcapCollectionContributions": "mse_con",
+    "PandoraPFOs": "pandora",  # Reco pandora particle flow objects
+    "SiTracks_Refitted": "sitrack",  # Reco conformal tracking / pandora tracks
+    "PandoraClusters": "topocluster",  # Reco pandora calo topo clusters
 }
 
 ###############################################################
@@ -233,6 +279,14 @@ field_aliases = {
     "stepPosition.x": "step_pos.x",
     "stepPosition.y": "step_pos.y",
     "stepPosition.z": "step_pos.z",
+    "referencePoint.x": "ref.x",
+    "referencePoint.y": "ref.y",
+    "referencePoint.z": "ref.z",
+    "covMatrix.values[10]": "cov_mat",
+    "directionError.x": "dir_err.x",
+    "directionError.y": "dir_err.y",
+    "directionError.z": "dir_err.z",
+    "covMatrix.values[6]": "cov_mat",
 }
 
 ###############################################################
@@ -274,6 +328,9 @@ output_items = [
     "hco_con",
     "msb_con",
     "mse_con",
+    "pandora",
+    "sitrack",
+    "topocluster",
 ]
 
 # Specify which masks we actually want to save
@@ -331,8 +388,35 @@ output_masks = [
     ("particle", "hco"),
     ("particle", "msb"),
     ("particle", "mse"),
+    ("pandora", "sitrack"),
+    ("pandora", "topocluster"),
+    ("sitrack", "vtb"),
+    ("sitrack", "vte"),
+    ("sitrack", "itb"),
+    ("sitrack", "ite"),
+    ("sitrack", "otb"),
+    ("sitrack", "ote"),
+    ("topocluster", "ecb"),
+    ("topocluster", "ece"),
+    ("topocluster", "hcb"),
+    ("topocluster", "hce"),
+    ("topocluster", "hco"),
+    ("topocluster", "msb"),
+    ("topocluster", "mse"),
+    ("pandora", "vtb"),
+    ("pandora", "vte"),
+    ("pandora", "itb"),
+    ("pandora", "ite"),
+    ("pandora", "otb"),
+    ("pandora", "ote"),
+    ("pandora", "ecb"),
+    ("pandora", "ece"),
+    ("pandora", "hcb"),
+    ("pandora", "hce"),
+    ("pandora", "hco"),
+    ("pandora", "msb"),
+    ("pandora", "mse"),
 ]
-
 
 non_hadron_pdgid_to_class = {
     22: 3,  # Photon
@@ -408,18 +492,46 @@ def preprocess_event(events, event_idx, namecodes, min_pt, verbose):
             mask[link_src_idx[link_mask], link_tgt_idx[link_mask]] = True
             masks[src, tgt] = mask
 
-    # Now build masks that use start/end indices
-    for src, tgt in start_end_links:
-        # The source has the indices that index into the target
-        start_idx = ak.to_numpy(events[f"{src}/{src}.contributions_begin"].array(entry_start=event_idx, entry_stop=event_idx + 1)[0])
-        end_idx = ak.to_numpy(events[f"{src}/{src}.contributions_end"].array(entry_start=event_idx, entry_stop=event_idx + 1)[0])
+    for (src, name), tgt in start_end_links_single.items():
+        start_idx = ak.to_numpy(events[f"{src}/{src}.{name}_begin"].array(entry_start=event_idx, entry_stop=event_idx + 1)[0])
+        end_idx = ak.to_numpy(events[f"{src}/{src}.{name}_end"].array(entry_start=event_idx, entry_stop=event_idx + 1)[0])
 
         num_src = len(items[src])
         num_tgt = len(items[tgt])
 
         tgt_idx = np.arange(num_tgt)
-        mask = (tgt_idx[None, :] >= start_idx[:, None]) & (tgt_idx[None, :] <= end_idx[:, None])
+        mask = (tgt_idx[None, :] >= start_idx[:, None]) & (tgt_idx[None, :] < end_idx[:, None])
         masks[src, tgt] = mask
+
+    for (src, name), tgts in start_end_links_multi.items():
+        # These specify the indices and collection ids of the trackerhits / clusters
+        # Has size num hits
+        src_hit_idx = ak.to_numpy(events[f"_{src}_{name}/_{src}_{name}.index"].array(entry_start=event_idx, entry_stop=event_idx + 1)[0])
+        src_hit_cid = ak.to_numpy(events[f"_{src}_{name}/_{src}_{name}.collectionID"].array(entry_start=event_idx, entry_stop=event_idx + 1)[0])
+
+        # Specifies start and end idx of the tracker hits / clusters for each track
+        # Has size num tracks
+        start_idx = ak.to_numpy(events[f"{src}/{src}.{name}_begin"].array(entry_start=event_idx, entry_stop=event_idx + 1)[0])
+        end_idx = ak.to_numpy(events[f"{src}/{src}.{name}_end"].array(entry_start=event_idx, entry_stop=event_idx + 1)[0])
+
+        num_src = len(items[src])
+        num_hit = len(src_hit_idx)
+
+        # Map the src to hits
+        # Has size num tracks, num hits
+        hit_idx = np.arange(num_hit)
+        src_hit_mask = (hit_idx[None, :] >= start_idx[:, None]) & (hit_idx[None, :] < end_idx[:, None])
+
+        for tgt in tgts:
+            num_tgt = len(items[tgt])
+
+            # Map the hits to tgt
+            hit_tgt_mask = np.full((num_hit, num_tgt), False)
+            cid_mask = src_hit_cid == namecodes[tgt]
+            hit_tgt_mask[hit_idx[cid_mask], src_hit_idx[cid_mask]] = True
+
+            # Combine the masks to get src -> tgt
+            masks[src, tgt] = src_hit_mask @ hit_tgt_mask
 
     # Now build the masks that use a single particle link
     for src in particle_links:
@@ -512,7 +624,8 @@ def preprocess_event(events, event_idx, namecodes, min_pt, verbose):
         cut_mask = particle_cuts[cut_name]
         cut_size = np.sum(cut_mask)
         pre_cut_size = np.sum(particle_cut_final)
-        particle_cut_final &= cut_mask
+        # If the linter complains and wants this to be &=, ignore it!
+        particle_cut_final = particle_cut_final & cut_mask
         post_cut_size = np.sum(particle_cut_final)
 
         if verbose:
@@ -584,16 +697,12 @@ def preprocess_event(events, event_idx, namecodes, min_pt, verbose):
     if verbose:
         print(separator)
 
-    field_blacklist = [
-        "contributions_begin",
-        "contributions_end",
-    ]
-
     # Now save the output items
     data_out = {}
     for item_name in output_items:
         for field in aliased_items[item_name]:
-            if field in field_blacklist:
+            # Ignore fields that are used for linking
+            if field.endswith(("_begin", "_end")):
                 continue
 
             output_item = ak.to_numpy(aliased_items[item_name][field])
@@ -646,7 +755,11 @@ def preprocess_file(
 
     codenames = {}
     namecodes = {}
-    for code, name in zip(metadata["events___idTable/m_collectionIDs"].array()[0], metadata["events___idTable/m_names"].array()[0], strict=False):
+
+    collection_codes = metadata["events___CollectionTypeInfo/events___CollectionTypeInfo.collectionID"].array()[0]
+    collection_names = metadata["events___CollectionTypeInfo/events___CollectionTypeInfo.name"].array()[0]
+
+    for code, name in zip(collection_codes, collection_names, strict=False):
         codenames[code] = name
         namecodes[name] = code
 
@@ -688,7 +801,7 @@ def preprocess_file(
     print("=" * 100 + f"\nPreprocessed events in {in_file_path} and saved them to {out_folder}\n" + "=" * 100)
 
 
-def preprocess_files(in_dir: str, out_dir: str, overwrite: bool, parallel: bool = False):
+def preprocess_files(in_dir: str, out_dir: str, overwrite: bool, min_pt: float = 10.0, verbose: bool = False, parallel: bool = False):
     """Preprpocess root files into parquet files.
 
     Parameters
@@ -702,18 +815,14 @@ def preprocess_files(in_dir: str, out_dir: str, overwrite: bool, parallel: bool 
 
     in_dir = Path(in_dir)
     out_dir = Path(out_dir)
-
     filenames = [path.stem for path in in_dir.glob("*.root")]
 
     print("=" * 100)
     print(f"Found {len(filenames)} files in {in_dir}")
 
-    completed_filenames = [filename for filename in filenames if len(list((out_dir / Path(filename)).glob("*.npz"))) == num_events_per_file]
-
     # Determine which output folders have 1000 events in, and so are complete
-
+    completed_filenames = [filename for filename in filenames if len(list((out_dir / Path(filename)).glob("*.npz"))) == num_events_per_file]
     uncompleted_filenames = list(set(filenames) - set(completed_filenames))
-
     target_filenames = filenames if overwrite else uncompleted_filenames
 
     print(f"Found {len(completed_filenames)} completed files in {out_dir}")
@@ -728,7 +837,7 @@ def preprocess_files(in_dir: str, out_dir: str, overwrite: bool, parallel: bool 
     print("=" * 100)
 
     for filename in target_filenames:
-        preprocess_file(in_dir, out_dir, filename)
+        preprocess_file(in_dir, out_dir, filename, min_pt, verbose)
 
 
 if __name__ == "__main__":
