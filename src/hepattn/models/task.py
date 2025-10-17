@@ -205,9 +205,7 @@ class ObjectValidTask(Task):
             return None
 
         class_probs = outputs[self.output_object + "_class_prob"].detach()
-
-        # Valid if predicted class is not null (null class is always the last class at index num_classes)
-        return class_probs.argmax(-1) < self.num_classes
+        return class_probs[..., -1] <= (1 - threshold)
 
 
 class HitFilterTask(Task):
