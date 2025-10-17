@@ -4,7 +4,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoder
-from hepattn.models.task import IncidenceRegressionTask, ObjectValidTask
+from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.model_utils import unmerge_inputs
 
 
@@ -132,7 +132,7 @@ class MaskFormer(nn.Module):
             # Need this for incidence-based regression task
             if isinstance(task, IncidenceRegressionTask):
                 x["incidence"] = outputs["final"][task.name][task.incidence_key].detach()
-            if isinstance(task, ObjectValidTask):
+            if isinstance(task, ObjectClassificationTask):
                 x["class_probs"] = outputs["final"][task.name][task.probs_key].detach()
 
         # store info about the input sort field for each input type

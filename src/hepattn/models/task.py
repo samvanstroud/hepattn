@@ -58,7 +58,7 @@ class Task(nn.Module, ABC):
         return None
 
 
-class ObjectValidTask(Task):
+class ObjectClassificationTask(Task):
     def __init__(
         self,
         name: str,
@@ -791,7 +791,7 @@ class ClassificationTask(Task):
         """Standard classification task for existing objects.
 
         This task is for scenarios where all input objects are already known to be valid,
-        and the goal is to classify them into specific categories. Unlike ObjectValidTask,
+        and the goal is to classify them into specific categories. Unlike ObjectClassificationTask,
         this task does NOT handle object detection (valid/invalid) and assumes all inputs
         represent real objects that just need categorization.
 
@@ -799,7 +799,7 @@ class ClassificationTask(Task):
         - Jet flavor tagging (b-jet, c-jet, tau-jet, other)
         - Particle type classification for known particles
 
-        For object detection + classification (where slots can be empty), use ObjectValidTask instead.
+        For object detection + classification (where slots can be empty), use ObjectClassificationTask instead.
 
         Args:
             name: Name of the task.
