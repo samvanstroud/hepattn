@@ -12,7 +12,7 @@ jobs:
       - name: Setup Ruff
         uses: astral-sh/ruff-action@v3
         with:
-          version: "0.12.4"
+          version: "0.13.0"
           args: "--version"
 
       - name: Run ruff check
