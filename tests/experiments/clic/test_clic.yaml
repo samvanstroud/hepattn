@@ -154,7 +154,7 @@ model:
                     output_size: 6
                     hidden_layers: [256, 128, 32]
                 null_weight: 0.5
-                loss_class_weights: [1.0, 3.0, 8.0, 1.5, 1.0]
+                class_weights: [1.0, 3.0, 8.0, 1.5, 1.0]
                 mask_queries: false
                 has_intermediate_loss: true
 
