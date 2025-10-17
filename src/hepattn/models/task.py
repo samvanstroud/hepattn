@@ -138,6 +138,7 @@ class ObjectClassificationTask(Task):
 
             self.net = net
         else:
+            assert dim is not None
             self.net = Dense(input_size=dim, output_size=self.output_size)
 
         # Set up class weights: [class_0, class_1, ..., class_N, null_class]
