@@ -136,7 +136,8 @@ class ObjectValidTask(Task):
         if self.num_classes == 1:
             # Convert single logit to 2-class probabilities [valid_prob, null_prob]
             x_logits = x_logits.squeeze(-1)
-            x_probs = torch.stack([torch.sigmoid(x_logits), 1 - torch.sigmoid(x_logits)], dim=-1)
+            x_sigmoid = torch.sigmoid(x_logits)
+            x_probs = torch.stack([x_sigmoid, 1 - x_sigmoid], dim=-1)
         else:
             x_probs = torch.softmax(x_logits, dim=-1)
 
