@@ -67,7 +67,8 @@ class ObjectClassificationTask(Task):
         target_object: str,
         losses: dict[str, float],
         costs: dict[str, float],
-        net: nn.Module,
+        net: Dense | None = None,
+        dim: int | None = None,
         num_classes: int = 1,
         class_weights: list[float] | None = None,
         null_weight: float = 1.0,
@@ -94,7 +95,8 @@ class ObjectClassificationTask(Task):
             losses: Dict specifying which losses to use. Keys are loss function names and values are loss weights.
             costs: Dict specifying which costs to use. Keys are cost function names and values are cost weights.
             net: Network that will be used for classification. For binary case (num_classes=1), should output 1 logit.
-                For multi-class case (num_classes>1), should output num_classes+1 logits.
+                For multi-class case (num_classes>1), should output num_classes+1 logits. Cannot be specified with dim.
+            dim: Input dimension for creating a default Dense network. Cannot be specified with net.
             num_classes: Number of object classes (excluding null). For binary detection, use 1.
             class_weights: Weights for each non-null class in the loss.
             null_weight: Weight applied to the null class in the loss.
@@ -103,8 +105,16 @@ class ObjectClassificationTask(Task):
 
         Raises:
             ValueError: If the number of class_weights doesn't match num_classes.
+            ValueError: If both net and dim are specified, or neither is specified.
+            ValueError: If net output size doesn't match expected size for num_classes.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
+
+        # Validate net and dim arguments
+        if net is not None and dim is not None:
+            raise ValueError("Cannot specify both 'net' and 'dim'. Choose one.")
+        if net is None and dim is None:
+            raise ValueError("Must specify either 'net' or 'dim'.")
 
         self.name = name
         self.input_object = input_object
@@ -114,7 +124,21 @@ class ObjectClassificationTask(Task):
         self.costs = costs
         self.num_classes = num_classes
         self.mask_queries = mask_queries
-        self.net = net
+
+        # Create network based on provided arguments
+        self.output_size = 1 if num_classes == 1 else num_classes + 1
+        if net is not None:
+            if net.output_size != self.output_size:
+                raise ValueError(
+                    f"Network output size ({net.output_size}) doesn't match expected size "
+                    f"for num_classes={num_classes} (expected {self.output_size}). "
+                    f"For binary case (num_classes=1), net should output 1 logit. "
+                    f"For multi-class case, net should output num_classes+1 logits."
+                )
+
+            self.net = net
+        else:
+            self.net = Dense(input_size=dim, output_size=self.output_size)
 
         # Set up class weights: [class_0, class_1, ..., class_N, null_class]
         loss_weights = torch.ones(self.num_classes + 1, dtype=torch.float32)
