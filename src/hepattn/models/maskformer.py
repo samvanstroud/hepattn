@@ -134,8 +134,8 @@ class MaskFormer(nn.Module):
                 # Assume that the incidence task has only one output
                 x["incidence"] = outputs["final"][task.name][task.outputs[0]].detach()
             if isinstance(task, ObjectValidTask):
-                # Assume that the classification task has only one output
-                x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
+                # Get the class probabilities (second output), not the logits (first output)
+                x["class_probs"] = outputs["final"][task.name][task.outputs[1]].detach()
 
         # store info about the input sort field for each input type
         if self.sorter is not None:

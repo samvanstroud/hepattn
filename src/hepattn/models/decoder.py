@@ -137,7 +137,8 @@ class MaskFormerDecoder(nn.Module):
                 if isinstance(task, IncidenceRegressionTask):
                     x["incidence"] = task_outputs[task.outputs[0]].detach()
                 if isinstance(task, ObjectValidTask):
-                    x["class_probs"] = task_outputs[task.outputs[0]].detach()
+                    # Get the class probabilities (second output), not the logits (first output)
+                    x["class_probs"] = task_outputs[task.outputs[1]].detach()
 
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
