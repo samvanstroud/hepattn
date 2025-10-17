@@ -113,6 +113,7 @@ class ObjectValidTask(Task):
         self.costs = costs
         self.num_classes = num_classes
         self.mask_queries = mask_queries
+        self.net = net
 
         # Set up class weights: [class_0, class_1, ..., class_N, null_class]
         loss_weights = torch.ones(self.num_classes + 1, dtype=torch.float32)
@@ -123,10 +124,11 @@ class ObjectValidTask(Task):
         loss_weights[-1] = null_weight  # Last class is the null class
         self.register_buffer("loss_weights", loss_weights)
 
-        # Internal - output both logits and class probabilities
+        # Define semantic output keys as properties
+        self.logits_key = output_object + "_logit"
+        self.probs_key = output_object + "_class_prob"
         self.inputs = [input_object + "_embed"]
-        self.outputs = [output_object + "_logit", output_object + "_class_prob"]
-        self.net = net
+        self.outputs = [self.logits_key, self.probs_key]
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # Output both logits and class probabilities
@@ -142,8 +144,8 @@ class ObjectValidTask(Task):
             x_probs = torch.softmax(x_logits, dim=-1)
 
         return {
-            self.output_object + "_logit": x_logits,
-            self.output_object + "_class_prob": x_probs,
+            self.logits_key: x_logits,
+            self.probs_key: x_probs,
         }
 
     def predict(self, outputs: dict[str, Tensor], threshold: float = 0.5) -> dict[str, Tensor]:
@@ -437,19 +439,22 @@ class RegressionTask(Task):
         # For standard regression number of DoFs is just the number of targets
         self.ndofs = self.k
 
+        # Define semantic output key as property
+        self.regression_key = output_object + "_regr"
+
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # For a standard regression task, the raw network output is the final prediction
         latent = self.latent(x)
-        return {self.output_object + "_regr": latent}
+        return {self.regression_key: latent}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Split the regression vector into the separate fields
-        latent = outputs[self.output_object + "_regr"]
+        latent = outputs[self.regression_key]
         return {self.output_object + "_" + field: latent[..., i] for i, field in enumerate(self.fields)}
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1)
-        output = outputs[self.output_object + "_regr"]
+        output = outputs[self.regression_key]
 
         # Only compute loss for valid targets
         mask = targets[self.target_object + "_valid"].clone()
@@ -682,8 +687,9 @@ class ObjectRegressionTask(RegressionTask):
         super().__init__(name, output_object, target_object, fields, loss_weight, cost_weight, loss=loss, has_intermediate_loss=has_intermediate_loss)
 
         self.input_object = input_object
+
         self.inputs = [input_object + "_embed"]
-        self.outputs = [output_object + "_regr"]
+        self.outputs = [self.regression_key]
 
         self.dim = dim
         self.net = Dense(self.dim, self.ndofs)
@@ -692,7 +698,7 @@ class ObjectRegressionTask(RegressionTask):
         return self.net(x[self.input_object + "_embed"])
 
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        output = outputs[self.output_object + "_regr"].detach().to(torch.float32)
+        output = outputs[self.regression_key].detach().to(torch.float32)
         target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1).to(torch.float32)
         num_objects = output.shape[1]
         # Index from the front so it works for both object and mask regression
@@ -914,8 +920,9 @@ class IncidenceRegressionTask(Task):
         self.net = net
         self.node_net = node_net if node_net is not None else nn.Identity()
 
+        self.incidence_key = self.output_object + "_incidence"
         self.inputs = [input_object + "_embed", input_constituent + "_embed"]
-        self.outputs = [self.output_object + "_incidence"]
+        self.outputs = [self.incidence_key]
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         x_object = self.net(x[self.input_object + "_embed"])
@@ -924,13 +931,13 @@ class IncidenceRegressionTask(Task):
         incidence_pred = torch.einsum("bqe,ble->bql", x_object, x_hit)
         incidence_pred = incidence_pred.softmax(dim=1) * x[self.input_constituent + "_valid"].unsqueeze(1).expand_as(incidence_pred)
 
-        return {self.output_object + "_incidence": incidence_pred}
+        return {self.incidence_key: incidence_pred}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
-        return {self.output_object + "_incidence": outputs[self.output_object + "_incidence"].detach()}
+        return {self.output_object + "_incidence": outputs[self.incidence_key].detach()}
 
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        output = outputs[self.output_object + "_incidence"].detach().to(torch.float32)
+        output = outputs[self.incidence_key].detach().to(torch.float32)
         target = targets[self.target_object + "_incidence"].to(torch.float32)
 
         costs = {}
@@ -940,7 +947,7 @@ class IncidenceRegressionTask(Task):
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         losses = {}
-        output = outputs[self.output_object + "_incidence"]
+        output = outputs[self.incidence_key]
         target = targets[self.target_object + "_incidence"].type_as(output)
 
         # Create a mask for valid nodes and objects

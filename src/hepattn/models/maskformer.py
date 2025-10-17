@@ -131,11 +131,9 @@ class MaskFormer(nn.Module):
 
             # Need this for incidence-based regression task
             if isinstance(task, IncidenceRegressionTask):
-                # Assume that the incidence task has only one output
-                x["incidence"] = outputs["final"][task.name][task.outputs[0]].detach()
+                x["incidence"] = outputs["final"][task.name][task.incidence_key].detach()
             if isinstance(task, ObjectValidTask):
-                # Get the class probabilities (second output), not the logits (first output)
-                x["class_probs"] = outputs["final"][task.name][task.outputs[1]].detach()
+                x["class_probs"] = outputs["final"][task.name][task.probs_key].detach()
 
         # store info about the input sort field for each input type
         if self.sorter is not None:
