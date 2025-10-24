@@ -108,11 +108,6 @@ class TrackMLDataset(Dataset):
         hits, particles = self.load_event(idx)
         num_particles = len(particles)
 
-        if self.scale_coords:
-            hits.x *= 0.01
-            hits.y *= 0.01
-            hits.z *= 0.01
-
         # Build the input hits
         for feature, fields in self.inputs.items():
             inputs[f"{feature}_valid"] = torch.full((len(hits),), True).unsqueeze(0)

@@ -294,23 +294,33 @@ class ObjectHitMaskTask(Task):
 
         # TODO apply norms
         # Dense layer as per config
+        
+        x_object = nn.functional.normalize(self.object_net(x[self.input_object + "_embed"]), dim=-1)
+        x_hit = nn.functional.normalize(self.hit_net(x[self.input_constituent + "_embed"]), dim=-1)
 
-        x_object = self.object_net(x[self.input_object + "_embed"])
-        x_hit = self.hit_net(x[self.input_constituent + "_embed"])
 
         # Object-hit probability is the dot product between the hit and object embedding
         object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", x_object, x_hit)
 
         # Zero out entries for any padded input constituents
         object_hit_logit[~x[self.input_constituent + "_valid"].unsqueeze(-2).expand_as(object_hit_logit)] = torch.finfo(object_hit_logit.dtype).min
+        object_hit_logit = torch.nan_to_num(object_hit_logit, neginf=-1e6, posinf=1e6)
 
         return {self.output_object_hit + "_logit": object_hit_logit}
 
     def attn_mask(self, outputs: dict[str, Tensor], threshold: float = 0.1, **kwargs) -> dict[str, Tensor]:
         if not self.mask_attn:
             return {}
+        # Get continuous sigmoid scores (no binarization)
+        scores = outputs[self.output_object_hit + "_logit"].sigmoid()
 
-        attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= threshold
+        # hepformer uses "mask out" convention where True = cannot attend
+        # so build a soft Boolean mask: positions with low confidence (< threshold) are masked
+        attn_mask = scores < threshold
+
+        # handle degenerate masks (fully masked → allow all)
+        attn_mask[torch.where(attn_mask.sum(-1) == attn_mask.shape[-1])] = False
+
         return {self.input_constituent: attn_mask}
 
     def predict(self, outputs: dict[str, Tensor], **kwargs) -> dict[str, Tensor]:
