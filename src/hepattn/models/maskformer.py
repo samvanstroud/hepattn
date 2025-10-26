@@ -4,16 +4,16 @@ Based on
 - https://github.com/facebookresearch/Mask2Former
 """
 
-
+from collections.abc import Mapping
 from typing import Any
 
 import torch
 from torch import Tensor, nn
 
+from hepattn.models.hepformer_loss import HEPFormerLoss
+
 # from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.model_utils import unmerge_inputs
-from hepattn.models.hepformer_loss import HEPFormerLoss
-from collections.abc import Mapping
 
 
 class MaskFormer(nn.Module):
@@ -57,7 +57,7 @@ class MaskFormer(nn.Module):
         self.tasks = tasks
         self.target_object = target_object
         # self.matcher = matcher
-        self.loss = HEPFormerLoss(**loss_config, tasks=tasks)
+        self.loss_fn = HEPFormerLoss(**loss_config, tasks=tasks)
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
@@ -73,7 +73,7 @@ class MaskFormer(nn.Module):
     def input_names(self) -> list[str]:
         return [input_net.input_name for input_net in self.input_nets]
 
-    def forward(self, inputs: dict[str, Tensor], targets: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
+    def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
         batch_size = inputs[self.input_names[0] + "_valid"].shape[0]
         x = {"inputs": inputs}
 
@@ -122,81 +122,62 @@ class MaskFormer(nn.Module):
 
         # get mask and flavour predictions
         preds = self.mask_decoder(x["key_embed"], x.get("key_valid"))
+        # Pass through decoder layers
+        # x, outputs = self.decoder(x, self.input_names)
 
-        # print("mask logits mean/std:", preds["masks"].mean().item(), preds["masks"].std().item())
+        outputs = {"final": {"preds": preds}}
 
+        for task in self.tasks:
+            outputs["final"][task.name] = task(x)
+
+        # store info about the input sort field for each input type
+        if self.sorter is not None:
+            sort = self.sorter.input_sort_field
+            sort_dict = {f"{name}_{sort}": inputs[f"{name}_{sort}"] for name in self.input_names}
+            outputs["final"][sort] = sort_dict
+
+        return outputs
+
+    def predict(self, outputs: dict) -> dict:
+        """Takes the raw model outputs and produces a set of actual inferences / predictions.
+        For example will take output probabilies and apply threshold cuts to prduce boolean predictions.
+
+        Args:
+            outputs: The outputs produced by the forward pass of the model.
+            targets: The targets used for inference.
+
+        Returns:
+            preds: A dictionary containing the predicted values for each task.
+        """
+        preds: dict[str, dict[str, Any]] = {}
+        preds["preds"] = outputs["final"]["preds"]
+
+        for task in self.tasks:
+            if task.input_type == "queries":
+                preds.update(task(preds))
+        # # Compute predictions for each task in each block
+        # for task in self.tasks:
+        #     preds[task.name] = task.predict(outputs["final"][task.name])
+
+        return preds
+
+    def loss(self, preds: dict, targets: dict) -> dict:
         # get the loss, updating the preds and labels with the best matching
-        do_loss_matching = True
-        if do_loss_matching:  # set to false for inference timings
-            preds, targets, loss = self.loss(preds, targets)
-        else:
-            loss = {}  # disable the bipartite matching
-            for task in self.tasks:
-                if task.input_type == "queries":
-                    preds.update(task(preds, targets))
+        if self.sorter is not None:
+            targets = self.sorter.sort_targets(targets, preds["final"][self.sorter.input_sort_field])
+
+        preds, targets, loss = self.loss_fn(preds, targets)
 
         # configurable tasks here
         for task in self.tasks:
             if task.input_type == "queries":
-                task_loss = task.get_loss(preds, targets)
+                task_loss = task.loss(preds, targets)
             else:
                 task_preds, task_loss = task(preds, targets)
                 preds.update(task_preds)
             loss.update(task_loss)
 
-        return preds, loss
-
-        # Pass through decoder layers
-        # x, outputs = self.decoder(x, self.input_names)
-
-        # # Do any pooling if desired
-        # if self.pooling is not None:
-        #     x_pooled = self.pooling(x[f"{self.pooling.input_name}_embed"], x[f"{self.pooling.input_name}_valid"])
-        #     x[f"{self.pooling.output_name}_embed"] = x_pooled
-
-        # # Get the final outputs
-        # outputs["final"] = {}
-        # for task in self.tasks:
-        #     outputs["final"][task.name] = task(x)
-
-        #     # Need this for incidence-based regression task
-        #     if isinstance(task, IncidenceRegressionTask):
-        #         # Assume that the incidence task has only one output
-        #         x["incidence"] = outputs["final"][task.name][task.outputs[0]].detach()
-        #     if isinstance(task, ObjectClassificationTask):
-        #         # Assume that the classification task has only one output
-        #         x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
-
-        # # store info about the input sort field for each input type
-        # if self.sorter is not None:
-        #     sort = self.sorter.input_sort_field
-        #     sort_dict = {f"{name}_{sort}": inputs[f"{name}_{sort}"] for name in self.input_names}
-        #     outputs["final"][sort] = sort_dict
-
-        # return outputs
-
-    # def predict(self, outputs: dict) -> dict:
-    #     """Takes the raw model outputs and produces a set of actual inferences / predictions.
-    #     For example will take output probabilies and apply threshold cuts to prduce boolean predictions.
-
-    #     Args:
-    #         outputs: The outputs produced by the forward pass of the model.
-
-    #     Returns:
-    #         preds: A dictionary containing the predicted values for each task.
-    #     """
-    #     preds: dict[str, dict[str, Any]] = {}
-
-    #     # Compute predictions for each task in each block
-    #     for layer_name, layer_outputs in outputs.items():
-    #         preds[layer_name] = {}
-
-    #         for task in self.tasks:
-    #             if layer_name != "final" and not task.has_intermediate_loss:
-    #                 continue
-    #             preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
-
-    #     return preds
+        return loss
 
     # def loss(self, outputs: dict, targets: dict) -> tuple[dict, dict]:
     #     """Computes the loss between the forward pass of the model and the data / targets.

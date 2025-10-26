@@ -287,17 +287,15 @@ class ObjectHitMaskTask(Task):
 
         self.hit_net = Dense(dim, dim)
         self.object_net = Dense(dim, dim)
-    
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # Produce new task-specific embeddings for the hits and objects
 
-        # TODO apply norms
+        # TODO apply norms
         # Dense layer as per config
-        
+
         x_object = nn.functional.normalize(self.object_net(x[self.input_object + "_embed"]), dim=-1)
         x_hit = nn.functional.normalize(self.hit_net(x[self.input_constituent + "_embed"]), dim=-1)
-
 
         # Object-hit probability is the dot product between the hit and object embedding
         object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", x_object, x_hit)
@@ -662,8 +660,6 @@ class ObjectRegressionTask(RegressionTask):
         # Average over the regression fields dimension
         costs = costs.mean(-1)
         return {f"regr_{self.loss_fn_name}": self.cost_weight * costs}
-
-
 
 
 class ObjectHitRegressionTask(RegressionTask):

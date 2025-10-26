@@ -1,14 +1,15 @@
 from typing import Literal
 
 import torch
+import torchmetrics as tm
 from lightning import LightningModule
 from lion_pytorch import Lion
 from torch import nn
 from torch.optim import AdamW
 from torchjd import mtl_backward
 from torchjd.aggregation import UPGrad
+
 from hepattn.utils.masks_hepformer import mask_from_logits
-import torchmetrics as tm
 
 
 class MaskInference:
@@ -64,7 +65,7 @@ class ModelWrapper(LightningModule):
         lrs_config: dict,
         optimizer: Literal["AdamW", "Lion"] = "AdamW",
         mtl: bool = False,
-        log_metrics_train = True,
+        log_metrics_train=True,
     ):
         super().__init__()
 
@@ -109,7 +110,6 @@ class ModelWrapper(LightningModule):
         self.log(f"{stage}/loss", total_loss, sync_dist=True)
         return total_loss
 
-
     def log_custom_metrics(self, pred_valid, true_valid, pred_hit_masks, true_hit_masks, stage):
         # Just log predictions from the final layer
 
@@ -153,8 +153,6 @@ class ModelWrapper(LightningModule):
 
         self.log(f"{stage}/num_tracks", torch.mean(pred_num.float()), sync_dist=True)
         self.log(f"{stage}/num_particles", torch.mean(true_num.float()), sync_dist=True)
-
-
 
     def mask_metrics(self, preds, labels, pred_masks, truth_masks, pred_valid, truth_valid, stage, **kwargs):
         # include selection on predicted mask that it has >= 3 hits. reduces fake rate
@@ -203,7 +201,6 @@ class ModelWrapper(LightningModule):
         pur_idx = pred_masks.sum(-1) > 0  # get reco masks with at least one predicted hit
         self.log(f"{stage}_mask_purity", self.MI.pur(pred_masks[pur_idx], truth_masks[pur_idx]), **kwargs)
 
-
     def log_metrics(self, preds, labels, stage, pad_mask=None):
         kwargs = {"sync_dist": True, "batch_size": 1}
 
@@ -248,7 +245,7 @@ class ModelWrapper(LightningModule):
             pred_masks_wargmax = mask_from_logits(pred_masks, mode="weighted_argmax", object_class_preds=track_class_probs)
 
         self.mask_metrics(preds, labels, pred_masks_sigmoid, truth_masks, pred_valid, truth_valid, f"{stage}", **kwargs)
-        
+
         pred_hit_masks = pred_masks_sigmoid & pred_valid.unsqueeze(-1)
         true_hit_masks = truth_masks & track_class_labels.unsqueeze(-1)
         self.log_custom_metrics(pred_valid, track_class_labels, pred_hit_masks, true_hit_masks, stage)
@@ -256,18 +253,18 @@ class ModelWrapper(LightningModule):
         if "class_probs" in preds:
             self.mask_metrics(preds, labels, pred_masks_wargmax, truth_masks, pred_valid, truth_valid, f"{stage}_wargmax", **kwargs)
 
-
     def training_step(self, batch, batch_idx):
         inputs, targets = batch
 
         # Get the model outputs
-        preds, loss = self.model(inputs, targets)
+        preds = self.model(inputs)
+        loss = self.model.loss(preds, targets)
 
         # Compute and log losses
         total_loss = self.log_losses(loss, "train")
 
         # Get the predictions from the model
-        if (batch_idx % self.trainer.log_every_n_steps == 0):  # avoid calling predict if possible
+        if batch_idx % self.trainer.log_every_n_steps == 0:  # avoid calling predict if possible
             self.log_metrics(preds, targets, "train")
 
         return {"loss": total_loss, **preds}
@@ -276,7 +273,8 @@ class ModelWrapper(LightningModule):
         inputs, targets = batch
 
         # Get the raw model outputs
-        preds, loss = self.model(inputs, targets)
+        preds = self.model(inputs, targets)
+        loss = self.model.loss(preds, targets)
 
         # Compute and log losses
         total_loss = self.log_losses(loss, "val")
@@ -288,9 +286,8 @@ class ModelWrapper(LightningModule):
 
     def test_step(self, batch):
         inputs, targets = batch
-        preds, loss = self.model(inputs, targets)
-
-        return {"loss": loss, **preds}
+        preds = self.model(inputs, targets)
+        return self.model.predict(preds)
 
     def on_train_start(self):
         # Manually overwride the learning rate in case we are starting
