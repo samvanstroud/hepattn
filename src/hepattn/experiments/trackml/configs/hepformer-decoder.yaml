@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-MAIN-SCALEUP-VERSION-epochs30-MA-eta2p5-pt600-hepformer-decoder
+name: TRK-MAIN-SCALEUP-VERSION-epochs30-MA-eta2p5-pt600-hepformer-decoder-maskformer-10epochs
 
 data:
   train_dir:  /share/rcif2/pduckett/data/prepped/train/
@@ -68,7 +68,7 @@ data:
 
 trainer:
   # Training stuff here
-  max_epochs: 30
+  max_epochs: 10
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
@@ -120,8 +120,10 @@ model:
   log_metrics_train: True
   
   model:
-    class_path: hepattn.models.maskformer.FilterTracker
+    class_path: hepattn.models.maskformer.MaskFormer
     init_args:
+      input_sort_field: phi
+      dim: &dim 256
       loss_config:
         adaptive_lap: true
         num_classes: 1
@@ -132,41 +134,44 @@ model:
           mask_focal: 50.0
           mask_dice: 2.0
           regression: 0.1
-      input_net:
-        class_path: hepattn.models.InputNet
+      input_nets:
+        class_path: torch.nn.ModuleList
         init_args:
-          input_name: hit
-          # Which fields will be used to construct this input type
-          fields:
-            - x
-            - y
-            - z
-            - r
-            - eta
-            - phi
-            - u
-            - v
-            - charge_frac
-            - leta
-            - lphi
-            - lx
-            - ly
-            - lz
-            - geta
-            - gphi
-          net:
-            class_path: hepattn.models.Dense
-            init_args:
-              input_size: 16
-              output_size: &dim 256
-          posenc:
-            class_path: hepattn.models.PositionEncoder
-            init_args:
-              input_name: hit
-              fields:
-                - phi
-              dim: *dim
-      mask_decoder:
+          modules:
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: hit
+                # Which fields will be used to construct this input type
+                fields:
+                  - x
+                  - y
+                  - z
+                  - r
+                  - eta
+                  - phi
+                  - u
+                  - v
+                  - charge_frac
+                  - leta
+                  - lphi
+                  - lx
+                  - ly
+                  - lz
+                  - geta
+                  - gphi
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 16
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.PositionEncoder
+                  init_args:
+                    input_name: hit
+                    fields:
+                      - phi
+                    dim: *dim
+      decoder:
         class_path: hepattn.models.decoder.MaskDecoder
         init_args:
           embed_dim: 256

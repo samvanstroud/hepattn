@@ -1,3 +1,4 @@
+
 from pathlib import Path
 
 import h5py
@@ -8,6 +9,7 @@ from lightning import LightningDataModule
 from lightning.pytorch.utilities.rank_zero import rank_zero_info
 from torch.utils.data import DataLoader, Dataset
 import math
+
 
 class TrackMLDataset(Dataset):
     def __init__(
@@ -23,8 +25,8 @@ class TrackMLDataset(Dataset):
         event_max_num_particles=1000,
         hit_eval_path: str | None = None,
         dummy_data: bool = False,
-        hit_particle_ratio = 0,
-        scale_coords = False,
+        hit_particle_ratio=0,
+        scale_coords=False,
     ):
         super().__init__()
 
@@ -105,7 +107,7 @@ class TrackMLDataset(Dataset):
         targets = {}
 
         # Load the event
-        hits, particles = self.load_event(idx)
+        hits, particles, all_parts, truth = self.load_event(idx)
         num_particles = len(particles)
 
         # Build the input hits
@@ -116,16 +118,9 @@ class TrackMLDataset(Dataset):
             for field in fields:
                 inputs[f"{feature}_{field}"] = torch.from_numpy(hits[field].values).unsqueeze(0).half()
 
-        if self.hit_particle_ratio:
-            self.event_max_num_particles = math.ceil(len(hits) / self.hit_particle_ratio)
-            rank_zero_info(
-                f"Event {idx} has {len(hits)} hits and {num_particles} particles, setting to {self.event_max_num_particles}"
-            )
         # Limit the number of particles to event_max_num_particles
         if num_particles > self.event_max_num_particles:
-            rank_zero_info(
-                f"Event {idx} has {num_particles} particles, limiting to {self.event_max_num_particles}"
-            )
+            rank_zero_info(f"Event {idx} has {num_particles} particles, limiting to {self.event_max_num_particles}")
             particles = particles.iloc[: self.event_max_num_particles]
             num_particles = self.event_max_num_particles
 
@@ -150,6 +145,22 @@ class TrackMLDataset(Dataset):
         # Add sample ID
         targets["sample_id"] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)
 
+        targets["hit_tgt_pid"] = torch.from_numpy(hits["tgt_pid"].values).unsqueeze(0)
+        targets["hit_hit_tgt"] = targets["hit_tgt_pid"] != 0
+
+        targets["hit_pid"] = torch.from_numpy(hits["particle_id"].values).unsqueeze(0)
+        targets["hit_hid"] = torch.from_numpy(hits["hit_id"].values).unsqueeze(0)
+        targets["hit_weight"] = torch.from_numpy(hits["weight"].values).unsqueeze(0)
+        targets["truth_particle_id"] = torch.from_numpy(truth["particle_id"].values).unsqueeze(0)
+        targets["truth_hit_id"] = torch.from_numpy(truth["hit_id"].values).unsqueeze(0)
+        targets["truth_weight"] = torch.from_numpy(truth["weight"].values).unsqueeze(0)
+        targets["all_pids"] = torch.from_numpy(all_parts["particle_id"].values).unsqueeze(0)
+        targets["all_pts"] = torch.from_numpy(all_parts["pt"].values).unsqueeze(0)
+        targets["all_etas"] = torch.from_numpy(all_parts["eta"].values).unsqueeze(0)
+        targets["all_phis"] = torch.from_numpy(all_parts["phi"].values).unsqueeze(0)
+        targets["all_vzs"] = torch.from_numpy(all_parts["vz"].values).unsqueeze(0)
+        targets["all_nhits"] = torch.from_numpy(all_parts["nhits"].values).unsqueeze(0)
+
         # Build the regression targets
         if "particle" in self.targets:
             for field in self.targets["particle"]:
@@ -166,39 +177,16 @@ class TrackMLDataset(Dataset):
 
         particles = pd.read_parquet(self.dirpath / Path(event_name + "-parts.parquet"))
         hits = pd.read_parquet(self.dirpath / Path(event_name + "-hits.parquet"))
+        truth = pd.read_parquet(self.dirpath / Path(event_name + "-truth.parquet"))
+        assert (truth.index == hits.index).all()
+
+        hits["particle_id"] = truth["particle_id"]  # used for evaluation, don't modify
+        hits["tgt_pid"] = truth["particle_id"]
 
         # Make the detector volume selection
         if self.hit_volume_ids:
             hits = hits[hits["volume_id"].isin(self.hit_volume_ids)]
-
-        # Scale the input coordinates to in meters so they are ~ 1
-        for coord in ["x", "y", "z"]:
-            hits[coord] *= 0.01
-
-        # Add extra hit fields
-        hits["r"] = np.sqrt(hits["x"] ** 2 + hits["y"] ** 2)
-        hits["s"] = np.sqrt(hits["x"] ** 2 + hits["y"] ** 2 + hits["z"] ** 2)
-        hits["theta"] = np.arccos(hits["z"] / hits["s"])
-        hits["phi"] = np.arctan2(hits["y"], hits["x"])
-        hits["eta"] = -np.log(np.tan(hits["theta"] / 2))
-        hits["u"] = hits["x"] / (hits["x"] ** 2 + hits["y"] ** 2)
-        hits["v"] = hits["y"] / (hits["x"] ** 2 + hits["y"] ** 2)
-
-        # Add extra particle fields
-        particles["p"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2 + particles["pz"] ** 2)
-        particles["pt"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2)
-        particles["qopt"] = particles["q"] / particles["pt"]
-        particles["eta"] = np.arctanh(particles["pz"] / particles["p"])
-        particles["theta"] = np.arccos(particles["pz"] / particles["p"])
-        particles["phi"] = np.arctan2(particles["py"], particles["px"])
-        particles["costheta"] = np.cos(particles["theta"])
-        particles["sintheta"] = np.sin(particles["theta"])
-        particles["cosphi"] = np.cos(particles["phi"])
-        particles["sinphi"] = np.sin(particles["phi"])
-
-        # Apply particle level cuts based on particle fields
-        particles = particles[particles["pt"] > self.particle_min_pt]
-        particles = particles[particles["eta"].abs() < self.particle_max_abs_eta]
+            truth = truth[truth["hit_id"].isin(hits["hit_id"])]
 
         # If a hit eval file was specified, read in the predictions from it to use the hit filtering
         if self.hit_eval_path:
@@ -213,14 +201,44 @@ class TrackMLDataset(Dataset):
                     hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/key_on_valid_particle"][0]
                 hits = hits[hit_filter_pred]
 
-        # TODO: Add back truth based hit filtering
+        # Add extra particle fields
+        particles["p"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2 + particles["pz"] ** 2)
+        particles["pt"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2)
+        particles["qopt"] = particles["q"] / particles["pt"]
+        particles["eta"] = np.arctanh(particles["pz"] / particles["p"])
+        particles["theta"] = np.arccos(particles["pz"] / particles["p"])
+        particles["phi"] = np.arctan2(particles["py"], particles["px"])
+        particles["costheta"] = np.cos(particles["theta"])
+        particles["sintheta"] = np.sin(particles["theta"])
+        particles["cosphi"] = np.cos(particles["phi"])
+        particles["sinphi"] = np.sin(particles["phi"])
+        all_parts = particles.copy()
 
+        # Apply particle level cuts based on particle fields
+        particles = particles[particles["pt"] > self.particle_min_pt]
+        particles = particles[particles["eta"].abs() < self.particle_max_abs_eta]
+
+        # TODO: Add back truth based hit filtering
         # Apply particle cut based on hit content
         counts = hits["particle_id"].value_counts()
         keep_particle_ids = counts[counts >= self.particle_min_num_hits].index.to_numpy()
         particles = particles[particles["particle_id"].isin(keep_particle_ids)]
         # Mark which hits are on a valid / reconstructable particle, for the hit filter
         hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
+        hits.loc[~hits.particle_id.isin(keep_particle_ids), "tgt_pid"] = 0
+
+        # Scale the input coordinates to in meters so they are ~ 1
+        for coord in ["x", "y", "z"]:
+            hits[coord] *= 0.01
+
+        # Add extra hit fields
+        hits["r"] = np.sqrt(hits["x"] ** 2 + hits["y"] ** 2)
+        hits["s"] = np.sqrt(hits["x"] ** 2 + hits["y"] ** 2 + hits["z"] ** 2)
+        hits["theta"] = np.arccos(hits["z"] / hits["s"])
+        hits["phi"] = np.arctan2(hits["y"], hits["x"])
+        hits["eta"] = -np.log(np.tan(hits["theta"] / 2))
+        hits["u"] = hits["x"] / (hits["x"] ** 2 + hits["y"] ** 2)
+        hits["v"] = hits["y"] / (hits["x"] ** 2 + hits["y"] ** 2)
 
         # Sanity checks
         assert len(particles) != 0, "No particles remaining - loosen selection!"
@@ -233,7 +251,7 @@ class TrackMLDataset(Dataset):
         # msg = f"Only {hits['phi'].nunique()} of the {len(hits)} have unique phi"
         # assert hits["phi"].nunique() == len(hits), msg
 
-        return hits, particles
+        return hits, particles, all_parts, truth
 
     def _generate_dummy_data(self, idx):
         """Generate completely random dummy data for CI testing."""

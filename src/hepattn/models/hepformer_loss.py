@@ -8,7 +8,6 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from hepattn.models.hepformer_matcher import HungarianMatcher
 from hepattn.models.matcher import Matcher
 
 
@@ -136,14 +135,6 @@ class HEPFormerLoss(nn.Module):
             matcher_weights = loss_weights
         self.losses = losses if losses is not None else ["labels", "masks"]
         self.tasks = tasks
-
-
-        # self.matcher = HungarianMatcher(
-        #     num_classes=num_classes,
-        #     num_objects=num_objects,
-        #     loss_weights=matcher_weights,
-        #     adaptive_lap=adaptive_lap,
-        # )
 
         self.matcher = Matcher(
             default_solver="scipy",  # or "lap1015_late" if available
