@@ -48,12 +48,15 @@ class PredictionWriter(Callback):
 
     def on_test_batch_end(self, trainer, pl_module, test_step_outputs, batch, batch_idx):
         inputs, targets = batch
-        outputs, preds, losses = test_step_outputs
-
+        preds = test_step_outputs
+        losses = preds["loss"]
+        test_outs = test_step_outputs
         # handle batched case
         if "sample_id" in targets:
             # Get all of the sample IDs in the batch, this is what will be used to retrieve the samples
             sample_ids = targets["sample_id"]
+            outputs = {}
+
 
             # Iterate through all of the samples in the batch
             for idx, sample_id in enumerate(sample_ids):
@@ -77,15 +80,19 @@ class PredictionWriter(Callback):
         if self.write_targets:
             self.write_items(sample_group, "targets", targets, idx)
 
-        # Items produced by model have layer/task structure
-        if self.write_outputs:
-            self.write_layer_task_items(sample_group, "outputs", outputs, idx)
+        self.create_dataset(sample_group, "preds/masks", preds["masks"])
+        self.create_dataset(sample_group, "preds/class_preds", preds["class_probs"])
 
-        if self.write_preds:
-            self.write_layer_task_items(sample_group, "preds", preds, idx)
 
-        if self.write_losses:
-            self.write_layer_task_items(sample_group, "losses", losses, idx)
+        # # Items produced by model have layer/task structure
+        # if self.write_outputs:
+        #     self.write_layer_task_items(sample_group, "outputs", outputs, idx)
+
+        # if self.write_preds:
+        #     self.write_layer_task_items(sample_group, "preds", preds, idx)
+
+        # if self.write_losses:
+        #     self.write_layer_task_items(sample_group, "losses", losses, idx)
 
     def write_items(self, sample_group, item_name, items, idx):
         # This will write out a dict of items that has the structure

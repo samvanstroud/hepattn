@@ -310,20 +310,20 @@ class ModelWrapper(LightningModule):
 
         opt = optimizer(self.model.parameters(), lr=self.lrs_config["initial"], weight_decay=self.lrs_config["weight_decay"])
 
-        if not self.lrs_config.get("skip_scheduler"):
+        # if not self.lrs_config.get("skip_scheduler"):
             # Configure the learning rate scheduler
-            sch = torch.optim.lr_scheduler.OneCycleLR(
-                opt,
-                max_lr=self.lrs_config["max"],
-                total_steps=self.trainer.estimated_stepping_batches,
-                div_factor=self.lrs_config["max"] / self.lrs_config["initial"],
-                final_div_factor=self.lrs_config["initial"] / self.lrs_config["end"],
-                pct_start=float(self.lrs_config["pct_start"]),
-            )
-            sch = {"scheduler": sch, "interval": "step"}
-            return [opt], [sch]
-        print("Skipping learning rate scheduler.")
-        return opt
+        sch = torch.optim.lr_scheduler.OneCycleLR(
+            opt,
+            max_lr=self.lrs_config["max"],
+            total_steps=self.trainer.estimated_stepping_batches,
+            div_factor=self.lrs_config["max"] / self.lrs_config["initial"],
+            final_div_factor=self.lrs_config["initial"] / self.lrs_config["end"],
+            pct_start=float(self.lrs_config["pct_start"]),
+        )
+        sch = {"scheduler": sch, "interval": "step"}
+        return [opt], [sch]
+        # print("Skipping learning rate scheduler.")
+        # return opt
 
     # def mlt_opt(self, losses, outputs):
     #     opt = self.optimizers()

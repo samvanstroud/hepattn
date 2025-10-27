@@ -255,3 +255,65 @@ class GLU(nn.Module):
         if self.gate:
             out = out * self.gate(x)
         return self.w2(out)
+
+
+
+
+class TransformerLayer(nn.Module):
+    def __init__(self, n_heads: int, dim: int, attn_kwargs: dict | None = None, ff_dim_scale: int = 2, activation: str = "SiLU"):
+        super().__init__()
+        if attn_kwargs is None:
+            attn_kwargs = {}
+        self.n_heads = n_heads
+        self.dim = dim
+        self.attention = SelfAttention(dim=dim, n_heads=n_heads, **attn_kwargs)
+        self.dense = GLU(dim, dim * ff_dim_scale, activation=activation)
+
+    def forward(self, x: Tensor, mask: BoolTensor) -> Tensor:
+        x = x + self.attention(x, kv_mask=mask)
+        x = x + self.dense(x)
+        return x
+
+
+class Transformer(nn.Module):
+    # TODO move args from layer to here
+    def __init__(self, n_layers: int, layer_config: dict, out_dim: int | None = None):
+        super().__init__()
+        self.n_layers = n_layers
+        self.layers = torch.nn.ModuleList([TransformerLayer(**layer_config) for _ in range(n_layers)])
+        self.norm = nn.LayerNorm(layer_config["dim"], elementwise_affine=False)
+        self.out_proj = None
+        if out_dim is not None:
+            self.out_proj = nn.Linear(layer_config["dim"], out_dim)
+
+        self.window_size = layer_config.get("window_size", None)
+
+    def forward(self, x: Tensor, x_sort_value, mask: BoolTensor = None) -> Tensor:
+
+        x_sort_idx = None
+        if x_sort_value is not None:
+            x_sort_idx = torch.argsort(x_sort_value, dim=-1)
+            x = torch.gather(x, dim=-2, index=x_sort_idx.unsqueeze(-1).expand_as(x))
+
+        # if we have a window size, add some extra tokens to the start and finish of the sequence
+        # to let the window wrap around
+        if self.window_size is not None:
+            x = torch.cat([x[:, -self.window_size//2:], x, x[:, :self.window_size//2]], dim=1)
+
+        for layer in self.layers:
+            x = layer(x, mask)
+
+        # remove the extra tokens
+        if self.window_size is not None:
+            x = x[:, self.window_size//2:-self.window_size//2]
+
+        x = self.norm(x)
+        if self.out_proj:
+            x = self.out_proj(x)
+
+        # If we sorted the tokens, undo the sorting
+        if x_sort_value is not None and x_sort_idx is not None:
+            x_unsort_idx = torch.argsort(x_sort_idx, dim=-1)
+            x = torch.gather(x, -2, x_unsort_idx.unsqueeze(-1).expand_as(x))
+            
+        return x
