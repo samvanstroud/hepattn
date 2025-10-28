@@ -158,11 +158,12 @@ def mask_focal_loss(pred_logits, targets, gamma=2.0, object_valid_mask=None, inp
     p_t = pred * targets + (1 - pred) * (1 - targets)
     loss = ce_loss * ((1 - p_t) ** gamma)
 
-    # normalise by valid elements such that each mask contributes equally
+    # Normalise by valid elements such that each mask contributes equally
     if input_pad_mask is not None:
         valid_counts = input_pad_mask.sum(-1, keepdim=True)
-        loss = loss.sum(-1) / valid_counts
+        loss = loss.sum(-1) / valid_counts.clamp_min(1.0)
         return loss.mean()
+
     return loss.mean(-1).mean()
 
 
@@ -218,11 +219,12 @@ def mask_bce_loss(pred_logits, targets, object_valid_mask=None, input_pad_mask=N
     if input_pad_mask is not None:
         loss = loss * input_pad_mask.unsqueeze(1)
 
-    # normalise by valid elements such that each mask contributes equally
+    # Normalise by valid elements such that each mask contributes equally
     if input_pad_mask is not None:
         valid_counts = input_pad_mask.sum(-1, keepdim=True)
-        loss = loss.sum(-1) / valid_counts
+        loss = loss.sum(-1) / valid_counts.clamp_min(1.0)
         return loss.mean()
+
     return loss.mean(-1).mean()
 
 
