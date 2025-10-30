@@ -50,7 +50,6 @@ class PredictionWriter(Callback):
         inputs, targets = batch
         preds = test_step_outputs
         losses = preds["loss"]
-        test_outs = test_step_outputs
         # handle batched case
         if "sample_id" in targets:
             # Get all of the sample IDs in the batch, this is what will be used to retrieve the samples
