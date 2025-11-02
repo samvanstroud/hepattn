@@ -7214,7 +7214,7 @@ packages:
 - pypi: ./
   name: hepattn
   version: 0.2.0
-  sha256: c540b66470b67a85c7c376f1d8917202bb831442daa37aab02de865393b5fa76
+  sha256: eb04ee33996a6cdfb9e0bdd342eb4556122984446945b7bb7ca005d945ed99b2
   requires_dist:
   - packaging>=24.1,<25
   - jupyter>=1.1.1,<2
@@ -12450,7 +12450,6 @@ packages:
 - pypi: https://download.pytorch.org/whl/typing_extensions-4.12.2-py3-none-any.whl
   name: typing-extensions
   version: 4.12.2
-  sha256: 04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d
   requires_python: '>=3.8'
 - pypi: https://files.pythonhosted.org/packages/5c/23/c7abc0ca0a1526a0774eca151daeb8de62ec457e77262b66b359c3c7679e/tzdata-2025.2-py2.py3-none-any.whl
   name: tzdata

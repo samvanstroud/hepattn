@@ -53,7 +53,7 @@ build-backend = "scikit_build_core.build"
 wheel.packages = ["src/hepattn", "src/lap1015/src/lap1015"]
 
 
-[tool.pixi.project]
+[tool.pixi.workspace]
 channels = ["conda-forge", "nvidia", "nodefaults"]
 platforms = ["linux-64", "linux-aarch64"]
 
