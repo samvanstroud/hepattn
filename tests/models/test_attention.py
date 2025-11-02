@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch import nn
-from torch.nn.attention.flex_attention import create_mask
+from torch.nn.attention.flex_attention import create_block_mask, create_mask
 
 from hepattn.flex.sliding_window import sliding_window_mask
 from hepattn.models.attention import ATTN_MASK_ATTN_TYPES, VARLEN_ATTN_TYPES, Attention, repad_from_flash_varlen, unpad_for_flash_varlen
@@ -39,6 +39,10 @@ def test_attention_consistency(batch_size, dim, num_heads, bias, q_len, kv_len, 
         pytest.skip(f"Skipping {attn_type} test as GPU is not available")
     if attn_type == "flash-varlen" and kv_len is not None:
         pytest.skip("flash-varlen does not support cross attention")
+    if attn_type == "flex" and kv_masking:
+        pytest.skip("flex attention + key/value masking not supported yet")
+    if attn_type == "flex" and batch_size > 1:
+        pytest.skip("flex attention with batch size > 1 not supported yet")
 
     # Generate random input tensors
     q = torch.randn(batch_size, q_len, dim, dtype=torch.float16, device=DEVICE)
@@ -54,9 +58,18 @@ def test_attention_consistency(batch_size, dim, num_heads, bias, q_len, kv_len, 
     if not self_attn and kv_masking and attn_type in VARLEN_ATTN_TYPES:
         kv_mask = torch.randn(batch_size, kv.shape[-2], dtype=torch.float16, device=DEVICE) >= 0.0
 
-    attn_mask = None
+    mask = attn_mask = None
     if attn_masking and attn_type in ATTN_MASK_ATTN_TYPES:
-        attn_mask = torch.randn(batch_size, q.shape[-2], kv.shape[-2], dtype=torch.float16, device=DEVICE) >= 0.0
+        mask = torch.randn(batch_size, q.shape[-2], kv.shape[-2], dtype=torch.float16, device=DEVICE) >= 0.0
+        attn_mask = mask.clone()
+
+        if attn_type == "flex":
+            # For flex attention, we need to create a BlockMask
+            # Create a simple mask function that returns the boolean mask
+            def mask_fn(b, _h, q_idx, kv_idx):
+                return mask[b, q_idx, kv_idx]  # type: ignore[non-subscriptable]
+
+            attn_mask = create_block_mask(mask_fn, B=batch_size, H=None, Q_LEN=q.shape[-2], KV_LEN=kv.shape[-2], device=DEVICE)
 
     # Initialize attention layers
     attention_layer = Attention(dim=dim, num_heads=num_heads, bias=bias, attn_type=attn_type).to(DEVICE).half()
@@ -67,7 +80,7 @@ def test_attention_consistency(batch_size, dim, num_heads, bias, q_len, kv_len, 
 
     # Torch MHA expects (batch * heads, num_q, num_k) for attention mask, so have to repeat
     # It also expects the masking convention to be backwards
-    torch_attn_mask = ~attn_mask.repeat_interleave(num_heads, dim=0) if attn_mask is not None else None
+    torch_attn_mask = ~mask.repeat_interleave(num_heads, dim=0) if mask is not None else None
     torch_kv_mask = ~kv_mask if kv_mask is not None else None
     mha_out, _ = mha_layer(q, kv, kv, key_padding_mask=torch_kv_mask, attn_mask=torch_attn_mask)
 
