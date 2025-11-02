@@ -31,7 +31,7 @@ Either checkout and install the code under `/scratch/`, or if you have already c
 
 ```bash
 USER=$(whoami)
-PROJECT=<PROJECT>
+PROJECT=<PROJECT>                                                 # e.g. u5du
 rm -rf .pixi/                                                     # remove existing pixi install dir if present
 mkdir -p /scratch/$PROJECT/$USER.$PROJECT/hepattn-pixi            # create install folder 
 ln -s /scratch/$PROJECT/$USER.$PROJECT/hepattn-pixi .pixi         # symlink to current repo
@@ -45,10 +45,10 @@ pixi install -e isambard
 ```
 
 For some reason, when (re)activing the environment, you may see an error.
-To fix it just `rm` the offending dirctory:
+To fix it just `rm` the offending dirctory, e.g.:
 
 ```bash
-rm -r /home/u5ar/svanstroud.u5ar/.cache/rattler/cache/uv-cache/archive-v0/
+rm -r /home/u5du/svanstroud.u5du/.cache/rattler/cache/uv-cache/archive-v0/
 ```
 
 
@@ -74,7 +74,7 @@ Note that you have to import FA3 from a different namespace: `flash_attn_interfa
 Project data is available to all project members. Input data should be stored at:
 
 ```
-/projects/u5ar/data/
+/projects/u5du/data/
 ```
 
 - [System Storage Info](https://docs.isambard.ac.uk/user-documentation/information/system-storage/)
