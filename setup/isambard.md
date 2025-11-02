@@ -62,7 +62,7 @@ pixi shell -e isambard
 cd ..
 git clone https://github.com/Dao-AILab/flash-attention.git
 cd flash-attention/hopper/
-MAX_JOBS=16 python setup.py install
+MAX_JOBS=12 python setup.py install
 ```
 
 If the build runs for a while, but ends in an error related to `ninja`, this can be ignored as FA3 is usually installed successfully by this point.
