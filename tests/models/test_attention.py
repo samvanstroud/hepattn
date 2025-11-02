@@ -67,7 +67,7 @@ def test_attention_consistency(batch_size, dim, num_heads, bias, q_len, kv_len, 
             # For flex attention, we need to create a BlockMask
             # Create a simple mask function that returns the boolean mask
             def mask_fn(b, _h, q_idx, kv_idx):
-                return mask[b, q_idx, kv_idx]
+                return mask[b, q_idx, kv_idx]  # type: ignore[non-subscriptable]
 
             attn_mask = create_block_mask(mask_fn, B=batch_size, H=None, Q_LEN=q.shape[-2], KV_LEN=kv.shape[-2], device=DEVICE)
 
