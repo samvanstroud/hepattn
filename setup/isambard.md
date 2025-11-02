@@ -23,7 +23,19 @@ Get the code:
 ```bash
 git clone git@github.com:samvanstroud/hepattn.git
 cd hepattn
-git checkout isambard
+```
+
+You can't install the code to the default project space due to problems with Isambard's NFS4 filesystem configuration.
+Instead, you need to install in the scratch space.
+Either checkout and install the code under `/scratch/`, or if you have already checked out in the main project space under `/home/`, do the following:
+
+```bash
+USER=$(whoami)
+PROJECT=<PROJECT>
+rm -rf .pixi/                                                     # remove existing pixi install dir if present
+mkdir -p /scratch/$PROJECT/$USER.$PROJECT/hepattn-pixi            # create install folder 
+ln -s /scratch/$PROJECT/$USER.$PROJECT/hepattn-pixi .pixi         # symlink to current repo
+export PIXI_CACHE_DIR=/scratch/$PROJECT/$USER.$PROJECT/pixi-cache # set the pixi cache dir
 ```
 
 Install dependencies using `pixi`:
