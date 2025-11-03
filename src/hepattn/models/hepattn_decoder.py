@@ -159,8 +159,8 @@ class MaskFormerDecoder(nn.Module):
 
         x["query_valid"] = torch.full((batch_size, self.num_queries), True, device=x["query_embed"].device)
 
-        if self.posenc:
-            x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
+        # if self.posenc:
+        #     x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
 
         # attn_mask = None
         # attn_mask_transpose = None
@@ -197,10 +197,10 @@ class MaskFormerDecoder(nn.Module):
                 assert intermediate_outputs is not None
                 intermediate_outputs.append({"queries": x["query_embed"], **self.get_preds(x["query_embed"], x["hit_embed"])})
 
-            # if maskattention, PE should be added before generating the mask
-            if self.posenc and self.mask_attention:
-                x["query_embed"] = x["query_embed"] + x["query_posenc"]
-                x["key_embed"] = x["key_embed"] + x["key_posenc"]
+            # # if maskattention, PE should be added before generating the mask
+            # if self.posenc and self.mask_attention:
+            #     x["query_embed"] = x["query_embed"] + x["query_posenc"]
+            #     x["key_embed"] = x["key_embed"] + x["key_posenc"]
 
             attn_masks: dict[str, torch.Tensor] = {}
             query_mask = None
@@ -264,16 +264,23 @@ class MaskFormerDecoder(nn.Module):
             #     # attn_mask_transpose=attn_mask_transpose,
             # )
 
+            # # Update the keys and queries
+            # x["query_embed"], x["key_embed"] = decoder_layer(
+            #     x["query_embed"],
+            #     x["key_embed"],
+            #     mask_net = self.mask_net,
+            #     q_mask=x.get("query_mask"),
+            #     kv_mask=x.get("key_valid"),
+            # )
+
             # Update the keys and queries
-            x["query_embed"], x["key_embed"] = decoder_layer(
+            x["query_embed"], x["hit_embed"] = decoder_layer(
                 x["query_embed"],
-                x["key_embed"],
+                x["hit_embed"],
                 mask_net = self.mask_net,
                 q_mask=x.get("query_mask"),
                 kv_mask=x.get("key_valid"),
             )
-
-            x["hit_embed"] = x["key_embed"]
 
             # update the individual input constituent representations
             # x = unmerge_inputs(x, input_names)
@@ -352,11 +359,13 @@ class MaskFormerDecoderLayer(nn.Module):
         residual = partial(Residual, dim=dim, norm=norm)
         self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
         self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
-        self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
+        # self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
+        self.q_dense = GLU(dim)
 
         if self.bidirectional_ca:
             self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
+            self.kv_dense = GLU(dim)
 
     def forward(
         self,
@@ -390,18 +399,30 @@ class MaskFormerDecoderLayer(nn.Module):
         if key_posenc is not None:
             kv = kv + key_posenc
 
+        if attn_mask is None:
+            scores = get_masks(kv, q, mask_net).detach()
+
+            # If a BoolTensor is provided, positions with ``True`` are not allowed to attend while ``False`` values will be unchanged.
+            attn_mask = scores.sigmoid() < 0.1
+
+            # if the attn mask is completely invalid for a given query, allow it to attend everywhere
+            attn_mask[torch.where(attn_mask.sum(-1) == attn_mask.shape[-1])] = False
+
+
         # Update query/object embeddings with the key/constituent embeddings
         q = self.q_ca(q, kv=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         q = self.q_sa(q, q_mask=q_mask)
-        q = self.q_dense(q)
+        # q = self.q_dense(q)
+        q = q + self.q_dense(q)
 
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
             if attn_mask is not None:
-                if self.attn_type == "flex":
-                    assert attn_mask_transpose is not None, "attn_mask_transpose must be provided for flex attention"
+                # if self.attn_type == "flex":
+                #     assert attn_mask_transpose is not None, "attn_mask_transpose must be provided for flex attention"
                 # Index from the back so we are batch shape agnostic
-                attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)
+                attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(1, 2)
+
 
             # if query_posenc is not None:
             #     q = q + query_posenc
