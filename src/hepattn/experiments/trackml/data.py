@@ -132,9 +132,7 @@ class TrackMLDataset(Dataset):
         if self.strict_max_objects:
             message = f"Event {idx} has {num_particles}, but limit is {self.event_max_num_particles}"
             assert num_particles <= self.event_max_num_particles, message
-        else:
-            # Limit the number of particles to event_max_num_particles
-            if num_particles > self.event_max_num_particles:
+        elif num_particles > self.event_max_num_particles:
                 rank_zero_info(f"Event {idx} has {num_particles} particles, limiting to {self.event_max_num_particles}")
                 particles = particles.iloc[: self.event_max_num_particles]
                 num_particles = self.event_max_num_particles
@@ -244,7 +242,6 @@ class TrackMLDataset(Dataset):
         # Apply particle level cuts based on particle fields
         particles = particles[particles["pt"] > self.particle_min_pt]
         particles = particles[particles["eta"].abs() < self.particle_max_abs_eta]
-
 
         # TODO: Add back truth based hit filtering
 
