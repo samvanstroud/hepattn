@@ -143,7 +143,6 @@ class Attention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
         self.attn_type = attn_type
-        self.window_size = None
         self.qkv_norm = qkv_norm
         self.value_residual = value_residual
         self.is_first_layer = is_first_layer
