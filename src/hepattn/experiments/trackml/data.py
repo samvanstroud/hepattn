@@ -258,15 +258,6 @@ class TrackMLDataset(Dataset):
 
         hits.loc[~hits.particle_id.isin(keep_particle_ids), "tgt_pid"] = 0
 
-        # Add extra hit fields
-        hits["r"] = np.sqrt(hits["x"] ** 2 + hits["y"] ** 2)
-        hits["s"] = np.sqrt(hits["x"] ** 2 + hits["y"] ** 2 + hits["z"] ** 2)
-        hits["theta"] = np.arccos(hits["z"] / hits["s"])
-        hits["phi"] = np.arctan2(hits["y"], hits["x"])
-        hits["eta"] = -np.log(np.tan(hits["theta"] / 2))
-        hits["u"] = hits["x"] / (hits["x"] ** 2 + hits["y"] ** 2)
-        hits["v"] = hits["y"] / (hits["x"] ** 2 + hits["y"] ** 2)
-
         # Sanity checks
         assert len(particles) != 0, "No particles remaining - loosen selection!"
         assert len(hits) != 0, "No hits remaining - loosen selection!"
