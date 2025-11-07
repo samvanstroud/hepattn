@@ -143,7 +143,6 @@ class Attention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
         self.attn_type = attn_type
-        self.window_size = None
         self.qkv_norm = qkv_norm
         self.value_residual = value_residual
         self.is_first_layer = is_first_layer
@@ -160,8 +159,11 @@ class Attention(nn.Module):
             self.k_norm = LayerNorm(dim)
             self.v_norm = LayerNorm(dim)
 
-        self.reset_parameters()
         self.set_backend(attn_type, torch_compile=torch_compile, window_size=window_size)
+        self.reset_parameters()
+
+        if window_size and not self.window_size:
+            raise ValueError("window_size not set correctly")
 
     def reset_parameters(self):
         """Initialize the parameters."""
@@ -178,6 +180,7 @@ class Attention(nn.Module):
             raise ValueError(f"Invalid attention type: {attn_type}")
         self.attn = ATTN_TYPES[attn_type]
 
+        self.window_size = None
         if attn_type in FLASH_ATTN_TYPES:
             # TODO: Will need to change when supporting window with flex
             self.window_size = (window_size // 2, window_size // 2) if window_size is not None else (-1, -1)
