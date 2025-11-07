@@ -163,8 +163,8 @@ class Attention(nn.Module):
         self.reset_parameters()
 
         if window_size and not self.window_size:
-            raise ValueError("window_size not set correctly)
-        
+            raise ValueError("window_size not set correctly")
+
     def reset_parameters(self):
         """Initialize the parameters."""
         nn.init.xavier_uniform_(self.in_proj_weight)
@@ -179,7 +179,7 @@ class Attention(nn.Module):
         if attn_type not in ATTN_TYPES:
             raise ValueError(f"Invalid attention type: {attn_type}")
         self.attn = ATTN_TYPES[attn_type]
-        
+
         self.window_size = None
         if attn_type in FLASH_ATTN_TYPES:
             # TODO: Will need to change when supporting window with flex
