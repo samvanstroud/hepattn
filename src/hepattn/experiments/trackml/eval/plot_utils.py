@@ -67,7 +67,7 @@ def binned(selection, qty, bin_edges, underflow=True, overflow=True, binomial=Fa
     return bin_eff, bin_error
 
 
-def profile_plot(xs, y_span, x_bins, axes, colour, label=None, ls="solid"):
+def profile_plot(xs, y_span, x_bins, axes, colour, label=None, ls="solid", lw=1):
     """Create a profile plot at specified subplot axes.
 
     Arguments:
@@ -86,12 +86,14 @@ def profile_plot(xs, y_span, x_bins, axes, colour, label=None, ls="solid"):
         string identifier for the histogram
     ls: str
         line style for line segement
+    lw: float
+        line weight for line segment
 
     """
     for i in range(len(x_bins) - 1):
         label = label if i == 0 else None
         lb, ub = x_bins[i], x_bins[i + 1]
-        axes.hlines(y=xs[i], xmin=lb, xmax=ub, color=colour, ls=ls, label=label)
+        axes.hlines(y=xs[i], xmin=lb, xmax=ub, color=colour, ls=ls, label=label, lw=lw)
         axes.fill_between(
             [lb, ub], [xs[i] - y_span[i], xs[i] - y_span[i]], [xs[i] + y_span[i], xs[i] + y_span[i]], color=colour, alpha=0.15, edgecolor="none"
         )
