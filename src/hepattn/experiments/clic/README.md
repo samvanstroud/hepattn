@@ -16,6 +16,8 @@ pixi shell -e clic
 cd hepattn/src/hepattn/experiments/clic/
 ```
 
+If you don't already have the CLIC data, download it from one of the locations listed in the [CLIC Data](#clic-data) section below.
+
 To run the model, use the following commands:
 
 ```shell
@@ -53,13 +55,16 @@ jupyter notebook --no-browser --ip=0.0.0.0 --port 8888
 
 ## CLIC Data
 
-### Data Locations
 
-- **plus1**: `/unix/atlastracking/svanstroud/dmitrii_clic`
-- **hypatia**: `/share/gpu1/syw24/dmitrii_clic`
-- **Isambard**: `/projects/u5ar/data/clic`
+You can obtain the CLIC data from one of the following locations.
+You only need the `train_clic_fix.root`, `val_clic_fix.root`, and `test_clic_common_infer.root` files (see the [training config](./configs/base.yaml)).
 
+- **cernbox**: https://cernbox.cern.ch/s/XDBTOMTqCfSYxlK
+- **plus1**: `/unix/atlastracking/svanstroud/dmitrii_clic/`
+- **hypatia**: `/share/gpu1/syw24/dmitrii_clic/`
+- **isambard**: `/projects/u5ar/data/clic/`
 
+For more details on the preprocessing, see Section 5.1 in [[2410.23236](https://arxiv.org/pdf/2410.23236)].
 
 ### Data Files Overview
 

@@ -9,8 +9,9 @@ from scipy.stats import binned_statistic
 from tqdm import tqdm
 
 from hepattn.experiments.cld.data import CLDDataset
-from hepattn.experiments.cld.plot_event import plot_cld_event_reconstruction
-from hepattn.utils.eval_plots import bayesian_binomial_error, plot_hist_to_ax
+from hepattn.experiments.cld.event_display import plot_cld_event
+from hepattn.utils.plotting import plot_hist_to_ax
+from hepattn.utils.stats import bayesian_binomial_error
 
 plt.rcParams["text.usetex"] = False
 plt.rcParams["figure.dpi"] = 300
@@ -81,11 +82,11 @@ def main():
             preds[f"particle_{hit}_valid"] = torch.from_numpy(final_preds[f"flow_{hit}_assignment/flow_{hit}_valid"][:][:, :, : len(hit_valid)])
 
     # Plot the event display for the truth
-    fig = plot_cld_event_reconstruction(inputs, targets, axes_spec)
+    fig = plot_cld_event(inputs | targets, axes_spec, "particle")
     fig.savefig(plot_save_dir / Path("event_display_truth.png"))
 
     # Plot the event display for the reconstruction
-    fig = plot_cld_event_reconstruction(inputs, preds, axes_spec)
+    fig = plot_cld_event(inputs | preds, axes_spec, "flow")
     fig.savefig(plot_save_dir / Path("event_display_preds.png"))
 
     plot_specs = {
