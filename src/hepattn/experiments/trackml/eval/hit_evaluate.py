@@ -153,7 +153,7 @@ def load_events(fname, index_list=None, randomize=None, write_inputs=None, write
                 id_list = list(f.keys())
             else:
                 # generate a random list of indices
-                id_list = np.random.Generator.choice(list(f.keys()), size=randomize, replace=False)
+                id_list = np.random.default_rng().choice(list(f.keys()), size=randomize, replace=False)
         else:
             id_list = list(f.keys())
 
