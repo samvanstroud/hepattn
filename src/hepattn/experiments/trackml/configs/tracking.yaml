@@ -161,8 +161,9 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 17
+                    hidden_layers: [128]
                     output_size: *dim
-                    norm_input: true
+                    activation: SwiGLU
                 posenc:
                   class_path: hepattn.models.FourierPositionEncoder
                   init_args:
