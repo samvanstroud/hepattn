@@ -138,7 +138,6 @@ model:
             - class_path: hepattn.models.InputNet
               init_args:
                 input_name: hit
-                # Which fields will be used to construct this input type
                 fields:
                   - x
                   - y
