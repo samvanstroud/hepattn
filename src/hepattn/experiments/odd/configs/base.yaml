@@ -5,7 +5,7 @@ data:
   val_dir: /share/lustre/maxhart/data/colliderml/v0/ttbar_p0/
   test_dir: /share/lustre/maxhart/data/colliderml/v0/ttbar_p0/
 
-  num_train: 10000
+  num_train: 1000
   num_val: 1000
   num_test: 1000
 

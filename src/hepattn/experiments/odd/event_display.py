@@ -54,7 +54,8 @@ def plot_odd_event(data, axes_spec, object_name, batch_idx=0, valid=True, mark_t
 
                     # Calo hits
                     elif input_name in calohit_names:
-                        ax[ax_idx].scatter(x[mask], y[mask], color=color, marker=".", alpha=alpha, s=1.0)
+                        energy = torch.sqrt(1e6 * data[f"{input_name}_total_energy"][batch_idx])
+                        ax[ax_idx].scatter(x[mask], y[mask], color=color, marker=".", alpha=0.6, s=energy[mask])
                 
 
 

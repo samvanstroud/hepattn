@@ -21,6 +21,8 @@ data_iter = iter(test_dataloader)
 
 inputs, targets = next(data_iter)
 
+inputs, targets = next(data_iter)
+
 for k, v in inputs.items():
     print("input:  ", k, v.shape)
 
