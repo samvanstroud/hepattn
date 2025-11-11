@@ -184,6 +184,7 @@ model:
           window_wrap: true
           hybrid_norm: true
           norm: RMSNorm
+          dense_kwargs: {activation: SwiGLU}
 
       decoder:
         num_decoder_layers: 4
@@ -193,6 +194,7 @@ model:
         decoder_layer_config:
           dim: *dim
           norm: RMSNorm
+          dense_kwargs: {activation: SwiGLU}
 
       tasks:
         class_path: torch.nn.ModuleList
@@ -204,11 +206,11 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
+                dim: *dim
                 losses:
                   object_bce: 1.0
                 costs:
                   object_bce: 1.0
-                dim: *dim
                 null_weight: 1.0
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
