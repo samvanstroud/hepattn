@@ -272,7 +272,7 @@ class ObjectHitMaskTask(Task):
 
         self.inputs = [input_object + "_embed", input_constituent + "_embed"]
         self.outputs = [self.output_object_hit + "_logit"]
-        self.hit_net = Dense(dim, dim)
+        self.hit_net = nn.Identity()  # Dense(dim, dim)
         self.object_net = Dense(dim, dim)
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
