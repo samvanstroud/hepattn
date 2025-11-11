@@ -138,6 +138,7 @@ model:
             - class_path: hepattn.models.InputNet
               init_args:
                 input_name: hit
+                # Which fields will be used to construct this input type
                 fields:
                   - x
                   - y
@@ -160,9 +161,8 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 17
-                    hidden_layers: [128]
                     output_size: *dim
-                    activation: SwiGLU
+                    norm_input: true
                 posenc:
                   class_path: hepattn.models.FourierPositionEncoder
                   init_args:
@@ -194,6 +194,7 @@ model:
         decoder_layer_config:
           dim: *dim
           norm: RMSNorm
+          hybrid_norm: true
           dense_kwargs: {activation: SwiGLU}
 
       tasks:

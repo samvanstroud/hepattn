@@ -126,7 +126,7 @@ class EncoderLayer(nn.Module):
         if depth == 0:
             hybrid_norm = False
         attn_norm = norm if not hybrid_norm else None
-        dense_post_norm = not hybrid_norm
+        dense_post_norm = hybrid_norm
 
         # handle value residual
         attn_kwargs["value_residual"] = value_residual

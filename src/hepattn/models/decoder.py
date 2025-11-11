@@ -256,7 +256,7 @@ class MaskFormerDecoderLayer(nn.Module):
         if depth == 0:
             hybrid_norm = False
         attn_norm = norm if not hybrid_norm else None
-        dense_post_norm = not hybrid_norm
+        dense_post_norm = hybrid_norm
 
         attn_kwargs = attn_kwargs or {}
         self.attn_type = attn_kwargs.get("attn_type", "torch")
