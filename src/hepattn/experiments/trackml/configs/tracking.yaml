@@ -38,7 +38,7 @@ data:
   particle_min_num_hits: 3
 
   # Maximum number of reconstructable particles allowed in an event
-  event_max_num_particles: &num_objects 2300
+  event_max_num_particles: &num_objects 2100
 
   # Define which inputs will be available to the model
   inputs:
