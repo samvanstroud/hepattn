@@ -28,8 +28,8 @@ for k, v in targets.items():
     print("target: ", k, v.shape)
 
 ax_spec = [
-    {"x": "x", "y": "y", "input_names": ["sihit"], "xlabel": r"Global $x$", "ylabel": r"Global $y$"},
-    {"x": "z", "y": "y", "input_names": ["sihit"], "xlabel": r"Global $z$", "ylabel": r"Global $y$"}
+    {"x": "x", "y": "y", "input_names": ["sihit", "calohit"], "xlabel": r"Global $x$", "ylabel": r"Global $y$"},
+    {"x": "z", "y": "y", "input_names": ["sihit", "calohit"], "xlabel": r"Global $z$", "ylabel": r"Global $y$"}
 ]
 data = inputs | targets
 

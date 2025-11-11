@@ -76,7 +76,6 @@ class ODDEventDataset(Dataset):
         calohits = ak.from_parquet(calohits_path)[0]
         tracks = ak.from_parquet(tracks_path)[0]
 
-
         inputs = {}
         targets = {}
 
@@ -112,8 +111,8 @@ class ODDEventDataset(Dataset):
         particle_calohit_time = ak.sum(calohits["contrib_times"][None, :, :] * particle_calohit_assoc, axis=-1)
         
 
-        targets["calohit_particle_valid"] = ak.to_torch(particle_calohit_valid)
-        targets["calohit_particle_energy"] = ak.to_torch(particle_calohit_energy)
+        targets["particle_calohit_valid"] = ak.to_torch(particle_calohit_valid)
+        targets["particle_calohit_energy"] = ak.to_torch(particle_calohit_energy)
 
         # Add metadata
         targets["sample_id"] = torch.tensor(sample_id)
