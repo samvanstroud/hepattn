@@ -30,13 +30,13 @@ Instead, you need to install in the scratch space.
 Either checkout and install the code under `/scratch/`, or if you have already checked out in the main project space under `/home/`, do the following:
 
 ```bash
-USER=$(whoami)
-PROJECT=<PROJECT>                                                 # e.g. u5du
 rm -rf .pixi/                                                     # remove existing pixi install dir if present
-mkdir -p /scratch/$PROJECT/$USER.$PROJECT/hepattn-pixi            # create install folder 
-ln -s /scratch/$PROJECT/$USER.$PROJECT/hepattn-pixi .pixi         # symlink to current repo
-export PIXI_CACHE_DIR=/scratch/$PROJECT/$USER.$PROJECT/pixi-cache # set the pixi cache dir
+mkdir -p /scratch/u5du/svanstroud.u5du/hepattn-pixi               # create install folder 
+ln -s /scratch/u5du/svanstroud.u5du/hepattn-pixi .pixi            # symlink to current repo
+export PIXI_CACHE_DIR=/scratch/u5du/svanstroud.u5du/pixi-cache/   # set the pixi cache dir
 ```
+
+You may want to set the cache dir in your `~/.bashrc`.
 
 Install dependencies using `pixi`:
 
@@ -65,7 +65,7 @@ cd flash-attention/hopper/
 MAX_JOBS=12 python setup.py install
 ```
 
-If the build runs for a while, but ends in an error related to `ninja`, this can be ignored as FA3 is usually installed successfully by this point.
+If the build runs for a while, but ends in a `UnicodeDecodeError` related to `ninja`, this can be ignored as FA3 is already installed successfully by this point.
 Note that you have to import FA3 from a different namespace: `flash_attn_interface` rather than `flash_attn` (see [here](https://github.com/samvanstroud/hepattn/blob/main/src/hepattn/models/attention.py#L4)).
 
 
