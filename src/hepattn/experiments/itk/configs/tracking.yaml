@@ -184,7 +184,7 @@ model:
         class_path: torch.nn.ModuleList
         init_args:
           modules:
-            - class_path: hepattn.models.task.ObjectValidTask
+            - class_path: hepattn.models.task.ObjectClassificationTask
               init_args:
                 name: track_valid
                 input_object: query
