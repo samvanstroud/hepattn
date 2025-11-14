@@ -291,8 +291,8 @@ class ObjectHitMaskTask(Task):
         object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", mask_tokens, xs)
 
         # Zero out entries for any padded input constituents
-        if valid_mask := x[f"{self.input_constituent}_valid"] is not None:
-            valid_mask = x[valid_mask].unsqueeze(-2).expand_as(object_hit_logit)
+        if (valid_mask := x[f"{self.input_constituent}_valid"]) is not None:
+            valid_mask = valid_mask.unsqueeze(-2).expand_as(object_hit_logit)
             object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
 
         return {self.output_object_hit + "_logit": object_hit_logit}
