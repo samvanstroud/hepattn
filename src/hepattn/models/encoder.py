@@ -132,6 +132,7 @@ class EncoderLayer(nn.Module):
 
         # Handle HybridNorm
         attn_norm = norm
+        dense_post_norm = False
         if hybrid_norm:
             if depth == 0:  # First block (HybridNorm*): Pre-Norm in both MHA and FFN
                 attn_norm = norm  # Pre-Norm before attention
