@@ -10,7 +10,7 @@ class Dense(nn.Module):
         output_size: int | None = None,
         hidden_layers: list[int] | None = None,
         hidden_dim_scale: int = 2,
-        activation: nn.Module | None = None,
+        activation: nn.Module | str | None = None,
         final_activation: nn.Module | None = None,
         dropout: float = 0.0,
         bias: bool = True,
@@ -37,8 +37,9 @@ class Dense(nn.Module):
         if hidden_layers is None:
             hidden_layers = [input_size * hidden_dim_scale]
         if activation is None:
+            activation = nn.SiLU()
+        if activation == "SwiGLU":
             activation = SwiGLU()
-
         self.input_size = input_size
         self.output_size = output_size
         gate = isinstance(activation, SwiGLU)

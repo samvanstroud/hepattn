@@ -33,7 +33,7 @@ nvidia-smi
 echo "Running training script..."
 
 # Python command that will be run
-#PYTORCH_CMD="python run_filtering.py fit --config configs/filtering.yaml"
+#PYTORCH_CMD="python run_filtering.py fit --config configs/filtering.yaml --trainer.devices 1"
 PYTORCH_CMD="python run_tracking.py fit --config configs/tracking.yaml --trainer.devices 1"
 
 # Do testing instead

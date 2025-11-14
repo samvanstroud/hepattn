@@ -45,12 +45,12 @@ class MaskFormer(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
         self.decoder.tasks = tasks
-        self.decoder.unified_decoding = unified_decoding
         self.pooling = pooling
         self.tasks = tasks
         self.target_object = target_object
         self.matcher = matcher
         self.unified_decoding = unified_decoding
+        self.decoder.unified_decoding = unified_decoding
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
