@@ -14,7 +14,7 @@ def test_lapx_scipy_equivalence(shape, random_func) -> None:
     elif random_func == "normal":
         x = rng.normal(size=shape)
 
-    lapx_row_indices, lapx_col_indices = lap.lapjvx(x, extend_cost=True, return_cost=False)
+    lapx_row_indices, lapx_col_indices = lap.lapjvx(x, extend_cost=True, return_cost=False)  # type: ignore[invalid-assignment]
     scipy_row_indices, scipy_col_indices = linear_sum_assignment(x)
 
     assert np.all(lapx_row_indices == scipy_row_indices)
