@@ -15,7 +15,6 @@ model:
     init_args:
       input_size: 17
       output_size: &dim 256
-      norm_input: true
 
   pos_enc:
     class_path: hepattn.models.PositionEncoderRandom

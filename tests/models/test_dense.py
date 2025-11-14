@@ -30,7 +30,6 @@ def test_dense_custom_parameters():
         final_activation=nn.Sigmoid(),
         dropout=0.1,
         bias=False,
-        norm_input=True,
     )
     x = torch.randn(4, 10, 10)  # Batch of 4, input size of 10
     output = model(x)

@@ -10,11 +10,10 @@ class Dense(nn.Module):
         output_size: int | None = None,
         hidden_layers: list[int] | None = None,
         hidden_dim_scale: int = 2,
-        activation: nn.Module | None = None,
+        activation: nn.Module | str | None = None,
         final_activation: nn.Module | None = None,
         dropout: float = 0.0,
         bias: bool = True,
-        norm_input: bool = False,
     ) -> None:
         """A fully connected feed forward neural network, which can take in additional contextual information.
 
@@ -28,7 +27,6 @@ class Dense(nn.Module):
             final_activation: Activation function for the output layer.
             dropout: Apply dropout with the supplied probability.
             bias: Whether to use bias in the linear layers.
-            norm_input: Whether to apply layer normalization to the input.
         """
         super().__init__()
 
@@ -37,15 +35,14 @@ class Dense(nn.Module):
         if hidden_layers is None:
             hidden_layers = [input_size * hidden_dim_scale]
         if activation is None:
+            activation = nn.SiLU()
+        if activation == "SwiGLU":
             activation = SwiGLU()
-
         self.input_size = input_size
         self.output_size = output_size
         gate = isinstance(activation, SwiGLU)
 
         layers = []
-        if norm_input:
-            layers.append(nn.LayerNorm(input_size))
 
         node_list = [input_size, *hidden_layers]
         for i in range(len(node_list) - 1):
