@@ -256,6 +256,7 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_post_norm = False
 
         # Handle HybridNorm
+        attn_norm = norm
         if hybrid_norm:
             if depth == 0:  # First block (HybridNorm*): Pre-Norm in both MHA and FFN
                 attn_norm = norm  # Pre-Norm before attention
