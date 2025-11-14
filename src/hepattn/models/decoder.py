@@ -251,24 +251,30 @@ class MaskFormerDecoderLayer(nn.Module):
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
 
-        # handle hybridnorm
-        qkv_norm = hybrid_norm
-        if depth == 0:
-            hybrid_norm = False
-        attn_norm = norm if not hybrid_norm else None
-        dense_post_norm = hybrid_norm
+        # Regular Pre-Norm behavior
+        attn_norm = norm
+        dense_post_norm = False
+
+        # Handle HybridNorm
+        if hybrid_norm:
+            if depth == 0:  # First block (HybridNorm*): Pre-Norm in both MHA and FFN
+                attn_norm = norm  # Pre-Norm before attention
+                dense_post_norm = False  # Pre-Norm in FFN (not Post-Norm)
+            else:  # Subsequent blocks (HybridNorm): No Pre-Norm in MHA, Post-Norm in FFN
+                attn_norm = None  # No Pre-Norm before attention
+                dense_post_norm = True  # Post-Norm in FFN
 
         attn_kwargs = attn_kwargs or {}
         self.attn_type = attn_kwargs.get("attn_type", "torch")
         dense_kwargs = dense_kwargs or {}
 
-        residual = partial(Residual, dim=dim, norm=norm)
-        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
-        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+        residual = partial(Residual, dim=dim)
+        self.q_ca = residual(Attention(dim, qkv_norm=hybrid_norm, **attn_kwargs), norm=attn_norm)
+        self.q_sa = residual(Attention(dim, qkv_norm=hybrid_norm, **attn_kwargs), norm=attn_norm)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         if self.bidirectional_ca:
-            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+            self.kv_ca = residual(Attention(dim, qkv_norm=hybrid_norm, **attn_kwargs), norm=attn_norm)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(
