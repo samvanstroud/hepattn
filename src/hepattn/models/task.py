@@ -285,8 +285,9 @@ class ObjectHitMaskTask(Task):
 
         # Zero out entries for any padded input constituents
         valid_key = f"{self.input_constituent}_valid"
-        valid_mask = x[valid_key].unsqueeze(-2).expand_as(object_hit_logit)
-        object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
+        if x[valid_key] is not None:
+            valid_mask = x[valid_key].unsqueeze(-2).expand_as(object_hit_logit)
+            object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
 
         return {self.output_object_hit + "_logit": object_hit_logit}
 
