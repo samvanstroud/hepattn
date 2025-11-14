@@ -2,9 +2,12 @@ seed_everything: 42
 name: HC-v3
 
 data:
-  train_dir: data/trackml/prepped/
-  val_dir: data/trackml/prepped/
-  test_dir: data/trackml/prepped/
+  #train_dir: data/trackml/prepped/
+  #val_dir: data/trackml/prepped/
+  #test_dir: data/trackml/prepped/
+  train_dir: /projects/u5du/pduckett/data_new/train/
+  val_dir: /projects/u5du/pduckett/data_new/val/
+  test_dir: /projects/u5du/pduckett/data_new/test/
 
   num_workers: 10
   num_train: -1
