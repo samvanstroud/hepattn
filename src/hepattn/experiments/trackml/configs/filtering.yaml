@@ -132,8 +132,8 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 16
+                    hidden_layers: [128]
                     output_size: &dim 256
-                    norm_input: true
                 posenc:
                   class_path: hepattn.models.FourierPositionEncoder
                   init_args:
