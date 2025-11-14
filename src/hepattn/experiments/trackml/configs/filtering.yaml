@@ -56,8 +56,7 @@ data:
       - on_valid_particle
 
 trainer:
-  # Training stuff here
-  max_epochs: 30
+  max_epochs: 50
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
