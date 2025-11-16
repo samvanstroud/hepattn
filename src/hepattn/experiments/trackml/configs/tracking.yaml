@@ -138,7 +138,6 @@ model:
             - class_path: hepattn.models.InputNet
               init_args:
                 input_name: hit
-                # Which fields will be used to construct this input type
                 fields:
                   - x
                   - y
@@ -161,8 +160,9 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 17
+                    hidden_layers: [128]
                     output_size: *dim
-                    norm_input: true
+                    activation: SwiGLU
                 posenc:
                   class_path: hepattn.models.FourierPositionEncoder
                   init_args:
@@ -184,6 +184,7 @@ model:
           window_wrap: true
           hybrid_norm: true
           norm: RMSNorm
+          dense_kwargs: {activation: SwiGLU}
 
       decoder:
         num_decoder_layers: 4
@@ -193,6 +194,8 @@ model:
         decoder_layer_config:
           dim: *dim
           norm: RMSNorm
+          hybrid_norm: true
+          dense_kwargs: {activation: SwiGLU}
 
       tasks:
         class_path: torch.nn.ModuleList
@@ -204,11 +207,13 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
+                has_intermediate_loss: true
+                has_first_layer_loss: false
+                dim: *dim
                 losses:
                   object_bce: 1.0
                 costs:
                   object_bce: 1.0
-                dim: *dim
                 null_weight: 1.0
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
@@ -217,15 +222,18 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
+                dim: *dim
+                constituent_net:
+                  class_path: torch.nn.Linear
+                  init_args:
+                    in_features: *dim
+                    out_features: *dim
                 losses:
-                  mask_bce: 100.0
-                  #mask_dice: 2.0
+                  mask_dice: 2.0
                   mask_focal: 50.0
                 costs:
-                  mask_bce: 100.0
-                  #mask_dice: 2.0
+                  mask_dice: 2.0
                   mask_focal: 50.0
-                dim: *dim
                 null_weight: 1.0
 
       matcher:

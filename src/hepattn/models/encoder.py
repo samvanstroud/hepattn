@@ -51,6 +51,7 @@ class Residual(nn.Module):
         dim: int,
         norm: str | None,
         post_norm: bool = False,
+        kv_norm: bool = False,
         layer_scale: float | None = None,
         drop_path: float = 0.0,
     ) -> None:
@@ -60,7 +61,8 @@ class Residual(nn.Module):
             dim: Dimension of the input and output.
             fn: The module to wrap. Must be non-resizing.
             norm: The normalization layer.
-            post_norm: If True, apply norm before the residual (post-norm for the previous op).
+            post_norm: Whether to apply hybrid norm [2503.04598] style post norm.
+            kv_norm: Whether to apply normalization to the key and value inputs (for attention modules).
             layer_scale: Initial value for the layer_scale. If None, no layer_scale is applied.
             drop_path: Drop path rate.
 
@@ -68,25 +70,32 @@ class Residual(nn.Module):
             ValueError: If the input arguments are invalid.
         """
         super().__init__()
+
+        if kv_norm and not norm:
+            raise ValueError("kv_norm is True but no norm is provided.")
+        if post_norm and not norm:
+            raise ValueError("post_norm is True but no norm is provided.")
+        if norm is not None and not isinstance(norm, str):
+            raise ValueError("norm must be a string or None.")
+        if norm is not None and not hasattr(nn, norm):
+            raise ValueError(f"Unsupported norm: {norm}. Must be a valid torch.nn module.")
+        if post_norm and kv_norm:
+            raise ValueError("kv_norm and post_norm cannot both be True.")
+
         self.fn = fn
         self.ls = LayerScale(dim, layer_scale) if layer_scale is not None else nn.Identity()
         self.dp = DropPath(drop_path) if drop_path else nn.Identity()
         self.post_norm = post_norm
 
-        if isinstance(norm, str):
-            try:
-                self.norm = getattr(nn, norm)(dim, elementwise_affine=False)
-            except AttributeError as e:
-                raise ValueError(f"Unsupported norm: {norm}. Must be a valid torch.nn module.") from e
-        elif norm is None:
-            self.norm = nn.Identity()
-        else:
-            raise ValueError(f"Unsupported norm: {norm}. Must be a string or None.")
+        self.norm = getattr(nn, norm)(dim) if norm else nn.Identity()
+        self.kv_norm = getattr(nn, norm)(dim) if kv_norm and norm else None
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
         if self.post_norm:
             x = self.norm(x)
             return x + self.dp(self.ls(self.fn(x, **kwargs)))
+        if self.kv_norm and "kv" in kwargs:  # TODO: require kv norm if doing cross attention
+            kwargs["kv"] = self.kv_norm(kwargs["kv"])
         return x + self.dp(self.ls(self.fn(self.norm(x), **kwargs)))
 
 
@@ -99,6 +108,7 @@ class EncoderLayer(nn.Module):
         layer_scale: float | None = None,
         drop_path: float = 0.0,
         value_residual: bool = False,
+        qkv_norm: bool = False,
         hybrid_norm: bool = False,
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
@@ -112,6 +122,7 @@ class EncoderLayer(nn.Module):
             drop_path: Drop path rate.
             layer_scale: Initial layer_scale value.
             value_residual: Whether to apply a residual connection from initial values.
+            qkv_norm: Whether to use qkv norm in the Attention layer
             hybrid_norm: Whether to use HybridNorm from 2503.04598.
             dense_kwargs: Keyword arguments for dense layer.
             attn_kwargs: Keyword arguments for self-attention layer.
@@ -121,12 +132,19 @@ class EncoderLayer(nn.Module):
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
-        # handle hybrid norm
-        qkv_norm = hybrid_norm
-        if depth == 0:
-            hybrid_norm = False
-        attn_norm = norm if not hybrid_norm else None
-        dense_post_norm = not hybrid_norm
+        # Regular Pre-Norm behavior
+        attn_norm = norm
+        dense_post_norm = False
+
+        # Handle HybridNorm
+        qkv_norm = qkv_norm or hybrid_norm
+        if hybrid_norm:
+            if depth == 0:  # First block (HybridNorm*): Pre-Norm in both MHA and FFN
+                attn_norm = norm  # Pre-Norm before attention
+                dense_post_norm = False  # Pre-Norm in FFN (not Post-Norm)
+            else:  # Subsequent blocks (HybridNorm): No Pre-Norm in MHA, Post-Norm in FFN
+                attn_norm = None  # No Pre-Norm before attention
+                dense_post_norm = True  # Post-Norm in FFN
 
         # handle value residual
         attn_kwargs["value_residual"] = value_residual
@@ -134,7 +152,7 @@ class EncoderLayer(nn.Module):
 
         self.dim = dim
         residual = partial(Residual, dim=dim, layer_scale=layer_scale, drop_path=drop_path)
-        self.attn = residual(Attention(self.dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+        self.attn = residual(Attention(self.dim, qkv_norm=hybrid_norm, **attn_kwargs), norm=attn_norm)
         self.dense = residual(Dense(self.dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
