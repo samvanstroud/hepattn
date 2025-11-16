@@ -223,6 +223,11 @@ model:
                 output_object: track
                 target_object: particle
                 dim: *dim
+                constituent_net:
+                  class_path: torch.nn.Linear
+                  init_args:
+                    in_features: *dim
+                    out_features: *dim
                 losses:
                   mask_dice: 2.0
                   mask_focal: 50.0
