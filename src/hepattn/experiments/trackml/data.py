@@ -133,7 +133,7 @@ class TrackMLDataset(Dataset):
         if num_particles > self.event_max_num_particles:
             if self.strict_max_objects:
                 message = f"Event {idx} has {num_particles}, but limit is {self.event_max_num_particles}"
-                assert num_particles <= self.event_max_num_particles, message
+                raise ValueError(message)
             particles = particles.iloc[: self.event_max_num_particles]
             num_particles = self.event_max_num_particles
 
