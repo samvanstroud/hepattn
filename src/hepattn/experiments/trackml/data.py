@@ -142,8 +142,8 @@ class TrackMLDataset(Dataset):
         targets["particle_valid"] = torch.cat([torch.full((num_particles,), True), torch.full((num_padding,), False)]).unsqueeze(0)
 
         # Create the mask targets
-        valid_particle_ids = torch.from_numpy(particles["particle_id"].values)
-        particle_ids = torch.cat([valid_particle_ids, torch.full((num_padding,), -999)])
+        selected_particle_ids = torch.from_numpy(particles["particle_id"].values)
+        particle_ids = torch.cat([selected_particle_ids, torch.full((num_padding,), -999)])
         hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
         targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
