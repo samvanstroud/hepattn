@@ -30,6 +30,7 @@ data:
 
   # Maximum number of reconstructable particles allowed in an event (not relevant for filtering)
   event_max_num_particles: 3000
+  strict_max_objects: false
 
   # Define which inputs will be available to the model
   inputs:

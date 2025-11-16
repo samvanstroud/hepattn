@@ -27,6 +27,7 @@ class TrackMLDataset(Dataset):
         particle_max_abs_eta: float = 2.5,
         particle_min_num_hits=3,
         event_max_num_particles=1000,
+        strict_max_objects: bool = False,
         hit_eval_path: str | None = None,
         dummy_data: bool = False,
     ):
@@ -97,6 +98,7 @@ class TrackMLDataset(Dataset):
 
         # Event level cuts
         self.event_max_num_particles = event_max_num_particles
+        self.strict_max_objects = strict_max_objects
 
     def __len__(self):
         return int(self.num_events)
@@ -127,21 +129,22 @@ class TrackMLDataset(Dataset):
             for field in fields:
                 inputs[f"{feature}_{field}"] = torch.from_numpy(feature_hits[field].values).unsqueeze(0).half()
 
-        # Build the targets for whether a particle slot is used or not
-        targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)
-        targets["particle_valid"][:num_particles] = True
-        targets["particle_valid"] = targets["particle_valid"].unsqueeze(0)
-        message = f"Event {idx} has {num_particles}, but limit is {self.event_max_num_particles}"
-        assert num_particles <= self.event_max_num_particles, message
+        # Create the targets for whether a particle slot is used or not
+        if num_particles > self.event_max_num_particles:
+            if self.strict_max_objects:
+                message = f"Event {idx} has {num_particles}, but limit is {self.event_max_num_particles}"
+                assert num_particles <= self.event_max_num_particles, message
+            particles = particles.iloc[: self.event_max_num_particles]
+            num_particles = self.event_max_num_particles
 
-        # Build the particle regression targets
-        particle_ids = torch.from_numpy(particles["particle_id"].values)
-
-        # Fill in empty slots with -1s and get the IDs of the particle on each hit
-        particle_ids = torch.cat([particle_ids, -999 * torch.ones(self.event_max_num_particles - len(particle_ids))])
-        hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
+        # Create particle_valid mask by concatenating True and False arrays
+        num_padding = self.event_max_num_particles - num_particles
+        targets["particle_valid"] = torch.cat([torch.full((num_particles,), True), torch.full((num_padding,), False)]).unsqueeze(0)
 
         # Create the mask targets
+        valid_particle_ids = torch.from_numpy(particles["particle_id"].values)
+        particle_ids = torch.cat([valid_particle_ids, torch.full((num_padding,), -999)])
+        hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
         targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
         # Create the hit filter targets
