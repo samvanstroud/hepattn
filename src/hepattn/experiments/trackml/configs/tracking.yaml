@@ -207,6 +207,8 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
+                has_intermediate_loss: true
+                has_first_layer_loss: false
                 dim: *dim
                 losses:
                   object_bce: 1.0

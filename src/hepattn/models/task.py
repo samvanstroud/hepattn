@@ -28,9 +28,10 @@ class Task(nn.Module, ABC):
     that can be trained as part of a multi-task learning setup.
     """
 
-    def __init__(self, has_intermediate_loss: bool, permute_loss: bool = True):
+    def __init__(self, has_intermediate_loss: bool, has_first_layer_loss: bool | None = None, permute_loss: bool = True):
         super().__init__()
         self.has_intermediate_loss = has_intermediate_loss
+        self.has_first_layer_loss = has_first_layer_loss if has_first_layer_loss is not None else has_intermediate_loss
         self.permute_loss = permute_loss
 
     @abstractmethod
@@ -71,6 +72,7 @@ class ObjectValidTask(Task):
         null_weight: float = 1.0,
         mask_queries: bool = False,
         has_intermediate_loss: bool = True,
+        has_first_layer_loss=False,
     ):
         """Task used for classifying whether object candidates/seeds should be taken as reconstructed/predicted objects or not.
 
@@ -86,8 +88,15 @@ class ObjectValidTask(Task):
                 to overcome class imbalance.
             mask_queries: Whether to mask queries.
             has_intermediate_loss: Whether the task has intermediate loss.
+            has_first_layer_loss: Whether the task has first layer loss (defaults to has_intermediate_los if not specified).
+
+        Raises:
+            ValueError: If has_first_layer_loss is True but has_intermediate_loss is False.
         """
-        super().__init__(has_intermediate_loss=has_intermediate_loss)
+        if has_first_layer_loss and not has_intermediate_loss:
+            raise ValueError("has_first_layer_loss=True requires has_intermediate_loss=True")
+
+        super().__init__(has_intermediate_loss=has_intermediate_loss, has_first_layer_loss=has_first_layer_loss)
 
         self.name = name
         self.input_object = input_object

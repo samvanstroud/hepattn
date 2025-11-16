@@ -129,6 +129,8 @@ class MaskFormerDecoder(nn.Module):
             for task in self.tasks:
                 if not task.has_intermediate_loss:
                     continue
+                if layer_index == 0 and not task.has_first_layer_loss:
+                    continue
 
                 # Get the outputs of the task given the current embeddings
                 task_outputs = task(x)
