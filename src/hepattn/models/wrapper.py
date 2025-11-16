@@ -43,14 +43,15 @@ class ModelWrapper(LightningModule):
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         return self.model.predict(outputs)
 
-    def aggregate_losses(self, losses: dict[str, Tensor], stage: str | None = None) -> Tensor:
+    def aggregate_losses(self, losses: dict, stage: str | None = None) -> Tensor:
         device = next(self.model.parameters()).device
         total_loss = torch.tensor(0.0, device=device)
 
         for layer_name, layer_losses in losses.items():
             layer_loss = 0
-            for task_losses in layer_losses.values():
-                for loss_value in task_losses.values():
+            for task_name, task_losses in layer_losses.items():
+                for loss_name, loss_value in task_losses.items():
+                    self.log(f"{stage}/{layer_name}_{task_name}_{loss_name}", loss_value, sync_dist=True)
                     total_loss += loss_value
                     layer_loss += loss_value
 
