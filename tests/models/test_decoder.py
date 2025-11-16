@@ -29,6 +29,7 @@ class MockTask1:
 
 class MockTask2:
     has_intermediate_loss = True
+    has_first_layer_loss = True
     name = "task2"
 
     def __call__(self, x):
