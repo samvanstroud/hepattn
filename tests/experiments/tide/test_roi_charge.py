@@ -13,6 +13,7 @@ plt.rcParams["figure.dpi"] = 300
 torch.manual_seed(42)
 
 
+@pytest.mark.requiresdata
 class TestROIDataModule:
     @pytest.fixture
     def roi_datamodule(self):
