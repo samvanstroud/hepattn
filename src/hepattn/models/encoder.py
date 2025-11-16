@@ -130,9 +130,11 @@ class EncoderLayer(nn.Module):
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
-        # Handle HybridNorm
+        # Regular Pre-Norm behavior
         attn_norm = norm
         dense_post_norm = False
+
+        # Handle HybridNorm
         if hybrid_norm:
             if depth == 0:  # First block (HybridNorm*): Pre-Norm in both MHA and FFN
                 attn_norm = norm  # Pre-Norm before attention
