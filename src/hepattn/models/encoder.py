@@ -132,7 +132,7 @@ class EncoderLayer(nn.Module):
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
-4        # Regular Pre-Norm behavior
+        # Regular Pre-Norm behavior
         attn_norm = norm
         dense_post_norm = False
 
