@@ -336,6 +336,7 @@ class MockUnifiedTask:
     """Mock task for testing unified decoding strategy."""
 
     has_intermediate_loss = True
+    has_first_layer_loss = True
     name = "unified_task"
 
     def __call__(self, x):
