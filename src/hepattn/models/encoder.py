@@ -108,6 +108,7 @@ class EncoderLayer(nn.Module):
         layer_scale: float | None = None,
         drop_path: float = 0.0,
         value_residual: bool = False,
+        qkv_norm: bool = False,
         hybrid_norm: bool = False,
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
@@ -121,6 +122,7 @@ class EncoderLayer(nn.Module):
             drop_path: Drop path rate.
             layer_scale: Initial layer_scale value.
             value_residual: Whether to apply a residual connection from initial values.
+            qkv_norm: Whether to use qkv norm in the Attention layer
             hybrid_norm: Whether to use HybridNorm from 2503.04598.
             dense_kwargs: Keyword arguments for dense layer.
             attn_kwargs: Keyword arguments for self-attention layer.
@@ -135,6 +137,7 @@ class EncoderLayer(nn.Module):
         dense_post_norm = False
 
         # Handle HybridNorm
+        qkv_norm = qkv_norm or hybrid_norm
         if hybrid_norm:
             if depth == 0:  # First block (HybridNorm*): Pre-Norm in both MHA and FFN
                 attn_norm = norm  # Pre-Norm before attention

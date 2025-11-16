@@ -235,6 +235,7 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
         bidirectional_ca: bool = True,
+        qkv_norm: bool = False,
         hybrid_norm: bool = False,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
@@ -245,11 +246,11 @@ class MaskFormerDecoderLayer(nn.Module):
             depth: Layer depth index.
             dense_kwargs: Optional arguments for Dense layers.
             attn_kwargs: Optional arguments for Attention layers.
-            bidirectional_ca: If True, enables bidirectional cross-attention.
-            hybrid_norm: If True, enables hybrid normalization.
+            bidirectional_ca: Enable bidirectional cross-attention.
+            qkv_norm: Apply normalization to QKV in attention.
+            hybrid_norm: Enable hybrid normalization from 2503.04598.
         """
         super().__init__()
-
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
 
@@ -272,12 +273,12 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim)
-        self.q_ca = residual(Attention(dim, qkv_norm=hybrid_norm, **attn_kwargs), norm=attn_norm)
-        self.q_sa = residual(Attention(dim, qkv_norm=hybrid_norm, **attn_kwargs), norm=attn_norm)
+        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         if self.bidirectional_ca:
-            self.kv_ca = residual(Attention(dim, qkv_norm=hybrid_norm, **attn_kwargs), norm=attn_norm)
+            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(
