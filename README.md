@@ -76,8 +76,6 @@ See the [`pixi shell` docs](https://pixi.sh/latest/reference/cli/pixi/shell/) fo
 
 ## 🧪 Running Tests
 
-### Basic Testing
-
 Once inside the environment, if a GPU and relevant external data are available, just run: 
 
 ```shell
