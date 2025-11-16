@@ -14,6 +14,7 @@ HEAD_DIM = DIM // NUM_HEADS
 
 class MockTask1:
     has_intermediate_loss = True
+    has_first_layer_loss = True
     name = "task1"
 
     def __call__(self, x):
