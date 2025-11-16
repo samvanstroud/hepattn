@@ -163,7 +163,7 @@ class MaskFormer(nn.Module):
             preds[layer_name] = {}
 
             for task in self.tasks:
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in layer_outputs:
                     continue
                 preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
 
@@ -195,10 +195,10 @@ class MaskFormer(nn.Module):
             # Get the cost contribution from each of the tasks
             for task in self.tasks:
                 # Skip tasks that do not contribute intermediate losses
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in layer_outputs:
                     continue
-                # Only use the cost from the final set of predictions
 
+                # Compute costs
                 task_costs = task.cost(layer_outputs[task.name], targets)
 
                 # Add the cost on to our running cost total, otherwise initialise a running cost matrix
@@ -229,7 +229,7 @@ class MaskFormer(nn.Module):
                     continue
 
                 # The task didn't produce an output for this layer, so skip it
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in outputs[layer_name]:
                     continue
 
                 for output_name in task.outputs:
@@ -240,8 +240,9 @@ class MaskFormer(nn.Module):
         for layer_name in outputs:
             losses[layer_name] = {}
             for task in self.tasks:
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in outputs[layer_name]:
                     continue
+
                 losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses, targets

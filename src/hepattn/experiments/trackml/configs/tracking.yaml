@@ -207,6 +207,8 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
+                has_intermediate_loss: true
+                has_first_layer_loss: false
                 dim: *dim
                 losses:
                   object_bce: 1.0
@@ -221,6 +223,11 @@ model:
                 output_object: track
                 target_object: particle
                 dim: *dim
+                constituent_net:
+                  class_path: torch.nn.Linear
+                  init_args:
+                    in_features: *dim
+                    out_features: *dim
                 losses:
                   mask_dice: 2.0
                   mask_focal: 50.0

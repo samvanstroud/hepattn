@@ -129,6 +129,8 @@ class MaskFormerDecoder(nn.Module):
             for task in self.tasks:
                 if not task.has_intermediate_loss:
                     continue
+                if layer_index == 0 and not task.has_first_layer_loss:
+                    continue
 
                 # Get the outputs of the task given the current embeddings
                 task_outputs = task(x)
@@ -233,6 +235,7 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
         bidirectional_ca: bool = True,
+        qkv_norm: bool = False,
         hybrid_norm: bool = False,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
@@ -243,11 +246,11 @@ class MaskFormerDecoderLayer(nn.Module):
             depth: Layer depth index.
             dense_kwargs: Optional arguments for Dense layers.
             attn_kwargs: Optional arguments for Attention layers.
-            bidirectional_ca: If True, enables bidirectional cross-attention.
-            hybrid_norm: If True, enables hybrid normalization.
+            bidirectional_ca: Enable bidirectional cross-attention.
+            qkv_norm: Apply normalization to QKV in attention.
+            hybrid_norm: Enable hybrid normalization from 2503.04598.
         """
         super().__init__()
-
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
 
@@ -255,9 +258,8 @@ class MaskFormerDecoderLayer(nn.Module):
         attn_norm = norm
         dense_post_norm = False
 
-        # Handle HybridNorm
-        attn_norm = norm
-        dense_post_norm = False
+        # Handle HybridNorm and kqv norm
+        qkv_norm = qkv_norm or hybrid_norm
         if hybrid_norm:
             if depth == 0:  # First block (HybridNorm*): Pre-Norm in both MHA and FFN
                 attn_norm = norm  # Pre-Norm before attention
@@ -271,8 +273,8 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim)
-        self.q_ca = residual(Attention(dim, qkv_norm=hybrid_norm, **attn_kwargs), norm=attn_norm)
-        self.q_sa = residual(Attention(dim, qkv_norm=hybrid_norm, **attn_kwargs), norm=attn_norm)
+        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         if self.bidirectional_ca:
