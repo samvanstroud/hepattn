@@ -87,8 +87,8 @@ class Residual(nn.Module):
         self.dp = DropPath(drop_path) if drop_path else nn.Identity()
         self.post_norm = post_norm
 
-        self.norm = getattr(nn, norm)(dim) if norm else nn.Identity()
-        self.kv_norm = getattr(nn, norm)(dim) if kv_norm and norm else None
+        self.norm = getattr(nn, norm)(dim, elementwise_affine=True) if norm else nn.Identity()
+        self.kv_norm = getattr(nn, norm)(dim, elementwise_affine=True) if kv_norm and norm else None
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
         if self.post_norm:
