@@ -91,7 +91,9 @@ class Residual(nn.Module):
         if self.post_norm:
             x = self.norm(x)
             return x + self.dp(self.ls(self.fn(x, **kwargs)))
-        if self.kv_norm and "kv" in kwargs:  # TODO: require kv norm if doing cross attention
+        if self.kv_norm:
+            if "kv" not in kwargs:
+                raise ValueError("kv_norm is enabled but no 'kv' argument was provided")
             kwargs["kv"] = self.kv_norm(kwargs["kv"])
         return x + self.dp(self.ls(self.fn(self.norm(x), **kwargs)))
 
