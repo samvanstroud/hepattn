@@ -48,7 +48,7 @@ class TestMaskFormerDecoder:
     def decoder_layer_config(self):
         return {
             "dim": DIM,
-            "norm": "LayerNorm",
+            "norm": torch.nn.LayerNorm(DIM),
             "dense_kwargs": {},
             "attn_kwargs": {},
             "bidirectional_ca": True,
@@ -358,7 +358,7 @@ class TestMaskFormerDecoderUnified:
     def decoder_layer_config(self):
         return {
             "dim": DIM,
-            "norm": "LayerNorm",
+            "norm": torch.nn.LayerNorm(DIM),
             "dense_kwargs": {},
             "attn_kwargs": {},
             "bidirectional_ca": True,
