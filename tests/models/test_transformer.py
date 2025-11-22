@@ -61,8 +61,17 @@ def test_residual_post_norm(input_tensor):
 
 def test_residual_kv_norm(input_tensor):
     """Test Residual with kv_norm=True."""
-    fn = nn.Linear(input_tensor.shape[-1], input_tensor.shape[-1])
+
+    class MockFn(nn.Module):
+        def __init__(self, dim):
+            super().__init__()
+            self.linear = nn.Linear(dim, dim)
+
+        def forward(self, x, **kwargs):
+            return self.linear(x)
+
     dim = input_tensor.shape[-1]
+    fn = MockFn(dim)
     model = Residual(fn=fn, norm=nn.LayerNorm(dim), kv_norm=True, dim=dim)
     kv = torch.rand_like(input_tensor)
     output = model(input_tensor, kv=kv)
@@ -128,7 +137,7 @@ def test_encoderlayer_hybrid_norm(input_tensor):
     model_subsequent = EncoderLayer(dim=dim, depth=1, hybrid_norm=True, norm=nn.LayerNorm(dim))
     output_subsequent = model_subsequent(input_tensor)
     assert output_subsequent.shape == input_tensor.shape
-    assert model_subsequent.attn.norm is None  # Should not have norm before attention
+    assert isinstance(model_subsequent.attn.norm, nn.Identity)  # Should not have norm before attention (Identity)
     assert model_subsequent.dense.post_norm  # Should have post_norm
 
 

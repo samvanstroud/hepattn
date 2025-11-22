@@ -400,7 +400,7 @@ class TestMaskFormerDecoderLayer:
         new_q, new_kv = layer_subsequent(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
         assert new_q.shape == q.shape
         assert new_kv.shape == kv.shape
-        assert layer_subsequent.q_ca.norm is None  # Should not have norm before attention
+        assert isinstance(layer_subsequent.q_ca.norm, torch.nn.Identity)  # Should not have norm before attention
         assert layer_subsequent.q_dense.post_norm  # Should have post_norm
 
     def test_decoderlayer_qkv_norm(self, sample_data):
