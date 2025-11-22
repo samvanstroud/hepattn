@@ -267,6 +267,20 @@ def test_encoder_with_none_norm(input_tensor):
     assert not torch.isnan(output).any()
 
 
+def test_encoder_with_lightning_cli_dict(input_tensor):
+    """Test Encoder with Lightning CLI dict format for norm."""
+    dim = input_tensor.shape[-1]
+    norm_dict = {"class_path": "torch.nn.LayerNorm", "init_args": {"normalized_shape": dim}}
+    # We need to ignore type check here because we're intentionally passing a dict
+    # to test the internal handling, even though type hint says Module | None
+    model = Encoder(num_layers=3, dim=dim, norm=norm_dict)  # type: ignore[arg-type]
+    output = model(input_tensor)
+    assert output.shape == input_tensor.shape
+    assert not torch.isnan(output).any()
+    # Verify it was instantiated correctly in the layers
+    assert isinstance(model.layers[0].attn.norm, nn.LayerNorm)
+
+
 def test_encoderlayer_with_lightning_cli_dict():
     """Test that EncoderLayer can handle Lightning CLI dict format for norm internally."""
     dim = 128

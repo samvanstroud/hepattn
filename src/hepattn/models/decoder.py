@@ -56,6 +56,13 @@ class MaskFormerDecoder(nn.Module):
         """
         super().__init__()
 
+        # Handle Lightning CLI dict format for norm in decoder_layer_config
+        if "norm" in decoder_layer_config:
+            norm = decoder_layer_config["norm"]
+            if isinstance(norm, dict) and "class_path" in norm:
+                decoder_layer_config = decoder_layer_config.copy()
+                decoder_layer_config["norm"] = instantiate_class((), norm)
+
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
         self.dim = decoder_layer_config["dim"]
         self.tasks: list | None = None  # Will be set by MaskFormer
@@ -255,10 +262,6 @@ class MaskFormerDecoderLayer(nn.Module):
         super().__init__()
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
-
-        # Handle Lightning CLI dict format for norm
-        if isinstance(norm, dict) and "class_path" in norm:
-            norm = instantiate_class((), norm)
 
         norm = norm or nn.LayerNorm(dim)
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)

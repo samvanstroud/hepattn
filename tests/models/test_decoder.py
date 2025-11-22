@@ -150,6 +150,20 @@ class TestMaskFormerDecoder:
         assert decoder.mask_attention is False
         assert decoder.use_query_masks is True
 
+    def test_initialization_with_lightning_cli_dict(self, decoder_layer_config):
+        """Test initialization with Lightning CLI dict format for norm."""
+        config = decoder_layer_config.copy()
+        config["norm"] = {"class_path": "torch.nn.LayerNorm", "init_args": {"normalized_shape": DIM}}
+
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=config,
+            num_decoder_layers=NUM_LAYERS,
+        )
+
+        # Check that norm was instantiated in the layers
+        assert isinstance(decoder.decoder_layers[0].q_ca.norm, torch.nn.LayerNorm)
+
     def test_forward_without_tasks(self, decoder_no_mask_attention, sample_decoder_data):
         """Test forward pass without any tasks defined."""
         x, input_names = sample_decoder_data

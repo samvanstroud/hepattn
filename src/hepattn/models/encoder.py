@@ -134,10 +134,6 @@ class EncoderLayer(nn.Module):
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
-        # Handle Lightning CLI dict format for norm
-        if isinstance(norm, dict) and "class_path" in norm:
-            norm = instantiate_class((), norm)
-
         norm = norm or nn.LayerNorm(dim)
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
@@ -215,6 +211,10 @@ class Encoder(nn.Module):
         layer_kwargs["value_residual"] = self.value_residual
         attn_kwargs["window_size"] = window_size
         layer_kwargs["attn_kwargs"] = attn_kwargs
+
+        # Handle Lightning CLI dict format for norm
+        if isinstance(norm, dict) and "class_path" in norm:
+            norm = instantiate_class((), norm)
         layer_kwargs["norm"] = norm
 
         self.layers = torch.nn.ModuleList([EncoderLayer(dim=dim, depth=i, **layer_kwargs) for i in range(num_layers)])
