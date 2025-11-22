@@ -331,6 +331,67 @@ class TestMaskFormerDecoderLayer:
         # Without bidirectional, kv should remain unchanged
         assert new_kv is kv
 
+    def test_decoderlayer_with_lightning_cli_dict(self, sample_data):
+        """Test MaskFormerDecoderLayer with Lightning CLI dict format for norm."""
+        norm_dict = {"class_path": "torch.nn.LayerNorm", "init_args": {"normalized_shape": DIM}}
+        layer = MaskFormerDecoderLayer(dim=DIM, norm=norm_dict, bidirectional_ca=True)
+
+        q, kv, attn_mask, kv_mask = sample_data
+        new_q, new_kv = layer(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
+
+        assert new_q.shape == q.shape
+        assert new_kv.shape == kv.shape
+
+    def test_decoderlayer_with_custom_norm(self, sample_data):
+        """Test MaskFormerDecoderLayer with custom norm module."""
+        custom_norm = torch.nn.RMSNorm(DIM)
+        layer = MaskFormerDecoderLayer(dim=DIM, norm=custom_norm, bidirectional_ca=True)
+
+        q, kv, attn_mask, kv_mask = sample_data
+        new_q, new_kv = layer(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
+
+        assert new_q.shape == q.shape
+        assert new_kv.shape == kv.shape
+
+    def test_decoderlayer_norm_none_defaults_to_layernorm(self, sample_data):
+        """Test that MaskFormerDecoderLayer with norm=None defaults to LayerNorm."""
+        layer = MaskFormerDecoderLayer(dim=DIM, norm=None, bidirectional_ca=True)
+
+        q, kv, attn_mask, kv_mask = sample_data
+        new_q, new_kv = layer(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
+
+        assert new_q.shape == q.shape
+        assert new_kv.shape == kv.shape
+        # Check that a LayerNorm was created
+        assert isinstance(layer.q_ca.norm, torch.nn.LayerNorm)
+
+    def test_decoderlayer_hybrid_norm(self, sample_data):
+        """Test MaskFormerDecoderLayer with hybrid_norm=True."""
+        # Test first layer (depth=0) - should have norm before attention
+        layer_first = MaskFormerDecoderLayer(dim=DIM, depth=0, hybrid_norm=True, norm=torch.nn.LayerNorm(DIM))
+        q, kv, attn_mask, kv_mask = sample_data
+        new_q, new_kv = layer_first(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
+        assert new_q.shape == q.shape
+        assert new_kv.shape == kv.shape
+        assert layer_first.q_ca.norm is not None  # Should have norm
+        assert not layer_first.q_dense.post_norm  # Should not have post_norm
+
+        # Test subsequent layer (depth>0) - should have post_norm for dense
+        layer_subsequent = MaskFormerDecoderLayer(dim=DIM, depth=1, hybrid_norm=True, norm=torch.nn.LayerNorm(DIM))
+        new_q, new_kv = layer_subsequent(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
+        assert new_q.shape == q.shape
+        assert new_kv.shape == kv.shape
+        assert layer_subsequent.q_ca.norm is None  # Should not have norm before attention
+        assert layer_subsequent.q_dense.post_norm  # Should have post_norm
+
+    def test_decoderlayer_qkv_norm(self, sample_data):
+        """Test MaskFormerDecoderLayer with qkv_norm=True."""
+        layer = MaskFormerDecoderLayer(dim=DIM, qkv_norm=True, norm=torch.nn.LayerNorm(DIM))
+        q, kv, attn_mask, kv_mask = sample_data
+        new_q, new_kv = layer(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
+        assert new_q.shape == q.shape
+        assert new_kv.shape == kv.shape
+
 
 class MockUnifiedTask:
     """Mock task for testing unified decoding strategy."""

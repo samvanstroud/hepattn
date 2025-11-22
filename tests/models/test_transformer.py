@@ -49,6 +49,55 @@ def test_residual(input_tensor):
     assert output.shape == input_tensor.shape
 
 
+def test_residual_post_norm(input_tensor):
+    """Test Residual with post_norm=True."""
+    fn = nn.Linear(input_tensor.shape[-1], input_tensor.shape[-1])
+    dim = input_tensor.shape[-1]
+    model = Residual(fn=fn, norm=nn.LayerNorm(dim), post_norm=True, dim=dim)
+    output = model(input_tensor)
+    assert output.shape == input_tensor.shape
+
+
+def test_residual_kv_norm(input_tensor):
+    """Test Residual with kv_norm=True."""
+    fn = nn.Linear(input_tensor.shape[-1], input_tensor.shape[-1])
+    dim = input_tensor.shape[-1]
+    model = Residual(fn=fn, norm=nn.LayerNorm(dim), kv_norm=True, dim=dim)
+    kv = torch.rand_like(input_tensor)
+    output = model(input_tensor, kv=kv)
+    assert output.shape == input_tensor.shape
+
+
+def test_residual_kv_norm_without_kv_raises():
+    """Test that kv_norm=True raises error when kv is not provided."""
+    fn = nn.Linear(128, 128)
+    model = Residual(fn=fn, norm=nn.LayerNorm(128), kv_norm=True, dim=128)
+    x = torch.randn(8, 130, 128)
+    with pytest.raises(ValueError, match="kv_norm is enabled but no 'kv' argument was provided"):
+        model(x)
+
+
+def test_residual_validation_kv_norm_without_norm():
+    """Test that kv_norm=True without norm raises ValueError."""
+    fn = nn.Linear(128, 128)
+    with pytest.raises(ValueError, match="kv_norm is True but no norm is provided"):
+        Residual(fn=fn, norm=None, kv_norm=True, dim=128)
+
+
+def test_residual_validation_post_norm_without_norm():
+    """Test that post_norm=True without norm raises ValueError."""
+    fn = nn.Linear(128, 128)
+    with pytest.raises(ValueError, match="post_norm is True but no norm is provided"):
+        Residual(fn=fn, norm=None, post_norm=True, dim=128)
+
+
+def test_residual_validation_kv_norm_and_post_norm():
+    """Test that kv_norm and post_norm cannot both be True."""
+    fn = nn.Linear(128, 128)
+    with pytest.raises(ValueError, match="kv_norm and post_norm cannot both be True"):
+        Residual(fn=fn, norm=nn.LayerNorm(128), kv_norm=True, post_norm=True, dim=128)
+
+
 # Tests for EncoderLayer
 def test_encoderlayer(input_tensor):
     dim = input_tensor.shape[-1]
@@ -60,6 +109,32 @@ def test_encoderlayer(input_tensor):
 def test_encoderlayer_with_kwargs(input_tensor):
     dim = input_tensor.shape[-1]
     model = EncoderLayer(dim=dim, drop_path=0.1, attn_kwargs={"num_heads": 4})
+    output = model(input_tensor)
+    assert output.shape == input_tensor.shape
+
+
+def test_encoderlayer_hybrid_norm(input_tensor):
+    """Test EncoderLayer with hybrid_norm=True."""
+    dim = input_tensor.shape[-1]
+    # Test first layer (depth=0) - should have norm before attention
+    model_first = EncoderLayer(dim=dim, depth=0, hybrid_norm=True, norm=nn.LayerNorm(dim))
+    output_first = model_first(input_tensor)
+    assert output_first.shape == input_tensor.shape
+    assert model_first.attn.norm is not None  # Should have norm
+    assert not model_first.dense.post_norm  # Should not have post_norm
+
+    # Test subsequent layer (depth>0) - should have post_norm for dense
+    model_subsequent = EncoderLayer(dim=dim, depth=1, hybrid_norm=True, norm=nn.LayerNorm(dim))
+    output_subsequent = model_subsequent(input_tensor)
+    assert output_subsequent.shape == input_tensor.shape
+    assert model_subsequent.attn.norm is None  # Should not have norm before attention
+    assert model_subsequent.dense.post_norm  # Should have post_norm
+
+
+def test_encoderlayer_qkv_norm(input_tensor):
+    """Test EncoderLayer with qkv_norm=True."""
+    dim = input_tensor.shape[-1]
+    model = EncoderLayer(dim=dim, qkv_norm=True, norm=nn.LayerNorm(dim))
     output = model(input_tensor)
     assert output.shape == input_tensor.shape
 
@@ -170,3 +245,53 @@ def test_encoder_change_backends(attn_type, attn_type_new):
 
     # We allow this tolerance because of fp16 precision issues
     torch.testing.assert_close(out, out_new, atol=5e-3, rtol=5e-3)
+
+
+def test_encoder_with_custom_norm(input_tensor):
+    """Test Encoder with custom normalization module."""
+    dim = input_tensor.shape[-1]
+    custom_norm = nn.LayerNorm(dim)
+    model = Encoder(num_layers=3, dim=dim, norm=custom_norm)
+    output = model(input_tensor)
+    assert output.shape == input_tensor.shape
+    assert not torch.isnan(output).any()
+
+
+def test_encoder_with_none_norm(input_tensor):
+    """Test Encoder with norm=None (should default to LayerNorm)."""
+    dim = input_tensor.shape[-1]
+    model = Encoder(num_layers=3, dim=dim, norm=None)
+    output = model(input_tensor)
+    assert output.shape == input_tensor.shape
+    assert not torch.isnan(output).any()
+
+
+def test_encoderlayer_with_lightning_cli_dict():
+    """Test EncoderLayer with Lightning CLI dict format for norm."""
+    dim = 128
+    norm_dict = {"class_path": "torch.nn.LayerNorm", "init_args": {"normalized_shape": dim}}
+    model = EncoderLayer(dim=dim, norm=norm_dict)
+    x = torch.randn(8, 130, dim)
+    output = model(x)
+    assert output.shape == x.shape
+
+
+def test_encoderlayer_with_custom_norm():
+    """Test EncoderLayer with custom norm module."""
+    dim = 128
+    custom_norm = nn.RMSNorm(dim)
+    model = EncoderLayer(dim=dim, norm=custom_norm)
+    x = torch.randn(8, 130, dim)
+    output = model(x)
+    assert output.shape == x.shape
+
+
+def test_encoderlayer_norm_none_defaults_to_layernorm():
+    """Test that EncoderLayer with norm=None defaults to LayerNorm."""
+    dim = 128
+    model = EncoderLayer(dim=dim, norm=None)
+    x = torch.randn(8, 130, dim)
+    output = model(x)
+    assert output.shape == x.shape
+    # Check that a LayerNorm was created
+    assert isinstance(model.attn.norm, nn.LayerNorm)
