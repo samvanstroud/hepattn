@@ -8,7 +8,7 @@ class Dense(nn.Module):
         self,
         input_size: int,
         output_size: int | None = None,
-        hidden_layers: list[int] | None = None,
+        hidden_layers: int | list[int] | None = None,
         hidden_dim_scale: int = 2,
         activation: nn.Module | str | None = None,
         final_activation: nn.Module | None = None,
@@ -20,8 +20,7 @@ class Dense(nn.Module):
         Args:
             input_size: Input size.
             output_size: Output size. If not specified, this will be the same as the input size.
-            hidden_layers: Number of nodes per layer. If not specified, the network will have a single hidden layer with size
-                `input_size * hidden_dim_scale`.
+            hidden_layers: Number of hidden layers or list of hidden layer sizes. Hidden layer sizes are scaled by hidden_dim_scale.
             hidden_dim_scale: Scale factor for the hidden layer size.
             activation: Activation function for hidden layers.
             final_activation: Activation function for the output layer.
@@ -34,6 +33,8 @@ class Dense(nn.Module):
             output_size = input_size
         if hidden_layers is None:
             hidden_layers = [input_size * hidden_dim_scale]
+        if isinstance(hidden_layers, int):
+            hidden_layers = [input_size * hidden_dim_scale] * hidden_layers
         if activation is None:
             activation = nn.SiLU()
         if activation == "SwiGLU":
