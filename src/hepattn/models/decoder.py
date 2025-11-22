@@ -6,6 +6,7 @@
 from functools import partial
 
 import torch
+from lightning.pytorch.cli import instantiate_class
 from torch import Tensor, nn
 
 from hepattn.flex.fast_local_ca import build_strided_sliding_window_blockmask
@@ -254,6 +255,10 @@ class MaskFormerDecoderLayer(nn.Module):
         super().__init__()
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
+
+        # Handle Lightning CLI dict format for norm
+        if isinstance(norm, dict) and "class_path" in norm:
+            norm = instantiate_class((), norm)
 
         norm = norm or nn.LayerNorm(dim)
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)

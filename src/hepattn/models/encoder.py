@@ -1,6 +1,8 @@
+import copy
 from functools import partial
 
 import torch
+from lightning.pytorch.cli import instantiate_class
 from torch import Tensor, nn
 from torch.nn.attention.flex_attention import create_block_mask, create_mask
 
@@ -85,7 +87,8 @@ class Residual(nn.Module):
         self.post_norm = post_norm
 
         self.norm = norm or nn.Identity()
-        self.kv_norm = type(norm)(dim) if kv_norm and norm else None
+        # Create a deep copy of norm for kv_norm to avoid sharing parameters
+        self.kv_norm = copy.deepcopy(norm) if kv_norm and norm else None
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
         if self.post_norm:
@@ -130,6 +133,10 @@ class EncoderLayer(nn.Module):
 
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
+
+        # Handle Lightning CLI dict format for norm
+        if isinstance(norm, dict) and "class_path" in norm:
+            norm = instantiate_class((), norm)
 
         norm = norm or nn.LayerNorm(dim)
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
