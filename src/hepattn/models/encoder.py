@@ -84,7 +84,6 @@ class Residual(nn.Module):
         self.dp = DropPath(drop_path) if drop_path else nn.Identity()
         self.post_norm = post_norm
 
-        norm = norm or nn.LayerNorm(dim)
         self.norm = norm or nn.Identity()
         self.kv_norm = norm if kv_norm and norm else None
 
