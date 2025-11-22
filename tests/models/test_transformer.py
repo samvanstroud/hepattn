@@ -1,5 +1,6 @@
 import pytest
 import torch
+from lightning.pytorch.cli import instantiate_class
 from torch import Tensor, nn
 
 from hepattn.models import DropPath, Encoder, EncoderLayer, LayerScale, Residual
@@ -267,13 +268,17 @@ def test_encoder_with_none_norm(input_tensor):
 
 
 def test_encoderlayer_with_lightning_cli_dict():
-    """Test EncoderLayer with Lightning CLI dict format for norm."""
+    """Test that EncoderLayer can handle Lightning CLI dict format for norm internally."""
     dim = 128
     norm_dict = {"class_path": "torch.nn.LayerNorm", "init_args": {"normalized_shape": dim}}
-    model = EncoderLayer(dim=dim, norm=norm_dict)
+    # Instantiate the norm from dict format as Lightning CLI would
+    norm = instantiate_class((), norm_dict)
+    model = EncoderLayer(dim=dim, norm=norm)
     x = torch.randn(8, 130, dim)
     output = model(x)
     assert output.shape == x.shape
+    # Verify it's actually a LayerNorm
+    assert isinstance(model.attn.norm, nn.LayerNorm)
 
 
 def test_encoderlayer_with_custom_norm():

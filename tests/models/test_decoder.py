@@ -1,5 +1,6 @@
 import pytest
 import torch
+from lightning.pytorch.cli import instantiate_class
 
 from hepattn.models.decoder import MaskFormerDecoder, MaskFormerDecoderLayer
 
@@ -332,15 +333,19 @@ class TestMaskFormerDecoderLayer:
         assert new_kv is kv
 
     def test_decoderlayer_with_lightning_cli_dict(self, sample_data):
-        """Test MaskFormerDecoderLayer with Lightning CLI dict format for norm."""
+        """Test that MaskFormerDecoderLayer can handle Lightning CLI dict format for norm internally."""
         norm_dict = {"class_path": "torch.nn.LayerNorm", "init_args": {"normalized_shape": DIM}}
-        layer = MaskFormerDecoderLayer(dim=DIM, norm=norm_dict, bidirectional_ca=True)
+        # Instantiate the norm from dict format as Lightning CLI would
+        norm = instantiate_class((), norm_dict)
+        layer = MaskFormerDecoderLayer(dim=DIM, norm=norm, bidirectional_ca=True)
 
         q, kv, attn_mask, kv_mask = sample_data
         new_q, new_kv = layer(q, kv, attn_mask=attn_mask, kv_mask=kv_mask)
 
         assert new_q.shape == q.shape
         assert new_kv.shape == kv.shape
+        # Verify it's actually a LayerNorm
+        assert isinstance(layer.q_ca.norm, torch.nn.LayerNorm)
 
     def test_decoderlayer_with_custom_norm(self, sample_data):
         """Test MaskFormerDecoderLayer with custom norm module."""
