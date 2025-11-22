@@ -85,7 +85,7 @@ class Residual(nn.Module):
         self.post_norm = post_norm
 
         self.norm = norm or nn.Identity()
-        self.kv_norm = norm if kv_norm and norm else None
+        self.kv_norm = type(norm)(dim) if kv_norm and norm else None
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
         if self.post_norm:
