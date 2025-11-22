@@ -231,7 +231,7 @@ class MaskFormerDecoderLayer(nn.Module):
     def __init__(
         self,
         dim: int,
-        norm: str = "LayerNorm",
+        norm: nn.Module | None = None,
         depth: int = 0,
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
@@ -255,6 +255,7 @@ class MaskFormerDecoderLayer(nn.Module):
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
 
+        norm = norm or nn.LayerNorm(dim)
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
         attn_kwargs = attn_kwargs or {}

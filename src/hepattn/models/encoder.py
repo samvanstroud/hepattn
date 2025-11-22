@@ -50,7 +50,7 @@ class Residual(nn.Module):
         self,
         fn: nn.Module,
         dim: int,
-        norm: str | None,
+        norm: nn.Module | None = None,
         post_norm: bool = False,
         kv_norm: bool = False,
         layer_scale: float | None = None,
@@ -61,7 +61,7 @@ class Residual(nn.Module):
         Args:
             dim: Dimension of the input and output.
             fn: The module to wrap. Must be non-resizing.
-            norm: The normalization layer.
+            norm: The normalization layer instance.
             post_norm: Whether to apply hybrid norm [2503.04598] style post norm.
             kv_norm: Whether to apply normalization to the key and value inputs (for attention modules).
             layer_scale: Initial value for the layer_scale. If None, no layer_scale is applied.
@@ -76,10 +76,6 @@ class Residual(nn.Module):
             raise ValueError("kv_norm is True but no norm is provided.")
         if post_norm and not norm:
             raise ValueError("post_norm is True but no norm is provided.")
-        if norm is not None and not isinstance(norm, str):
-            raise ValueError("norm must be a string or None.")
-        if norm is not None and not hasattr(nn, norm):
-            raise ValueError(f"Unsupported norm: {norm}. Must be a valid torch.nn module.")
         if post_norm and kv_norm:
             raise ValueError("kv_norm and post_norm cannot both be True.")
 
@@ -88,8 +84,9 @@ class Residual(nn.Module):
         self.dp = DropPath(drop_path) if drop_path else nn.Identity()
         self.post_norm = post_norm
 
-        self.norm = getattr(nn, norm)(dim) if norm else nn.Identity()
-        self.kv_norm = getattr(nn, norm)(dim) if kv_norm and norm else None
+        norm = norm or nn.LayerNorm(dim)
+        self.norm = norm or nn.Identity()
+        self.kv_norm = norm if kv_norm and norm else None
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
         if self.post_norm:
@@ -105,7 +102,7 @@ class EncoderLayer(nn.Module):
         self,
         dim: int,
         depth: int = 0,
-        norm: str = "LayerNorm",
+        norm: nn.Module | None = None,
         layer_scale: float | None = None,
         drop_path: float = 0.0,
         value_residual: bool = False,
@@ -133,6 +130,7 @@ class EncoderLayer(nn.Module):
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
+        norm = norm or nn.LayerNorm(dim)
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
         # handle value residual
@@ -159,6 +157,7 @@ class Encoder(nn.Module):
         score_mod: str | None = None,
         value_residual: bool = False,
         num_register_tokens: int | None = None,
+        norm: nn.Module | None = None,
         **layer_kwargs,
     ) -> None:
         """Transformer encoder.
@@ -173,6 +172,7 @@ class Encoder(nn.Module):
             value_residual: Add a residual connection from the initial layer values.
             num_register_tokens: Number of register tokens to add at the beginning of the sequence. If None, no register tokens are added.
                 Register tokens are removed from the output by default.
+            norm: Normalization layer class.
             **layer_kwargs: Keyword arguments for EncoderLayer.
         """
         super().__init__()
@@ -207,6 +207,7 @@ class Encoder(nn.Module):
         layer_kwargs["value_residual"] = self.value_residual
         attn_kwargs["window_size"] = window_size
         layer_kwargs["attn_kwargs"] = attn_kwargs
+        layer_kwargs["norm"] = norm
 
         self.layers = torch.nn.ModuleList([EncoderLayer(dim=dim, depth=i, **layer_kwargs) for i in range(num_layers)])
 
