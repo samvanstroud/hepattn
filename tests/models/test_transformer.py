@@ -43,7 +43,8 @@ def test_layerscale(input_tensor):
 # Tests for Residual
 def test_residual(input_tensor):
     fn = nn.Linear(input_tensor.shape[-1], input_tensor.shape[-1])
-    model = Residual(fn=fn, norm="LayerNorm", layer_scale=1e-5, drop_path=0.0, dim=input_tensor.shape[-1])
+    dim = input_tensor.shape[-1]
+    model = Residual(fn=fn, norm=nn.LayerNorm(dim), layer_scale=1e-5, drop_path=0.0, dim=dim)
     output = model(input_tensor)
     assert output.shape == input_tensor.shape
 
