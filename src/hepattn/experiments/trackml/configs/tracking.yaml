@@ -163,7 +163,7 @@ model:
                     input_size: 17
                     hidden_layers: [128]
                     output_size: *dim
-                    activation: SwiGLU
+                    activation: {class_path: hepattn.models.SwiGLU}
                 posenc:
                   class_path: hepattn.models.FourierPositionEncoder
                   init_args:
@@ -184,8 +184,9 @@ model:
           window_size: 512
           window_wrap: true
           hybrid_norm: true
-          norm: RMSNorm
-          dense_kwargs: {activation: SwiGLU}
+          norm: {class_path: hepattn.models.RMSNorm, init_args: {dim: *dim}}
+          dense_kwargs:
+            activation: {class_path: hepattn.models.SwiGLU}
 
       decoder:
         num_decoder_layers: 4
@@ -194,9 +195,10 @@ model:
         use_query_masks: false
         decoder_layer_config:
           dim: *dim
-          norm: RMSNorm
+          norm: {class_path: hepattn.models.RMSNorm, init_args: {dim: *dim}}
           hybrid_norm: true
-          dense_kwargs: {activation: SwiGLU}
+          dense_kwargs:
+            activation: {class_path: hepattn.models.SwiGLU}
 
       tasks:
         class_path: torch.nn.ModuleList

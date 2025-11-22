@@ -22,7 +22,7 @@ def test_flex_local_ca_mask_equivalence():
     # Create decoder with flex attention
     decoder_layer_config = {
         "dim": dim,
-        "norm": "LayerNorm",
+        "norm": torch.nn.LayerNorm(dim),
         "dense_kwargs": {},
         "attn_kwargs": {"attn_type": "flex"},
         "bidirectional_ca": True,
@@ -75,7 +75,7 @@ def test_flex_local_ca_mask_transpose_consistency():
 
     decoder_layer_config = {
         "dim": dim,
-        "norm": "LayerNorm",
+        "norm": torch.nn.LayerNorm(dim),
         "dense_kwargs": {},
         "attn_kwargs": {"attn_type": "flex"},
         "bidirectional_ca": True,

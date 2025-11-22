@@ -51,11 +51,11 @@ class DyT(nn.Module):
         return x * self.weight + self.bias
 
 
-def get_hybrid_norm_config(norm: str | None, depth: int, hybrid_norm: bool, qkv_norm: bool) -> tuple[str | None, bool, bool]:
+def get_hybrid_norm_config(norm: nn.Module | None, depth: int, hybrid_norm: bool, qkv_norm: bool) -> tuple[nn.Module | None, bool, bool]:
     """Get the normalization configuration for HybridNorm.
 
     Args:
-        norm: The normalization type.
+        norm: The normalization module instance.
         depth: The layer depth.
         hybrid_norm: Whether to use HybridNorm.
         qkv_norm: Whether to use QKV normalization.
