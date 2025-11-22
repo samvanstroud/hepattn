@@ -13,6 +13,7 @@ from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_ma
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
+from hepattn.models.norm import get_hybrid_norm_config
 from hepattn.models.posenc import pos_enc_symmetric
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.local_ca import auto_local_ca_mask
@@ -254,19 +255,7 @@ class MaskFormerDecoderLayer(nn.Module):
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
 
-        # Regular Pre-Norm behavior
-        attn_norm = norm
-        dense_post_norm = False
-
-        # Handle HybridNorm and kqv norm
-        qkv_norm = qkv_norm or hybrid_norm
-        if hybrid_norm:
-            if depth == 0:  # First block (HybridNorm*): Pre-Norm in both MHA and FFN
-                attn_norm = norm  # Pre-Norm before attention
-                dense_post_norm = False  # Pre-Norm in FFN (not Post-Norm)
-            else:  # Subsequent blocks (HybridNorm): No Pre-Norm in MHA, Post-Norm in FFN
-                attn_norm = None  # No Pre-Norm before attention
-                dense_post_norm = True  # Post-Norm in FFN
+        attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
         attn_kwargs = attn_kwargs or {}
         self.attn_type = attn_kwargs.get("attn_type", "torch")
