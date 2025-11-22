@@ -239,6 +239,7 @@ class ObjectHitMaskTask(Task):
         target_field: str = "valid",
         logit_scale: float = 1.0,
         pred_threshold: float = 0.5,
+        mask_attention_threshold: float | None = None,
         has_intermediate_loss: bool = True,
     ):
         """Task for predicting associations between objects and hits.
@@ -261,6 +262,7 @@ class ObjectHitMaskTask(Task):
             target_field: Target field name.
             logit_scale: Scale for logits.
             pred_threshold: Prediction threshold.
+            mask_attention_threshold: Threshold for attention masking. Defaults to pred_threshold if None.
             has_intermediate_loss: Whether the task has intermediate loss.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
@@ -281,6 +283,7 @@ class ObjectHitMaskTask(Task):
         self.mask_attn = mask_attn
         self.logit_scale = logit_scale
         self.pred_threshold = pred_threshold
+        self.mask_attention_threshold = mask_attention_threshold if mask_attention_threshold is not None else pred_threshold
         self.has_intermediate_loss = mask_attn
 
         self.output_object_hit = output_object + "_" + input_constituent
@@ -306,11 +309,12 @@ class ObjectHitMaskTask(Task):
 
         return {self.output_object_hit + "_logit": object_hit_logit}
 
-    def attn_mask(self, outputs: dict[str, Tensor], threshold: float = 0.1) -> dict[str, Tensor]:
+    def attn_mask(self, outputs: dict[str, Tensor], threshold: float | None = None) -> dict[str, Tensor]:
         if not self.mask_attn:
             return {}
 
-        attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= threshold
+        thresh = threshold if threshold is not None else self.mask_attention_threshold
+        attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= thresh
         return {self.input_constituent: attn_mask}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
