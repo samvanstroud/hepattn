@@ -73,7 +73,7 @@ data:
 
 trainer:
   # Training stuff here
-  max_epochs: 10
+  max_epochs: 30
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
@@ -165,7 +165,7 @@ model:
                     output_size: *dim
                     activation: SwiGLU
                 posenc:
-                  class_path: hepattn.models.FourierPositionEncoder
+                  class_path: hepattn.models.PositionEncoder
                   init_args:
                     input_name: hit
                     fields:
@@ -173,12 +173,11 @@ model:
                       - eta
                       - phi
                     dim: *dim
-                    scale: 0.1
 
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 10
+          num_layers: 12
           dim: *dim
           attn_type: flash
           window_size: 512
@@ -188,7 +187,7 @@ model:
           dense_kwargs: {activation: SwiGLU}
 
       decoder:
-        num_decoder_layers: 4
+        num_decoder_layers: 8
         num_queries: *num_objects
         mask_attention: true
         use_query_masks: false
@@ -212,9 +211,9 @@ model:
                 has_first_layer_loss: false
                 dim: *dim
                 losses:
-                  object_bce: 1.0
+                  object_bce: 0.1
                 costs:
-                  object_bce: 1.0
+                  object_bce: 0.1
                 null_weight: 1.0
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
@@ -224,11 +223,6 @@ model:
                 output_object: track
                 target_object: particle
                 dim: *dim
-                constituent_net:
-                  class_path: torch.nn.Linear
-                  init_args:
-                    in_features: *dim
-                    out_features: *dim
                 losses:
                   mask_dice: 2.0
                   mask_focal: 50.0
