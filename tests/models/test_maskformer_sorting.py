@@ -67,7 +67,7 @@ class TestMaskFormerSorting:
     def decoder(self):
         decoder_layer_config = {
             "dim": 64,
-            "norm": torch.nn.LayerNorm(64),
+            "norm": "LayerNorm",
             "dense_kwargs": {},
             "attn_kwargs": {},
             "bidirectional_ca": True,

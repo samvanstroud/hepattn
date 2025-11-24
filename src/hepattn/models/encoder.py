@@ -1,8 +1,6 @@
-import copy
 from functools import partial
 
 import torch
-from lightning.pytorch.cli import instantiate_class
 from torch import Tensor, nn
 from torch.nn.attention.flex_attention import create_block_mask, create_mask
 
@@ -52,7 +50,7 @@ class Residual(nn.Module):
         self,
         fn: nn.Module,
         dim: int,
-        norm: nn.Module | None = None,
+        norm: str | None,
         post_norm: bool = False,
         kv_norm: bool = False,
         layer_scale: float | None = None,
@@ -63,7 +61,7 @@ class Residual(nn.Module):
         Args:
             dim: Dimension of the input and output.
             fn: The module to wrap. Must be non-resizing.
-            norm: The normalization layer instance.
+            norm: The normalization layer.
             post_norm: Whether to apply hybrid norm [2503.04598] style post norm.
             kv_norm: Whether to apply normalization to the key and value inputs (for attention modules).
             layer_scale: Initial value for the layer_scale. If None, no layer_scale is applied.
@@ -78,6 +76,10 @@ class Residual(nn.Module):
             raise ValueError("kv_norm is True but no norm is provided.")
         if post_norm and not norm:
             raise ValueError("post_norm is True but no norm is provided.")
+        if norm is not None and not isinstance(norm, str):
+            raise ValueError("norm must be a string or None.")
+        if norm is not None and not hasattr(nn, norm):
+            raise ValueError(f"Unsupported norm: {norm}. Must be a valid torch.nn module.")
         if post_norm and kv_norm:
             raise ValueError("kv_norm and post_norm cannot both be True.")
 
@@ -86,17 +88,14 @@ class Residual(nn.Module):
         self.dp = DropPath(drop_path) if drop_path else nn.Identity()
         self.post_norm = post_norm
 
-        self.norm = norm or nn.Identity()
-        # Create a deep copy of norm for kv_norm to avoid sharing parameters
-        self.kv_norm = copy.deepcopy(norm) if kv_norm and norm else None
+        self.norm = getattr(nn, norm)(dim) if norm else nn.Identity()
+        self.kv_norm = getattr(nn, norm)(dim) if kv_norm and norm else None
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
         if self.post_norm:
             x = self.norm(x)
             return x + self.dp(self.ls(self.fn(x, **kwargs)))
-        if self.kv_norm:
-            if "kv" not in kwargs:
-                raise ValueError("kv_norm is enabled but no 'kv' argument was provided")
+        if self.kv_norm and "kv" in kwargs:  # TODO: require kv norm if doing cross attention
             kwargs["kv"] = self.kv_norm(kwargs["kv"])
         return x + self.dp(self.ls(self.fn(self.norm(x), **kwargs)))
 
@@ -106,7 +105,7 @@ class EncoderLayer(nn.Module):
         self,
         dim: int,
         depth: int = 0,
-        norm: nn.Module | None = None,
+        norm: str = "LayerNorm",
         layer_scale: float | None = None,
         drop_path: float = 0.0,
         value_residual: bool = False,
@@ -134,7 +133,6 @@ class EncoderLayer(nn.Module):
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
-        norm = norm or nn.LayerNorm(dim)
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
         # handle value residual
@@ -161,7 +159,6 @@ class Encoder(nn.Module):
         score_mod: str | None = None,
         value_residual: bool = False,
         num_register_tokens: int | None = None,
-        norm: nn.Module | None = None,
         **layer_kwargs,
     ) -> None:
         """Transformer encoder.
@@ -176,7 +173,6 @@ class Encoder(nn.Module):
             value_residual: Add a residual connection from the initial layer values.
             num_register_tokens: Number of register tokens to add at the beginning of the sequence. If None, no register tokens are added.
                 Register tokens are removed from the output by default.
-            norm: Normalization layer class.
             **layer_kwargs: Keyword arguments for EncoderLayer.
         """
         super().__init__()
@@ -211,11 +207,6 @@ class Encoder(nn.Module):
         layer_kwargs["value_residual"] = self.value_residual
         attn_kwargs["window_size"] = window_size
         layer_kwargs["attn_kwargs"] = attn_kwargs
-
-        # Handle Lightning CLI dict format for norm
-        if isinstance(norm, dict) and "class_path" in norm:
-            norm = instantiate_class((), norm)
-        layer_kwargs["norm"] = norm
 
         self.layers = torch.nn.ModuleList([EncoderLayer(dim=dim, depth=i, **layer_kwargs) for i in range(num_layers)])
 
