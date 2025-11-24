@@ -8,6 +8,7 @@ from hepattn.flex import relative_position, relative_position_wrapped
 from hepattn.flex.sliding_window import sliding_window_mask, sliding_window_mask_wrapped
 from hepattn.models.attention import Attention, repad_from_flash_varlen, unpad_for_flash_varlen
 from hepattn.models.dense import Dense
+from hepattn.models.norm import get_hybrid_norm_config
 
 create_block_mask = torch.compile(create_block_mask, dynamic=True)  # ty: ignore[invalid-assignment]
 
@@ -132,19 +133,7 @@ class EncoderLayer(nn.Module):
         attn_kwargs = attn_kwargs or {}
         dense_kwargs = dense_kwargs or {}
 
-        # Regular Pre-Norm behavior
-        attn_norm = norm
-        dense_post_norm = False
-
-        # Handle HybridNorm
-        qkv_norm = qkv_norm or hybrid_norm
-        if hybrid_norm:
-            if depth == 0:  # First block (HybridNorm*): Pre-Norm in both MHA and FFN
-                attn_norm = norm  # Pre-Norm before attention
-                dense_post_norm = False  # Pre-Norm in FFN (not Post-Norm)
-            else:  # Subsequent blocks (HybridNorm): No Pre-Norm in MHA, Post-Norm in FFN
-                attn_norm = None  # No Pre-Norm before attention
-                dense_post_norm = True  # Post-Norm in FFN
+        attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
         # handle value residual
         attn_kwargs["value_residual"] = value_residual
@@ -152,7 +141,7 @@ class EncoderLayer(nn.Module):
 
         self.dim = dim
         residual = partial(Residual, dim=dim, layer_scale=layer_scale, drop_path=drop_path)
-        self.attn = residual(Attention(self.dim, qkv_norm=hybrid_norm, **attn_kwargs), norm=attn_norm)
+        self.attn = residual(Attention(self.dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
         self.dense = residual(Dense(self.dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
