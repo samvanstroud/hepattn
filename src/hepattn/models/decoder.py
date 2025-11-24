@@ -6,7 +6,6 @@
 from functools import partial
 
 import torch
-from lightning.pytorch.cli import instantiate_class
 from torch import Tensor, nn
 
 from hepattn.flex.fast_local_ca import build_strided_sliding_window_blockmask
@@ -55,13 +54,6 @@ class MaskFormerDecoder(nn.Module):
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
         """
         super().__init__()
-
-        # Handle Lightning CLI dict format for norm in decoder_layer_config
-        if "norm" in decoder_layer_config:
-            norm = decoder_layer_config["norm"]
-            if isinstance(norm, dict) and "class_path" in norm:
-                decoder_layer_config = decoder_layer_config.copy()
-                decoder_layer_config["norm"] = instantiate_class((), norm)
 
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
         self.dim = decoder_layer_config["dim"]
@@ -239,7 +231,7 @@ class MaskFormerDecoderLayer(nn.Module):
     def __init__(
         self,
         dim: int,
-        norm: nn.Module | None = None,
+        norm: str = "LayerNorm",
         depth: int = 0,
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
@@ -263,7 +255,6 @@ class MaskFormerDecoderLayer(nn.Module):
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
 
-        norm = norm or nn.LayerNorm(dim)
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
         attn_kwargs = attn_kwargs or {}

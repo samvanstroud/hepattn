@@ -146,7 +146,7 @@ model:
           dim: *dim
           attn_type: torch
           hybrid_norm: true
-          norm: {class_path: hepattn.models.RMSNorm, init_args: {dim: *dim}}
+          norm: RMSNorm
 
       tasks:
         class_path: torch.nn.ModuleList

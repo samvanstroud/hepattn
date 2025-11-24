@@ -156,7 +156,7 @@ model:
           window_size: 1024
           window_wrap: true
           hybrid_norm: true
-          norm: {class_path: hepattn.models.RMSNorm, init_args: {dim: *dim}}
+          norm: RMSNorm
 
       tasks:
         class_path: torch.nn.ModuleList

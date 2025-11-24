@@ -173,7 +173,7 @@ model:
           window_size: 512
           window_wrap: true
           hybrid_norm: true
-          norm: {class_path: hepattn.models.RMSNorm, init_args: {dim: *dim}}
+          norm: RMSNorm
 
       decoder:
         num_decoder_layers: 4
@@ -182,7 +182,7 @@ model:
         use_query_masks: false
         decoder_layer_config:
           dim: *dim
-          norm: {class_path: hepattn.models.RMSNorm, init_args: {dim: *dim}}
+          norm: RMSNorm
 
       tasks:
         class_path: torch.nn.ModuleList
