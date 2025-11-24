@@ -20,8 +20,8 @@ class Dense(nn.Module):
         Args:
             input_size: Input size.
             output_size: Output size. If not specified, this will be the same as the input size.
-            hidden_layers: Number of hidden layers or list of hidden layer sizes. Hidden layer sizes are scaled by hidden_dim_scale.
-            hidden_dim_scale: Scale factor for the hidden layer size.
+            hidden_layers: Number of hidden layers or list of hidden layer sizes. Scaled by hidden_dim_scale if a list is not provided.
+            hidden_dim_scale: Scale factor for the hidden layer size if hidden_layers is not a list.
             activation: Activation function for hidden layers.
             final_activation: Activation function for the output layer.
             dropout: Apply dropout with the supplied probability.
@@ -39,6 +39,7 @@ class Dense(nn.Module):
             activation = nn.SiLU()
         if activation == "SwiGLU":
             activation = SwiGLU()
+
         self.input_size = input_size
         self.output_size = output_size
         gate = isinstance(activation, SwiGLU)
