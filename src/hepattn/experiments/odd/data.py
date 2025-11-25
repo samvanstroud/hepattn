@@ -19,9 +19,11 @@ class ODDEventDataset(Dataset):
         self,
         dirpath: str,
         num_events: int = -1,
-        particle_min_pt: float = 1.0,
+        particle_min_pt: float = 0.5,
         particle_max_abs_eta: float = 4.0,
         event_max_num_particles: int = 10_000_000,
+        return_calohits: bool = True,
+        return_tracks: bool = True,
     ):
         super().__init__()
 
@@ -58,9 +60,11 @@ class ODDEventDataset(Dataset):
         self.particle_min_pt = particle_min_pt
         self.particle_max_abs_eta = particle_max_abs_eta
 
-
         # Event level cuts
         self.event_max_num_particles = event_max_num_particles
+
+        self.return_calohits = return_calohits
+        self.return_tracks = return_tracks
 
     def __len__(self):
         return int(self.num_events)
@@ -69,15 +73,11 @@ class ODDEventDataset(Dataset):
         # Define the paths for the different objects in the event
         particle_path = self.sample_id_file_paths[sample_id]
         sihit_path = Path(str(particle_path).replace("particles", "tracker_hits"))
-        calohits_path = Path(str(particle_path).replace("particles", "calo_hits"))
-        tracks_path = Path(str(particle_path).replace("particles", "tracks"))
 
         # Read in the data
         # TODO: Check if we can skip any of these e.g. skip calo if only doing tracking
         particles = ak.from_parquet(particle_path)[0]
         sihits = ak.from_parquet(sihit_path)[0]
-        calohits = ak.from_parquet(calohits_path)[0]
-        tracks = ak.from_parquet(tracks_path)[0]
 
         # Now we build the data tensors
         inputs = {}
@@ -90,18 +90,6 @@ class ODDEventDataset(Dataset):
         # For now, all sihit fields are not jagged, so can convert straight to tensor
         for field in sihits.fields:
             inputs[f"sihit_{field}"] = ak.to_torch(sihits[field])
-
-        # Convert the calo hit fields to tensors, skip the jagged fields which we will handle separately
-        for field in calohits.fields:
-            if field in {"detector", "contrib_particle_ids", "contrib_energies", "contrib_times"}:
-                continue
-            inputs[f"calohit_{field}"] = ak.to_torch(calohits[field])
-
-        # Read the tracking info
-        for field in tracks.fields:
-            if field == "hit_ids":
-                continue
-            targets[f"track_{field}"] = ak.to_torch(tracks[field])
 
         # Add extra particle fields
         targets["particle_p"] = torch.sqrt(targets["particle_px"] ** 2 + targets["particle_py"] ** 2 + targets["particle_pz"] ** 2)
@@ -117,7 +105,7 @@ class ODDEventDataset(Dataset):
 
         # Calculate the particle cuts
         particle_valid = targets["particle_pt"] >= self.particle_min_pt
-        #particle_valid = particle_valid & (torch.abs(targets["particle_eta"]) <= self.particle_max_abs_eta)
+        particle_valid = particle_valid & (torch.abs(targets["particle_eta"]) <= self.particle_max_abs_eta)
         
         # Apply the particle cut
         
@@ -129,23 +117,45 @@ class ODDEventDataset(Dataset):
         targets["particle_valid"] = torch.full_like(targets["particle_pt"], True, dtype=torch.bool)
         targets["particle_sihit_valid"] = targets["particle_particle_id"][:, None] == inputs["sihit_particle_id"][None, :]
 
-        # For the calohits we have to build the mask using awkward arrays since calo hits can be shared
-        particle_calohit_assoc = targets["particle_particle_id"][:, None, None] == calohits["contrib_particle_ids"][None, :, :]
-        particle_calohit_valid = ak.any(particle_calohit_assoc, axis=-1)
-        particle_calohit_energy = ak.sum(calohits["contrib_energies"][None, :, :] * particle_calohit_assoc, axis=-1)
-        particle_calohit_time = ak.sum(calohits["contrib_times"][None, :, :] * particle_calohit_assoc, axis=-1)
+        # Return the calorimeter hit info if requested
+        if self.return_calohits:
+            calohits_path = Path(str(particle_path).replace("particles", "calo_hits"))
+            calohits = ak.from_parquet(calohits_path)[0]
 
-        targets["particle_calohit_valid"] = ak.to_torch(particle_calohit_valid)
-        targets["particle_calohit_energy"] = ak.to_torch(particle_calohit_energy)
-        
-        # Now add the track masks
-        inputs["sihit_valid"] = torch.full_like(inputs["sihit_x"], True)
-        targets["track_valid"] = torch.full_like(targets["track_phi"], True)
+            # Convert the calo hit fields to tensors, skip the jagged fields which we will handle separately
+            for field in calohits.fields:
+                if field in {"detector", "contrib_particle_ids", "contrib_energies", "contrib_times"}:
+                    continue
+                inputs[f"calohit_{field}"] = ak.to_torch(calohits[field])
 
-        hit_id = ak.from_numpy(np.arange(len(inputs["sihit_valid"])))
-        track_sihit_valid = ak.to_torch(ak.any(tracks["hit_ids"][:, None] == hit_id[None, :], axis=2))
+            # For the calohits we have to build the mask using awkward arrays since calo hits can be shared
+            particle_calohit_assoc = targets["particle_particle_id"][:, None, None] == calohits["contrib_particle_ids"][None, :, :]
+            particle_calohit_valid = ak.any(particle_calohit_assoc, axis=-1)
+            particle_calohit_energy = ak.sum(calohits["contrib_energies"][None, :, :] * particle_calohit_assoc, axis=-1)
+            particle_calohit_time = ak.sum(calohits["contrib_times"][None, :, :] * particle_calohit_assoc, axis=-1)
 
-        targets["track_sihit_valid"] = track_sihit_valid
+            targets["particle_calohit_valid"] = ak.to_torch(particle_calohit_valid)
+            targets["particle_calohit_energy"] = ak.to_torch(particle_calohit_energy)
+
+        # Return ACTS track info if requested
+        if self.return_tracks:
+            tracks_path = Path(str(particle_path).replace("particles", "tracks"))
+            tracks = ak.from_parquet(tracks_path)[0]
+
+            # Read the tracking info
+            for field in tracks.fields:
+                if field == "hit_ids":
+                    continue
+                targets[f"track_{field}"] = ak.to_torch(tracks[field])
+            
+            # Now add the track masks
+            inputs["sihit_valid"] = torch.full_like(inputs["sihit_x"], True)
+            targets["track_valid"] = torch.full_like(targets["track_phi"], True)
+
+            hit_id = ak.from_numpy(np.arange(len(inputs["sihit_valid"])))
+            track_sihit_valid = ak.to_torch(ak.any(tracks["hit_ids"][:, None] == hit_id[None, :], axis=2))
+
+            targets["track_sihit_valid"] = track_sihit_valid
 
         # Add metadata
         targets["sample_id"] = torch.tensor(sample_id)
