@@ -191,7 +191,7 @@ class HitFilterTask(Task):
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         preds = {}
         preds[f"{self.input_object}_{self.target_field}_prob"] = outputs[f"{self.input_object}_logit"].sigmoid()
-        preds[f"{self.input_object}_{self.target_field}"] = preds[f"{self.input_object}_{self.target_field}_prob"] >= self.threshold 
+        preds[f"{self.input_object}_{self.target_field}"] = preds[f"{self.input_object}_{self.target_field}_prob"] >= self.threshold
         return preds
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
