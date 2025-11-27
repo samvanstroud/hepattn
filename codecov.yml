@@ -8,7 +8,6 @@ coverage:
           - integration
     patch:
       default:
-        informational: true
         after_n_builds: 2
         flags:
           - unit
