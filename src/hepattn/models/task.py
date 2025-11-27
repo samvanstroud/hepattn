@@ -189,7 +189,10 @@ class HitFilterTask(Task):
         return {f"{self.input_object}_logit": x_logit.squeeze(-1)}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
-        return {f"{self.input_object}_{self.target_field}": outputs[f"{self.input_object}_logit"].sigmoid() >= self.threshold}
+        preds = {}
+        preds[f"{self.input_object}_{self.target_field}_prob"] = outputs[f"{self.input_object}_logit"].sigmoid()
+        preds[f"{self.input_object}_{self.target_field}"] = preds[f"{self.input_object}_{self.target_field}_prob"] >= self.threshold 
+        return preds
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         # Pick out the field that denotes whether a hit is on a reconstructable object or not
