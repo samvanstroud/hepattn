@@ -244,6 +244,8 @@ class ObjectHitMaskTask(Task):
         logit_scale: float = 1.0,
         pred_threshold: float = 0.5,
         mask_attention_threshold: float | None = None,
+        predict_iou: bool = False,
+        iou_loss_weight: float = 1.0,
         has_intermediate_loss: bool = True,
     ):
         """Task for predicting associations between objects and hits.
@@ -267,6 +269,8 @@ class ObjectHitMaskTask(Task):
             logit_scale: Scale for logits.
             pred_threshold: Prediction threshold.
             mask_attention_threshold: Threshold for attention masking. Defaults to pred_threshold if None.
+            predict_iou: Whether to predict the IoU of the predicted mask.
+            iou_loss_weight: Weight for the IoU loss.
             has_intermediate_loss: Whether the task has intermediate loss.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
@@ -288,13 +292,20 @@ class ObjectHitMaskTask(Task):
         self.logit_scale = logit_scale
         self.pred_threshold = pred_threshold
         self.mask_attention_threshold = mask_attention_threshold if mask_attention_threshold is not None else pred_threshold
-        self.has_intermediate_loss = mask_attn
+        self.predict_iou = predict_iou
+        self.iou_loss_weight = iou_loss_weight
+        self.has_intermediate_loss = mask_attn or predict_iou
+
+        if self.predict_iou:
+            self.iou_net = Dense(dim, 1)
 
         self.output_object_hit = output_object + "_" + input_constituent
         self.target_object_hit = target_object + "_" + input_constituent
 
         self.inputs = [input_object + "_embed", input_constituent + "_embed"]
         self.outputs = [self.output_object_hit + "_logit"]
+        if self.predict_iou:
+            self.outputs.append(self.output_object + "_iou_logit")
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # Produce mask tokens
@@ -311,7 +322,12 @@ class ObjectHitMaskTask(Task):
             valid_mask = valid_mask.unsqueeze(-2).expand_as(object_hit_logit)
             object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
 
-        return {self.output_object_hit + "_logit": object_hit_logit}
+        outputs = {self.output_object_hit + "_logit": object_hit_logit}
+
+        if self.predict_iou:
+            outputs[self.output_object + "_iou_logit"] = self.iou_net(x[self.input_object + "_embed"]).squeeze(-1)
+
+        return outputs
 
     def attn_mask(self, outputs: dict[str, Tensor], threshold: float | None = None) -> dict[str, Tensor]:
         if not self.mask_attn:
@@ -323,7 +339,12 @@ class ObjectHitMaskTask(Task):
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         # Object-hit pairs that have a predicted probability above the threshold are predicted as being associated to one-another
-        return {self.output_object_hit + "_valid": outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= self.pred_threshold}
+        preds = {self.output_object_hit + "_valid": outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= self.pred_threshold}
+
+        if self.predict_iou:
+            preds[self.output_object + "_iou"] = outputs[self.output_object + "_iou_logit"].detach().sigmoid()
+
+        return preds
 
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         output = outputs[self.output_object_hit + "_logit"].detach().to(torch.float32)
@@ -336,6 +357,22 @@ class ObjectHitMaskTask(Task):
         for cost_fn, cost_weight in self.costs.items():
             costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target, input_pad_mask=hit_pad)
         return costs
+
+    def calculate_iou(self, pred_probs: Tensor, target: Tensor) -> Tensor:
+        """Calculate IoU between predicted probabilities and target mask.
+
+        Args:
+            pred_probs: Predicted probabilities (B, N, M)
+            target: Target mask (B, N, M)
+
+        Returns:
+            IoU values (B, N)
+        """
+        intersection = (pred_probs * target).sum(dim=-1)
+        union = pred_probs.sum(dim=-1) + target.sum(dim=-1) - intersection
+
+        # Avoid division by zero
+        return intersection / (union + 1e-6)
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         output = outputs[self.output_object_hit + "_logit"]
@@ -350,6 +387,27 @@ class ObjectHitMaskTask(Task):
             losses[loss_fn] = loss_weight * loss_fns[loss_fn](
                 output, target, object_valid_mask=object_pad, input_pad_mask=hit_pad, sample_weight=sample_weight
             )
+
+        if self.predict_iou:
+            # Calculate the actual IoU between the predicted mask and the target mask
+            # Get the predicted probabilities
+            pred_probs = output.sigmoid()
+
+            # Calculate IoU using helper method
+            iou_target = self.calculate_iou(pred_probs, target)
+
+            # Get the predicted IoU
+            iou_pred = outputs[self.output_object + "_iou_logit"].sigmoid()
+
+            # Only compute loss for valid objects
+            if object_pad is not None:
+                iou_target = iou_target[object_pad]
+                iou_pred = iou_pred[object_pad]
+
+            # Compute MSE loss
+            iou_loss = torch.nn.functional.mse_loss(iou_pred, iou_target.detach())
+            losses["iou_mse"] = self.iou_loss_weight * iou_loss
+
         return losses
 
 
