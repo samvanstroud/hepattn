@@ -1,19 +1,19 @@
 # hepattn
 
 We present a general end-to-end ML approach for particle physics reconstruction by adapting cutting-edge object detection techniques.
-We demonstrate that a single encoder-decoder transformer can solve many different reconstruction problems that traditionally required specialised, task-specific approaches.
+Our work demonstrates that a single encoder-decoder transformer can solve many different reconstruction problems that traditionally required specialised, task-specific approaches.
 
-This general approach has been applied to various reconstruction tasks and detector setups:
+Our method has been successfully applied to various reconstruction tasks and detector setups:
 
-- **Pixel cluster splitting** - ATLAS [[Internal][tide]]
+- **Pixel cluster splitting** - ATLAS [[PUB][tide]]
 - **Hit filtering** - TrackML [[arXiv][trackml]], ITk [WIP]
-- **Tracking** - TrackML [[arXiv][trackml]], ATLAS [[Internal][tide]]
+- **Tracking** - TrackML [[arXiv][trackml]], ATLAS [[PUB][tide]]
 - **Primary vertexing** - *Interested in working on this? Get in touch!*
 - **Secondary vertexing** - Delphes [[EPJC][vertexing]]
 - **Particle flow** - CLIC [[arXiv][glow]]
 - **End-to-end reconstruction** - CLD [[ML4Jets][ml4jets]]
 
-[tide]: https://indico.cern.ch/event/1550297/contributions/6559827/
+[tide]: https://atlas.web.cern.ch/Atlas/GROUPS/PHYSICS/PUBNOTES/ATL-PHYS-PUB-2025-045/ 
 [trackml]: https://arxiv.org/abs/2411.07149
 [vertexing]: https://link.springer.com/article/10.1140/epjc/s10052-024-13374-5
 [glow]: https://arxiv.org/abs/2508.20092
@@ -69,6 +69,8 @@ To run the installed environment, use:
 pixi shell
 ```
 
+Multiple environments are configured in `pyproject.toml` for different hardware setups and experiments (`default`, `cpu`, `isambard`, `clic`, `tide`, `ci`). Use `-e <env>` to specify a specific environment.
+
 You can close the environment with `exit`.
 See the [`pixi shell` docs](https://pixi.sh/latest/reference/cli/pixi/shell/) for more information.
 
@@ -92,11 +94,14 @@ To test parts of the code that don't require external input data, run:
 pytest -m 'not requiresdata'
 ```
 
-Please note that the current CI only tests the parts of the code that don't require a GPU or external input data:
+The current CI only tests the parts of the code that don't require a GPU or external input data:
 
 ```shell
 pytest -m 'not gpu and not requiresdata'
 ```
+
+**📝 Note**: If you encounter import errors for missing modules like `numba` when running tests in the `default` environment, switch to the appropriate experiment environment or use the `ci` environment which includes all required dependencies for tests (e.g. `pixi run -e ci pytest -m 'not gpu and not requiresdata'`).
+
 
 ## 🏃 Run Experiments
 

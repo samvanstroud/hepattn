@@ -14,6 +14,7 @@ HEAD_DIM = DIM // NUM_HEADS
 
 class MockTask1:
     has_intermediate_loss = True
+    has_first_layer_loss = True
     name = "task1"
 
     def __call__(self, x):
@@ -28,6 +29,7 @@ class MockTask1:
 
 class MockTask2:
     has_intermediate_loss = True
+    has_first_layer_loss = True
     name = "task2"
 
     def __call__(self, x):
@@ -334,6 +336,7 @@ class MockUnifiedTask:
     """Mock task for testing unified decoding strategy."""
 
     has_intermediate_loss = True
+    has_first_layer_loss = True
     name = "unified_task"
 
     def __call__(self, x):

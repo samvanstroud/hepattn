@@ -45,12 +45,12 @@ class MaskFormer(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
         self.decoder.tasks = tasks
-        self.decoder.unified_decoding = unified_decoding
         self.pooling = pooling
         self.tasks = tasks
         self.target_object = target_object
         self.matcher = matcher
         self.unified_decoding = unified_decoding
+        self.decoder.unified_decoding = unified_decoding
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
@@ -88,8 +88,9 @@ class MaskFormer(nn.Module):
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
         x["key_valid"] = torch.concatenate([x[input_name + "_valid"] for input_name in self.input_names], dim=-1)
 
-        # if all key_valid are true, then we can just set it to None
-        if batch_size == 1 and x["key_valid"].all():
+        # If all key_valid are true, then we can just set it to None, however,
+        # if we are using flash-varlen, we have to always provide a kv_mask argument
+        if batch_size == 1 and x["key_valid"].all() and self.encoder.attn_type != "flash-varlen":
             x["key_valid"] = None
 
         # LEGACY. TODO: remove
@@ -160,7 +161,7 @@ class MaskFormer(nn.Module):
             preds[layer_name] = {}
 
             for task in self.tasks:
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in layer_outputs:
                     continue
                 preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
 
@@ -192,10 +193,10 @@ class MaskFormer(nn.Module):
             # Get the cost contribution from each of the tasks
             for task in self.tasks:
                 # Skip tasks that do not contribute intermediate losses
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in layer_outputs:
                     continue
-                # Only use the cost from the final set of predictions
 
+                # Compute costs
                 task_costs = task.cost(layer_outputs[task.name], targets)
 
                 # Add the cost on to our running cost total, otherwise initialise a running cost matrix
@@ -226,7 +227,7 @@ class MaskFormer(nn.Module):
                     continue
 
                 # The task didn't produce an output for this layer, so skip it
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in outputs[layer_name]:
                     continue
 
                 for output_name in task.outputs:
@@ -237,8 +238,9 @@ class MaskFormer(nn.Module):
         for layer_name in outputs:
             losses[layer_name] = {}
             for task in self.tasks:
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in outputs[layer_name]:
                     continue
+
                 losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
 
         return losses, targets

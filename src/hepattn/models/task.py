@@ -28,9 +28,10 @@ class Task(nn.Module, ABC):
     that can be trained as part of a multi-task learning setup.
     """
 
-    def __init__(self, has_intermediate_loss: bool, permute_loss: bool = True):
+    def __init__(self, has_intermediate_loss: bool, has_first_layer_loss: bool | None = None, permute_loss: bool = True):
         super().__init__()
         self.has_intermediate_loss = has_intermediate_loss
+        self.has_first_layer_loss = has_first_layer_loss if has_first_layer_loss is not None else has_intermediate_loss
         self.permute_loss = permute_loss
 
     @abstractmethod
@@ -74,6 +75,7 @@ class ObjectClassificationTask(Task):
         null_weight: float = 1.0,
         mask_queries: bool = False,
         has_intermediate_loss: bool = True,
+        has_first_layer_loss=False,
     ):
         """Task for object detection and classification in set prediction scenarios.
 
@@ -102,13 +104,20 @@ class ObjectClassificationTask(Task):
             null_weight: Weight applied to the null class in the loss.
             mask_queries: Whether to mask queries based on predictions.
             has_intermediate_loss: Whether the task has intermediate loss.
+            has_first_layer_loss: Whether the task has first layer loss (defaults to has_intermediate_los if not specified).
 
         Raises:
             ValueError: If the number of class_weights doesn't match num_classes.
             ValueError: If both net and dim are specified, or neither is specified.
             ValueError: If net output size doesn't match expected size for num_classes.
+
+        Raises:
+            ValueError: If has_first_layer_loss is True but has_intermediate_loss is False.
         """
-        super().__init__(has_intermediate_loss=has_intermediate_loss)
+        if has_first_layer_loss and not has_intermediate_loss:
+            raise ValueError("has_first_layer_loss=True requires has_intermediate_loss=True")
+
+        super().__init__(has_intermediate_loss=has_intermediate_loss, has_first_layer_loss=has_first_layer_loss)
 
         # Validate net and dim arguments
         if net is not None and dim is not None:
@@ -276,7 +285,11 @@ class HitFilterTask(Task):
         return {f"{self.input_object}_logit": x_logit.squeeze(-1)}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
-        return {f"{self.input_object}_{self.target_field}": outputs[f"{self.input_object}_logit"].sigmoid() >= self.threshold}
+        probs = outputs[f"{self.input_object}_logit"].sigmoid()
+        return {
+            f"{self.input_object}_{self.target_field}_prob": probs,
+            f"{self.input_object}_{self.target_field}": probs >= self.threshold,
+        }
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         # Pick out the field that denotes whether a hit is on a reconstructable object or not
@@ -319,11 +332,14 @@ class ObjectHitMaskTask(Task):
         losses: dict[str, float],
         costs: dict[str, float],
         dim: int,
+        object_net: nn.Module | None = None,
+        constituent_net: nn.Module | None = None,
         null_weight: float = 1.0,
         mask_attn: bool = True,
         target_field: str = "valid",
         logit_scale: float = 1.0,
         pred_threshold: float = 0.5,
+        mask_attention_threshold: float | None = None,
         has_intermediate_loss: bool = True,
     ):
         """Task for predicting associations between objects and hits.
@@ -338,11 +354,15 @@ class ObjectHitMaskTask(Task):
             losses: Loss functions and their weights.
             costs: Cost functions and their weights.
             dim: Embedding dimension.
+            object_net: Get mask tokens from object embeddings
+            constituent_net: Get constituent mask tokens from constituent embeddings.
+                This is NOT RECOMMENDED - whatever you do, don't use an output activation.
             null_weight: Weight for null class.
             mask_attn: Whether to mask attention.
             target_field: Target field name.
             logit_scale: Scale for logits.
             pred_threshold: Prediction threshold.
+            mask_attention_threshold: Threshold for attention masking. Defaults to pred_threshold if None.
             has_intermediate_loss: Whether the task has intermediate loss.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
@@ -357,10 +377,13 @@ class ObjectHitMaskTask(Task):
         self.losses = losses
         self.costs = costs
         self.dim = dim
+        self.constituent_net = constituent_net
+        self.object_net = object_net or Dense(dim, dim)
         self.null_weight = null_weight
         self.mask_attn = mask_attn
         self.logit_scale = logit_scale
         self.pred_threshold = pred_threshold
+        self.mask_attention_threshold = mask_attention_threshold if mask_attention_threshold is not None else pred_threshold
         self.has_intermediate_loss = mask_attn
 
         self.output_object_hit = output_object + "_" + input_constituent
@@ -368,29 +391,30 @@ class ObjectHitMaskTask(Task):
 
         self.inputs = [input_object + "_embed", input_constituent + "_embed"]
         self.outputs = [self.output_object_hit + "_logit"]
-        self.hit_net = Dense(dim, dim)
-        self.object_net = Dense(dim, dim)
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        # Produce new task-specific embeddings for the objects and hits
-        x_object = self.object_net(x[self.input_object + "_embed"])
-        x_hit = self.hit_net(x[self.input_constituent + "_embed"])
+        # Produce mask tokens
+        mask_tokens = self.object_net(x[self.input_object + "_embed"])
+        xs = x[self.input_constituent + "_embed"]
+        if self.constituent_net:
+            xs = self.constituent_net(xs)
 
         # Object-hit probability is the dot product between the hit and object embedding
-        object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", x_object, x_hit)
+        object_hit_logit = self.logit_scale * torch.einsum("bnc,bmc->bnm", mask_tokens, xs)
 
         # Zero out entries for any padded input constituents
-        valid_key = f"{self.input_constituent}_valid"
-        valid_mask = x[valid_key].unsqueeze(-2).expand_as(object_hit_logit)
-        object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
+        if (valid_mask := x[f"{self.input_constituent}_valid"]) is not None:
+            valid_mask = valid_mask.unsqueeze(-2).expand_as(object_hit_logit)
+            object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
 
         return {self.output_object_hit + "_logit": object_hit_logit}
 
-    def attn_mask(self, outputs: dict[str, Tensor], threshold: float = 0.1) -> dict[str, Tensor]:
+    def attn_mask(self, outputs: dict[str, Tensor], threshold: float | None = None) -> dict[str, Tensor]:
         if not self.mask_attn:
             return {}
 
-        attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= threshold
+        thresh = threshold if threshold is not None else self.mask_attention_threshold
+        attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= thresh
         return {self.input_constituent: attn_mask}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:

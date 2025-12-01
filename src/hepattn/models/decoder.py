@@ -13,6 +13,7 @@ from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_ma
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
+from hepattn.models.norm import get_hybrid_norm_config
 from hepattn.models.posenc import pos_enc_symmetric
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.local_ca import auto_local_ca_mask
@@ -129,6 +130,8 @@ class MaskFormerDecoder(nn.Module):
             for task in self.tasks:
                 if not task.has_intermediate_loss:
                     continue
+                if layer_index == 0 and not task.has_first_layer_loss:
+                    continue
 
                 # Get the outputs of the task given the current embeddings
                 task_outputs = task(x)
@@ -233,6 +236,7 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_kwargs: dict | None = None,
         attn_kwargs: dict | None = None,
         bidirectional_ca: bool = True,
+        qkv_norm: bool = False,
         hybrid_norm: bool = False,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
@@ -243,26 +247,21 @@ class MaskFormerDecoderLayer(nn.Module):
             depth: Layer depth index.
             dense_kwargs: Optional arguments for Dense layers.
             attn_kwargs: Optional arguments for Attention layers.
-            bidirectional_ca: If True, enables bidirectional cross-attention.
-            hybrid_norm: If True, enables hybrid normalization.
+            bidirectional_ca: Enable bidirectional cross-attention.
+            qkv_norm: Apply normalization to QKV in attention.
+            hybrid_norm: Enable hybrid normalization from 2503.04598.
         """
         super().__init__()
-
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
 
-        # handle hybridnorm
-        qkv_norm = hybrid_norm
-        if depth == 0:
-            hybrid_norm = False
-        attn_norm = norm if not hybrid_norm else None
-        dense_post_norm = not hybrid_norm
+        attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
         attn_kwargs = attn_kwargs or {}
         self.attn_type = attn_kwargs.get("attn_type", "torch")
         dense_kwargs = dense_kwargs or {}
 
-        residual = partial(Residual, dim=dim, norm=norm)
+        residual = partial(Residual, dim=dim)
         self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
         self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)

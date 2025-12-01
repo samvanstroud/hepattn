@@ -2,17 +2,26 @@ seed_everything: 42
 name: TRK-v0-full
 
 data:
-  train_dir: data/trackml/prepped/
-  val_dir: data/trackml/prepped/
-  test_dir: data/trackml/prepped/
+  # hypatia
+  #train_dir: data/trackml/prepped/
+  #val_dir: data/trackml/prepped/
+  #test_dir: data/trackml/prepped/
+  #hit_eval_train: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_train_eval.h5
+  #hit_eval_val: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_val_eval.h5
+  #hit_eval_test: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_test_eval.h5
 
-  hit_eval_train: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_train_eval.h5
-  hit_eval_val: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_val_eval.h5
-  hit_eval_test: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3_20250612-T220925/ckpts/epoch=015-val_loss=0.19298_test_eval.h5
+  # isambard
+  train_dir: /projects/u5du/pduckett/data_new/train/
+  val_dir: /projects/u5du/pduckett/data_new/val/
+  test_dir: /projects/u5du/pduckett/data_new/test/
+  hit_eval_train: /projects/u5du/pduckett/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_train_eval.h5
+  hit_eval_val: /projects/u5du/pduckett/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_val_eval.h5
+  hit_eval_test: /projects/u5du/pduckett/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_test_eval.h5
+  
   num_workers: 10
   num_train: -1
-  num_test: 10
-  num_val: 10
+  num_test: -1
+  num_val: -1
 
   # Select only hits from these detector volumes
   # pix barrel: 8, pix endcap: 7, 9
@@ -20,16 +29,17 @@ data:
   hit_volume_ids: [7, 8, 9]
 
   # Minimum pt for a particle to be deemed reconstructible
-  particle_min_pt: 0.9
+  particle_min_pt: 0.6
 
   # Maximum absolute eta for a particle to be deemed reconstructible
-  particle_max_abs_eta: 4.0
+  particle_max_abs_eta: 2.5
 
   # Minimum number of true hits for a particle to be deemed reconstructible
   particle_min_num_hits: 3
 
   # Maximum number of reconstructable particles allowed in an event
-  event_max_num_particles: &num_objects 2200
+  event_max_num_particles: &num_objects 2100
+  strict_max_objects: false
 
   # Define which inputs will be available to the model
   inputs:
@@ -44,6 +54,7 @@ data:
       - phi
       - u
       - v
+      - s
       # Hit local charge information
       - charge_frac
       - leta
@@ -120,7 +131,7 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 256
-      encoder_input_sort_field: phi
+      input_sort_field: phi
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -128,7 +139,6 @@ model:
             - class_path: hepattn.models.InputNet
               init_args:
                 input_name: hit
-                # Which fields will be used to construct this input type
                 fields:
                   - x
                   - y
@@ -138,6 +148,7 @@ model:
                   - phi
                   - u
                   - v
+                  - s
                   - charge_frac
                   - leta
                   - lphi
@@ -149,10 +160,12 @@ model:
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
-                    input_size: 16
+                    input_size: 17
+                    hidden_layers: [128]
                     output_size: *dim
+                    activation: SwiGLU
                 posenc:
-                  class_path: hepattn.models.FourierPositionEncoder
+                  class_path: hepattn.models.PositionEncoder
                   init_args:
                     input_name: hit
                     fields:
@@ -160,27 +173,29 @@ model:
                       - eta
                       - phi
                     dim: *dim
-                    scale: 0.1
 
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 10
+          num_layers: 12
           dim: *dim
           attn_type: flash
           window_size: 512
           window_wrap: true
           hybrid_norm: true
           norm: RMSNorm
+          dense_kwargs: {activation: SwiGLU}
 
       decoder:
-        num_decoder_layers: 4
+        num_decoder_layers: 8
         num_queries: *num_objects
         mask_attention: true
         use_query_masks: false
         decoder_layer_config:
           dim: *dim
           norm: RMSNorm
+          hybrid_norm: true
+          dense_kwargs: {activation: SwiGLU}
 
       tasks:
         class_path: torch.nn.ModuleList
@@ -192,15 +207,13 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
+                has_intermediate_loss: true
+                has_first_layer_loss: false
+                dim: *dim
                 losses:
-                  object_bce: 1.0
+                  object_bce: 0.1
                 costs:
-                  object_bce: 1.0
-                net:
-                  class_path: hepattn.models.Dense
-                  init_args:
-                    input_size: *dim
-                    output_size: 1
+                  object_bce: 0.1
                 null_weight: 1.0
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
@@ -209,15 +222,13 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
+                dim: *dim
                 losses:
-                  mask_bce: 100.0
-                  #mask_dice: 2.0
+                  mask_dice: 2.0
                   mask_focal: 50.0
                 costs:
-                  mask_bce: 100.0
-                  #mask_dice: 2.0
+                  mask_dice: 2.0
                   mask_focal: 50.0
-                dim: *dim
                 null_weight: 1.0
 
       matcher:
