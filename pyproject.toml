@@ -44,7 +44,7 @@ dependencies = [
 [dependency-groups]
 clic = ["pathos", "vector", "fastjet", "energyflow"] # has problems on isambard
 tide = ["numba>=0.61.2"] # has problems on isambard
-fa2 = ["flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl"]
+fa2 = ["flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.4.17/flash_attn-2.8.3%2Bcu128torch2.9-cp312-cp312-linux_x86_64.whl"]
 
 [build-system]
 requires = ["scikit-build-core>=0.3.3", "pybind11"]
