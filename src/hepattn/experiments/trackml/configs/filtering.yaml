@@ -58,6 +58,8 @@ data:
   targets:
     hit:
       - on_valid_particle
+    particle:
+      - pt
 
 trainer:
   max_epochs: 50
@@ -83,10 +85,10 @@ trainer:
         monitor: val/loss
     - class_path: hepattn.callbacks.PredictionWriter
       init_args:
-        write_inputs: false
+        write_inputs: true
         write_outputs: false
         write_preds: true
-        write_targets: false
+        write_targets: true
         write_losses: false
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
@@ -137,20 +139,10 @@ model:
                     input_size: 16
                     hidden_layers: [128]
                     output_size: &dim 256
-                posenc:
-                  class_path: hepattn.models.FourierPositionEncoder
-                  init_args:
-                    input_name: hit
-                    fields:
-                      - r
-                      - eta
-                      - phi
-                    dim: *dim
-                    scale: 0.1
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 10
+          num_layers: 8
           dim: *dim
           attn_type: flash
           window_size: 1024
