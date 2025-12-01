@@ -119,8 +119,11 @@ class ObjectValidTask(Task):
         return {self.output_object + "_logit": x_logit.squeeze(-1)}
 
     def predict(self, outputs: dict[str, Tensor], threshold: float = 0.5) -> dict[str, Tensor]:
-        # Objects that have a predicted probability above the threshold are marked as predicted to exist
-        return {self.output_object + "_valid": outputs[self.output_object + "_logit"].detach().sigmoid() >= threshold}
+        output = {}
+        probs = outputs[self.output_object + "_logit"].sigmoid().detach()
+        output[self.output_object + "_valid_prob"] = probs
+        output[self.output_object + "_valid"] = probs >= threshold
+        return output
 
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         output = outputs[self.output_object + "_logit"].detach().to(torch.float32)
@@ -338,13 +341,15 @@ class ObjectHitMaskTask(Task):
         return {self.input_constituent: attn_mask}
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
-        # Object-hit pairs that have a predicted probability above the threshold are predicted as being associated to one-another
-        preds = {self.output_object_hit + "_valid": outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= self.pred_threshold}
+        output = {}
+        probs = outputs[self.output_object_hit + "_logit"].sigmoid().detach()
+        output[self.output_object_hit + "_valid_prob"] = probs
+        output[self.output_object_hit + "_valid"] = probs >= self.pred_threshold
 
         if self.predict_iou:
-            preds[self.output_object + "_iou"] = outputs[self.output_object + "_iou_logit"].detach().sigmoid()
+            output[self.output_object + "_iou"] = outputs[self.output_object + "_iou_logit"].detach().sigmoid()
 
-        return preds
+        return output
 
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         output = outputs[self.output_object_hit + "_logit"].detach().to(torch.float32)
