@@ -3,15 +3,8 @@ import warnings
 import h5py
 import numpy as np
 import pandas as pd
+from scipy.sparse import csr_matrix
 from tqdm import tqdm
-
-# Optional sparse acceleration for very sparse truth matrices
-try:
-    from scipy.sparse import csr_matrix
-
-    _HAS_SCIPY = True
-except ImportError:
-    _HAS_SCIPY = False
 
 
 def matched_kinematics(tracks, parts, particle_targets):
@@ -122,8 +115,8 @@ def check_valid(f, idx, parts, tracks, key_mode=None, iou_threshold=0.0, track_v
     parts["valid"] = (parts["class_pred"]) & (parts["n_true_hits"] >= 3)
     tracks["valid"] = (tracks["class_pred"]) & (tracks["n_pred_hits"] >= 3)
 
-    # Load and apply IoU threshold if available
-    if key_mode != "old" and "track_iou" in list(f[idx]["preds"]["final"]["track_hit_valid"]):
+    # Load and apply IoU threshold
+    if iou_threshold > 0:
         tracks["track_iou"] = np.array(f[idx]["preds"]["final"]["track_hit_valid"]["track_iou"][:][0])
         tracks["valid"] = tracks["valid"] & (tracks["track_iou"] >= iou_threshold)
 
@@ -299,9 +292,7 @@ def process_tracks(f, idx, tracks, parts, masks, targets, key_mode=None, iou_thr
         raise ValueError("masks/hits size mismatch")
 
     density = masks.mean() if masks.size else 1.0
-    if not _HAS_SCIPY:
-        int_masks = masks.T.astype(np.int8)
-    elif density < 0.10:  # heuristic threshold
+    if density < 0.10:  # heuristic threshold  # noqa: SIM108
         int_masks = csr_matrix(masks.T.astype(np.int8))
     else:
         int_masks = masks.T.astype(np.int8)
@@ -394,9 +385,9 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
     key_mode: str
         specify if output file structure type
     iou_threshold: float
-        IoU threshold for valid tracks
+        IoU threshold for valid tracks (default: 0.0)
     track_valid_threshold: float
-        Track valid probability threshold
+        Track valid probability threshold (default: 0.5)
 
     Returns:
     --------
