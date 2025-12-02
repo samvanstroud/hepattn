@@ -97,7 +97,7 @@ def check_valid(f, idx, parts, tracks, key_mode=None, iou_threshold=0.0, track_v
     key_mode: str
         specify if output file structure type
     iou_threshold: float
-        IoU threshold for valid tracks (default: 0.1)
+        IoU threshold for valid tracks (default: 0.0)
     track_valid_threshold: float
         Track valid probability threshold (default: 0.5)
 
