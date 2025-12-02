@@ -138,9 +138,9 @@ class MaskFormerDecoder(nn.Module):
 
                 # Update x with task outputs for downstream use
                 if isinstance(task, IncidenceRegressionTask):
-                    x["incidence"] = task_outputs[task.outputs[0]].detach()
+                    x["incidence"] = task_outputs[task.incidence_key].detach()
                 if isinstance(task, ObjectClassificationTask):
-                    x["class_probs"] = task_outputs[task.outputs[0]].detach()
+                    x["class_probs"] = task_outputs[task.probs_key].detach()
 
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
