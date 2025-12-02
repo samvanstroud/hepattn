@@ -75,7 +75,7 @@ class ObjectClassificationTask(Task):
         null_weight: float = 1.0,
         mask_queries: bool = False,
         has_intermediate_loss: bool = True,
-        has_first_layer_loss=False,
+        has_first_layer_loss: bool = False,
     ):
         """Task for object detection and classification in set prediction scenarios.
 
