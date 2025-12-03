@@ -28,4 +28,4 @@ Activate the environment
 pixi shell -e grace
 ```
 
-From here, the FA3 installation proceeds in the same was as usual. See `setup/isambard.md`. 
+From here, the FA3 installation proceeds in the same way as usual. See the "FlashAttention3 (FA3) Beta" section in `setup/isambard.md` for detailed instructions.
