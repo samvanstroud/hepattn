@@ -5,7 +5,7 @@ Our work demonstrates that a single encoder-decoder transformer can solve many d
 
 Our method has been successfully applied to various reconstruction tasks and detector setups:
 
-- **Pixel cluster splitting** - ATLAS [[PUB][tide]]
+- **Tracking in dense environments** - ATLAS [[PUB][tide]]
 - **Hit filtering** - TrackML [[arXiv][trackml]], ITk [WIP]
 - **Tracking** - TrackML [[arXiv][trackml]], ATLAS [[PUB][tide]]
 - **Primary vertexing** - *Interested in working on this? Get in touch!*
