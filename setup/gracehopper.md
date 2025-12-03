@@ -1,6 +1,6 @@
 # Grace Hopper 200 Superchip Setup Guide
 
-Setup guide for Grace Hopper 200 Superchip with a container. This is very similar to the isambard procedure, except we need to target the ARM architecture.
+Setup guide for Grace Hopper 200 Superchip with a container. This is very similar to the Isambard procedure, except we need to target the ARM architecture.
 
 ## Image Installation (Optional)
 
