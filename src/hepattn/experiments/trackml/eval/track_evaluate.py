@@ -502,7 +502,7 @@ def load_events(
         tracks_list = []
         parts_list = []
 
-        for _i, idx in tqdm(enumerate(id_list), total=len(id_list), desc="Events loaded"):
+        for idx in id_list:
             tracks, parts = load_event(f, idx, eta_cut, pt_cut, particle_targets, regression, key_mode, iou_threshold, track_valid_threshold)
             tracks_list.append(tracks)
             parts_list.append(parts)
