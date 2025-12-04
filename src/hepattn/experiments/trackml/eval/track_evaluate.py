@@ -4,7 +4,6 @@ import h5py
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
-from tqdm import tqdm
 
 
 def matched_kinematics(tracks, parts, particle_targets):
