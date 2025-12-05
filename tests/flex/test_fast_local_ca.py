@@ -728,7 +728,7 @@ def test_decoder_fast_local_ca_flex_path():
     }
 
     # Set tasks to empty list to avoid task-related logic
-    decoder.tasks = []
+    decoder.tasks = []  # type: ignore[assignment]
 
     # Manually test the mask creation logic from decoder forward (lines 116-133)
     device = x["query_embed"].device
