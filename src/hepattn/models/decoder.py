@@ -200,9 +200,6 @@ class MaskFormerDecoder(nn.Module):
                 # TODO: check and see see if this is really necessary
                 attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
 
-            if attn_mask is not None and self.attn_type != "flex":
-                outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
-
             if self.local_strided_attn and attn_mask_lca is not None:
                 if self.mask_attention and attn_mask is not None:
                     # Both mask_attention and local_strided_attn are True, need to combine
@@ -216,6 +213,8 @@ class MaskFormerDecoder(nn.Module):
                     # attn_mask was set (unexpectedly) but mask_attention is False, so just use attn_mask_lca
                     attn_mask = attn_mask_lca
 
+            if attn_mask is not None and self.attn_type != "flex":
+                outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"],
