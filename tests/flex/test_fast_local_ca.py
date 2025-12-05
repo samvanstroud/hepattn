@@ -10,7 +10,12 @@ from hepattn.flex.fast_local_ca import (
     _kv_blocks_wrap,  # noqa: PLC2701
     build_strided_sliding_window_blockmask,
 )
-from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped
+from hepattn.flex.local_ca import (
+    sliding_window_mask_strided,
+    sliding_window_mask_strided_wrapped,
+    transpose_blockmask,
+)
+from hepattn.models.decoder import MaskFormerDecoder
 
 
 @pytest.fixture
@@ -684,10 +689,6 @@ def test_decoder_fast_local_ca_flex_path():
     - Verifies build_strided_sliding_window_blockmask is called correctly
     - Verifies transpose_blockmask is called correctly
     """
-    from torch.nn.attention.flex_attention import create_mask
-    from hepattn.flex.local_ca import transpose_blockmask
-    from hepattn.models.decoder import MaskFormerDecoder
-
     # Test configuration matching decoder usage
     q_len = 100
     kv_len = 1000
@@ -776,10 +777,6 @@ def test_decoder_fast_local_ca_flex_path():
 
 def test_decoder_fast_local_ca_flex_path_wrapped():
     """Test decoder code path with window_wrap=True."""
-    from torch.nn.attention.flex_attention import create_mask
-    from hepattn.flex.local_ca import transpose_blockmask
-    from hepattn.models.decoder import MaskFormerDecoder
-
     q_len = 100
     kv_len = 1000
     window_size = 32
