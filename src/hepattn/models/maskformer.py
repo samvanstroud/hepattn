@@ -237,10 +237,17 @@ class MaskFormer(nn.Module):
         losses: dict[str, dict[str, Tensor]] = {}
         for layer_name in outputs:
             losses[layer_name] = {}
+            is_final_layer = layer_name == "final"
             for task in self.tasks:
                 if task.name not in outputs[layer_name]:
                     continue
 
-                losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
+                task_losses = task.loss(outputs[layer_name][task.name], targets)
+
+                # Remove IoU loss from intermediate layers (only keep it for final layer)
+                if not is_final_layer:
+                    task_losses.pop("iou_mse", None)
+
+                losses[layer_name][task.name] = task_losses
 
         return losses, targets

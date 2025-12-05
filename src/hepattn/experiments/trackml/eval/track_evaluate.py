@@ -3,15 +3,7 @@ import warnings
 import h5py
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-
-# Optional sparse acceleration for very sparse truth matrices
-try:
-    from scipy.sparse import csr_matrix
-
-    _HAS_SCIPY = True
-except ImportError:
-    _HAS_SCIPY = False
+from scipy.sparse import csr_matrix
 
 
 def matched_kinematics(tracks, parts, particle_targets):
@@ -88,7 +80,7 @@ def load_regression(f, idx, tracks, parts, valid, key_mode=None):
                 tracks["track_eta"] = 0.5 * np.log((p + tracks["track_pz"]) / (p - tracks["track_pz"]), dtype=np.float64)
 
 
-def check_valid(f, idx, parts, tracks, key_mode=None):
+def check_valid(f, idx, parts, tracks, key_mode=None, iou_threshold=0.0, track_valid_threshold=0.5):
     """Label valid tracks and particles.
 
     Arguments:
@@ -103,6 +95,10 @@ def check_valid(f, idx, parts, tracks, key_mode=None):
         The DataFrame for particles, into which the "valid" and "reconstructable" columns are added
     key_mode: str
         specify if output file structure type
+    iou_threshold: float
+        IoU threshold for valid tracks (default: 0.0)
+    track_valid_threshold: float
+        Track valid probability threshold (default: 0.5)
 
     """
     if key_mode == "old":
@@ -114,10 +110,14 @@ def check_valid(f, idx, parts, tracks, key_mode=None):
         # tag particles that are valid
         parts["class_pred"] = np.array(f[idx]["targets"]["particle_valid"][:][0])
         # tag tracks that are valid
-        tracks["class_pred"] = np.array(f[idx]["preds"]["final"]["track_valid"]["track_valid"][:][0])
-
+        tracks["class_pred"] = np.array(f[idx]["preds"]["final"]["track_valid"]["track_valid_prob"][:][0] >= track_valid_threshold)
     parts["valid"] = (parts["class_pred"]) & (parts["n_true_hits"] >= 3)
     tracks["valid"] = (tracks["class_pred"]) & (tracks["n_pred_hits"] >= 3)
+
+    # Load and apply IoU threshold
+    if iou_threshold > 0:
+        tracks["track_iou"] = np.array(f[idx]["preds"]["final"]["track_hit_valid"]["track_iou"][:][0])
+        tracks["valid"] = tracks["valid"] & (tracks["track_iou"] >= iou_threshold)
 
 
 def check_reconstructable(tracks, parts, eta_cut=2.5, pt_cut=1):
@@ -237,7 +237,7 @@ def process_particles(f, idx, parts, particle_targets=None, key_mode=None):
             parts["particle_" + x] = np.array(f[idx]["targets"]["particle_" + x][:][0])
 
 
-def process_tracks(f, idx, tracks, parts, masks, targets, key_mode=None):
+def process_tracks(f, idx, tracks, parts, masks, targets, key_mode=None, iou_threshold=0.0, track_valid_threshold=0.5):
     """Track matching, fits track masks to target masks.
 
     Arguments:
@@ -258,6 +258,10 @@ def process_tracks(f, idx, tracks, parts, masks, targets, key_mode=None):
         Along the last dimension is equivalent to a n-hot encoded array of length H, with n as the number of true hits.
     key_mode: str
         specify if output file structure type
+    iou_threshold: float
+        IoU threshold for valid tracks (default: 0.1)
+    track_valid_threshold: float
+        Track valid probability threshold (default: 0.5)
 
     Returns:
     ----------
@@ -273,7 +277,7 @@ def process_tracks(f, idx, tracks, parts, masks, targets, key_mode=None):
 
     """
     # check valid
-    check_valid(f, idx, parts, tracks, key_mode)
+    check_valid(f, idx, parts, tracks, key_mode, iou_threshold, track_valid_threshold)
     valid = tracks["valid"]  # valid tracks (N,)
     tracks_out = tracks.copy()
     tracks_out["n_true_hits"] = -1
@@ -287,9 +291,7 @@ def process_tracks(f, idx, tracks, parts, masks, targets, key_mode=None):
         raise ValueError("masks/hits size mismatch")
 
     density = masks.mean() if masks.size else 1.0
-    if not _HAS_SCIPY:
-        int_masks = masks.T.astype(np.int8)
-    elif density < 0.10:  # heuristic threshold
+    if density < 0.10:  # heuristic threshold  # noqa: SIM108
         int_masks = csr_matrix(masks.T.astype(np.int8))
     else:
         int_masks = masks.T.astype(np.int8)
@@ -362,7 +364,7 @@ def eval_tracks(tracks, parts):
     parts["eff_lhc"] = np.isin(pid, lhc_pid)
 
 
-def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=False, key_mode=None):
+def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=False, key_mode=None, iou_threshold=0.0, track_valid_threshold=0.5):
     """Load an event from an evaluation file and create a DataFrame.
 
     Arguments:
@@ -381,6 +383,10 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
         specify whether regression quantities are included in the evaluation file
     key_mode: str
         specify if output file structure type
+    iou_threshold: float
+        IoU threshold for valid tracks (default: 0.0)
+    track_valid_threshold: float
+        Track valid probability threshold (default: 0.5)
 
     Returns:
     --------
@@ -401,7 +407,7 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
     masks, targets = get_masks(f, idx, tracks, parts, key_mode)
 
     # Perform track matching
-    tracks, valid = process_tracks(f, idx, tracks, parts, masks, targets, key_mode)
+    tracks, valid = process_tracks(f, idx, tracks, parts, masks, targets, key_mode, iou_threshold, track_valid_threshold)
 
     # Evaluate track match metrics
     eval_tracks(tracks, parts)
@@ -420,7 +426,18 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
     return tracks, parts
 
 
-def load_events(fname, index_list=None, randomize=None, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=False, key_mode=None):
+def load_events(
+    fname,
+    index_list=None,
+    randomize=None,
+    eta_cut=2.5,
+    pt_cut=1,
+    particle_targets=None,
+    regression=False,
+    key_mode=None,
+    iou_threshold=0.0,
+    track_valid_threshold=0.5,
+):
     """Sequentially load events from an evaluation file and aggregate into a single DataFrame.
 
     Arguments:
@@ -441,6 +458,10 @@ def load_events(fname, index_list=None, randomize=None, eta_cut=2.5, pt_cut=1, p
         specify whether regression quantities are included in the evaluation file
     key_mode: str
         specify if output file structure type
+    iou_threshold: float
+        IoU threshold for valid tracks (default: 0.1)
+    track_valid_threshold: float
+        Track valid probability threshold (default: 0.5)
 
     Returns:
     --------
@@ -480,8 +501,8 @@ def load_events(fname, index_list=None, randomize=None, eta_cut=2.5, pt_cut=1, p
         tracks_list = []
         parts_list = []
 
-        for _i, idx in tqdm(enumerate(id_list), total=len(id_list), desc="Events loaded"):
-            tracks, parts = load_event(f, idx, eta_cut, pt_cut, particle_targets, regression, key_mode)
+        for idx in id_list:
+            tracks, parts = load_event(f, idx, eta_cut, pt_cut, particle_targets, regression, key_mode, iou_threshold, track_valid_threshold)
             tracks_list.append(tracks)
             parts_list.append(parts)
         tracks = pd.concat(tracks_list, ignore_index=True)
