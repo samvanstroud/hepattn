@@ -204,7 +204,7 @@ class MaskFormerDecoder(nn.Module):
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
             if self.local_strided_attn and attn_mask_lca is not None:
-                if attn_mask is not None:
+                if self.mask_attention and attn_mask is not None:
                     # Both mask_attention and local_strided_attn are True, need to combine
                     if self.combine_ma_lca == "OR":
                         attn_mask = attn_mask | attn_mask_lca
