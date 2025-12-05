@@ -238,6 +238,8 @@ class MaskFormerDecoderLayer(nn.Module):
         bidirectional_ca: bool = True,
         qkv_norm: bool = False,
         hybrid_norm: bool = False,
+        legacy: bool = True,
+        skip_first_layer_pe: bool = False,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
 
@@ -254,6 +256,8 @@ class MaskFormerDecoderLayer(nn.Module):
         super().__init__()
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
+        self.skip_first_layer_pe = skip_first_layer_pe
+        self.legacy = legacy
 
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
@@ -262,18 +266,21 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim)
-        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
-        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+        self.norm_ca = getattr(nn, attn_norm)(dim)
+        self.norm_sa = getattr(nn, attn_norm)(dim)
+        self.q_ca = Attention(dim, qkv_norm=qkv_norm, **attn_kwargs)
+        self.q_sa = Attention(dim, qkv_norm=qkv_norm, **attn_kwargs)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         if self.bidirectional_ca:
-            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+            self.norm_kv_ca = getattr(nn, attn_norm)(dim)
+            self.kv_ca = Attention(dim, qkv_norm=qkv_norm, **attn_kwargs)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(
         self,
-        q: Tensor,
-        kv: Tensor,
+        queries: Tensor,
+        keys: Tensor,
         attn_mask: Tensor | None = None,
         q_mask: Tensor | None = None,
         kv_mask: Tensor | None = None,
@@ -296,15 +303,23 @@ class MaskFormerDecoderLayer(nn.Module):
         Returns:
             Tuple of updated query and key/value embeddings.
         """
-        if query_posenc is not None:
-            q = q + query_posenc
-        if key_posenc is not None:
-            kv = kv + key_posenc
+    
+        if self.skip_first_layer_pe:
+            queries = queries + self.q_sa(self.self.norm_sa(queries), kv=self.self.norm_sa(queries), v=self.self.norm_sa(queries), q_mask=q_mask)
+        else:
+            q = queries if query_posenc is None else queries + query_posenc
+            if self.legacy:
+                queries = q
+            queries = queries + self.q_sa(self.norm_sa(q), kv=self.norm_sa(q), v=self.norm_sa(queries), q_mask=q_mask)
 
-        # Update query/object embeddings with the key/constituent embeddings
-        q = self.q_ca(q, kv=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
-        q = self.q_sa(q, q_mask=q_mask)
-        q = self.q_dense(q)
+        kv = keys if key_posenc is None else keys + key_posenc
+        if self.legacy:
+            keys = kv
+        else:
+            q = queries if query_posenc is None else queries + query_posenc
+
+        queries = queries + self.q_ca(self.norm(q), kv=kv, v=keys, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
+        queries = self.q_dense(queries)
 
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
@@ -314,15 +329,17 @@ class MaskFormerDecoderLayer(nn.Module):
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)
 
-            if query_posenc is not None:
-                q = q + query_posenc
-            if key_posenc is not None:
-                kv = kv + key_posenc
+            if self.legacy:
+                q = queries
+                kv = keys
+            else:
+                q = queries if query_posenc is None else queries + query_posenc
+                kv = keys if key_posenc is None else keys + key_posenc
 
-            kv = self.kv_ca(kv, kv=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
-            kv = self.kv_dense(kv)
+            keys = keys + self.kv_ca(self.norm_kv_ca(kv), kv=q, v=queries, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
+            keys = self.kv_dense(keys)
 
-        return q, kv
+        return queries, keys
 
     def set_backend(self, attn_type: str) -> None:
         """Set the backend for the attention layers.
