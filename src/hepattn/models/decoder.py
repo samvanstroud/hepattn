@@ -316,7 +316,7 @@ class MaskFormerDecoderLayer(nn.Module):
         else:
             q = queries if query_posenc is None else queries + query_posenc
 
-        queries = queries + self.q_ca(self.norm(q), kv=kv, v=keys, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
+        queries = queries + self.q_ca(self.norm_ca(q), kv=kv, v=keys, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         queries = self.q_dense(queries)
 
         # Update key/constituent embeddings with the query/object embeddings
