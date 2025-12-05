@@ -199,7 +199,15 @@ class Attention(nn.Module):
             x = x.transpose(-3, -2)  # B H S Dh -> B S H Dh
         return x.flatten(-2)  # B S H Dh -> B S D
 
-    def _prepare_qkv(self, q: Tensor, kv: Tensor | None = None, v: Tensor | None = None, initial_values: dict | None = None) -> tuple[Tensor, Tensor, Tensor]:
+    def _prepare_qkv(
+        self,
+        q: Tensor,
+        kv: Tensor | None = None,
+        v: Tensor | None = None,
+        initial_values: dict | None = None,
+        q_mask: Tensor | None = None,
+        kv_mask: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
         # Mix for value residual
         mix = None
         if self.value_residual and not self.is_first_layer:
@@ -300,9 +308,8 @@ class Attention(nn.Module):
             # If cross-attention, we expect q and kv to be different tensors
             q_shape = q.shape
             kv_shape = kv.shape
-        if (v is None) and (not kv is None):
+        if (v is None) and (kv is not None):
             v = kv
-
 
         # Check that the specified attention backend actualy supports kv masking / jagged inputs
         if kv_mask is not None:

@@ -252,6 +252,8 @@ class MaskFormerDecoderLayer(nn.Module):
             bidirectional_ca: Enable bidirectional cross-attention.
             qkv_norm: Apply normalization to QKV in attention.
             hybrid_norm: Enable hybrid normalization from 2503.04598.
+            legacy: Use legacy attention implementation.
+            skip_first_layer_pe: Skip positional encoding for the first layer.
         """
         super().__init__()
         self.dim = dim
@@ -291,19 +293,15 @@ class MaskFormerDecoderLayer(nn.Module):
         """Forward pass for the decoder layer.
 
         Args:
-            q: Query embeddings.
-            kv: Key/value embeddings.
+            queries: Query embeddings.
+            keys: Key/value embeddings.
             attn_mask: Optional attention mask.
             q_mask: Optional query mask.
             kv_mask: Optional key/value mask.
             query_posenc: Optional query positional encoding.
             key_posenc: Optional key positional encoding.
             attn_mask_transpose: Optional transposed attention mask.
-
-        Returns:
-            Tuple of updated query and key/value embeddings.
         """
-    
         if self.skip_first_layer_pe:
             queries = queries + self.q_sa(self.self.norm_sa(queries), kv=self.self.norm_sa(queries), v=self.self.norm_sa(queries), q_mask=q_mask)
         else:
