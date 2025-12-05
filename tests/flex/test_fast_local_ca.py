@@ -733,7 +733,7 @@ def test_decoder_fast_local_ca_flex_path():
     # Manually test the mask creation logic from decoder forward (lines 116-133)
     device = x["query_embed"].device
     q_len_actual = x["query_embed"].shape[1]
-    kv_len_actual = int(x["key_embed"].shape[1].item())
+    kv_len_actual = x["key_embed"].shape[1]
     dtype_float_actual = x["query_embed"].dtype
 
     # This is the code path we're testing (decoder.py lines 121-130)
@@ -815,7 +815,7 @@ def test_decoder_fast_local_ca_flex_path_wrapped():
     # Test the mask creation logic
     device = x["query_embed"].device
     q_len_actual = x["query_embed"].shape[1]
-    kv_len_actual = int(x["key_embed"].shape[1].item())
+    kv_len_actual = x["key_embed"].shape[1]
     dtype_float_actual = x["query_embed"].dtype
 
     attn_mask_lca = build_strided_sliding_window_blockmask(
