@@ -233,9 +233,9 @@ class MaskFormerDecoder(nn.Module):
 
     def flex_local_ca_mask(self, q_len: int, kv_len: int, device):
         # Calculate stride based on the ratio of key length to query length
-        kv_len = torch.tensor(kv_len, device=device)
+        kv_len_tensor = torch.tensor(kv_len, device=device)
         window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
-        return window_mask_func(self.window_size, q_len=q_len, kv_len=kv_len, device=str(device))
+        return window_mask_func(self.window_size, q_len=q_len, kv_len=kv_len_tensor, device=str(device))
 
     def generate_positional_encodings(self, x: dict):
         phi_shift = torch.tensor(self.phi_shift, device=x["query_embed"].device, dtype=x["query_embed"].dtype)
