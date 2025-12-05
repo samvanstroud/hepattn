@@ -163,12 +163,15 @@ def build_strided_sliding_window_blockmask(
       2) At *token* granularity: `mask_mod` filters inside those blocks so the
          final mask exactly matches a window of width `window_size` centered at
          round(q_idx * stride). If `wrap=True`, the window wraps circularly.
+
     Notes:
       - window_size must be even so the window is symmetric around the center.
       - The compiled helpers scale by kv_len/q_len to get a safe block envelope;
         `mask_mod` does the precise per-token check using `stride`.
+
     Raises:
         ValueError: If window_size is odd.
+
     """
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")

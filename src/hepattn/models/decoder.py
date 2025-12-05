@@ -54,6 +54,8 @@ class MaskFormerDecoder(nn.Module):
             fast_local_ca: If True, uses fast local CA.
             block_size: The size of the block for fast local CA.
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
+            phi_shift: The shift in the phi angle for positional encoding.
+            combine_ma_lca: The method to combine the mask attention and local strided attention.
         """
         super().__init__()
 
@@ -241,6 +243,7 @@ class MaskFormerDecoder(nn.Module):
         query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
+
 
 class MaskFormerDecoderLayer(nn.Module):
     def __init__(
