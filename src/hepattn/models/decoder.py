@@ -204,14 +204,17 @@ class MaskFormerDecoder(nn.Module):
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
             if self.local_strided_attn:
-                if attn_mask is None:
-                    attn_mask = attn_mask_lca
-                elif self.combine_ma_lca == "OR":
-                    attn_mask = attn_mask | attn_mask_lca
-                elif self.combine_ma_lca == "AND":
-                    attn_mask = attn_mask & attn_mask_lca
+                if self.mask_attention:
+                    # Both mask_attention and local_strided_attn are True, need to combine
+                    if self.combine_ma_lca == "OR":
+                        attn_mask = attn_mask | attn_mask_lca
+                    elif self.combine_ma_lca == "AND":
+                        attn_mask = attn_mask & attn_mask_lca
+                    else:
+                        raise ValueError("combine_ma_lca must be either OR or AND if both mask_attention and local_strided_attn are true.")
                 else:
-                    raise ValueError("combine_ma_lca must be either OR or AND if both mask_attention and local_strided_attn are true.")
+                    # attn_mask was set (unexpectedly) but mask_attention is False, so just use attn_mask_lca
+                    attn_mask = attn_mask_lca
 
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
