@@ -13,7 +13,7 @@ def _round_mul(q_idx, num, den):
 def sliding_window_mask_strided(
     window_size: int,
     q_len: int,
-    kv_len: torch.Tensor,
+    kv_len: int,
     device: str,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
@@ -30,7 +30,7 @@ def sliding_window_mask_strided(
 def sliding_window_mask_strided_wrapped(
     window_size: int,
     q_len: int,
-    kv_len: torch.Tensor,
+    kv_len: int,
     device: str,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
