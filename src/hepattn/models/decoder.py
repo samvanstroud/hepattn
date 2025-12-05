@@ -203,8 +203,8 @@ class MaskFormerDecoder(nn.Module):
             if attn_mask is not None and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
-            if self.local_strided_attn:
-                if self.mask_attention:
+            if attn_mask_lca is not None:
+                if attn_mask is not None:
                     # Both mask_attention and local_strided_attn are True, need to combine
                     if self.combine_ma_lca == "OR":
                         attn_mask = attn_mask | attn_mask_lca
@@ -236,9 +236,9 @@ class MaskFormerDecoder(nn.Module):
 
     def flex_local_ca_mask(self, q_len: int, kv_len: int, device):
         # Calculate stride based on the ratio of key length to query length
-        kv_len_tensor = torch.tensor(kv_len, device=device)
-        window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
-        return window_mask_func(self.window_size, q_len=q_len, kv_len=kv_len_tensor, device=str(device))
+        if self.window_wrap:
+            return sliding_window_mask_strided_wrapped(self.window_size, q_len, kv_len, str(device))
+        return sliding_window_mask_strided(self.window_size, q_len, kv_len, str(device))
 
     def generate_positional_encodings(self, x: dict):
         phi_shift = torch.tensor(self.phi_shift, device=x["query_embed"].device, dtype=x["query_embed"].dtype)
