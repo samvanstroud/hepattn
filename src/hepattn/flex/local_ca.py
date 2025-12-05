@@ -6,13 +6,14 @@ create_block_mask: _mask_mod_signature = torch.compile(create_block_mask, dynami
 
 
 def _round_mul(q_idx, num, den):
+    """Compute round(q_idx * num / den) using integer arithmetic to avoid floating point operations."""
     return (q_idx * num + (den // 2)) // den
 
 
 def sliding_window_mask_strided(
     window_size: int,
     q_len: int,
-    kv_len: int,
+    kv_len: torch.Tensor,
     device: str,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
@@ -29,7 +30,7 @@ def sliding_window_mask_strided(
 def sliding_window_mask_strided_wrapped(
     window_size: int,
     q_len: int,
-    kv_len: int,
+    kv_len: torch.Tensor,
     device: str,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:

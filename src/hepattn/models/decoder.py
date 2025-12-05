@@ -203,8 +203,10 @@ class MaskFormerDecoder(nn.Module):
             if attn_mask is not None and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
-            if attn_mask is not None and self.local_strided_attn:
-                if self.combine_ma_lca == "OR":
+            if self.local_strided_attn:
+                if attn_mask is None:
+                    attn_mask = attn_mask_lca
+                elif self.combine_ma_lca == "OR":
                     attn_mask = attn_mask | attn_mask_lca
                 elif self.combine_ma_lca == "AND":
                     attn_mask = attn_mask & attn_mask_lca
@@ -236,7 +238,7 @@ class MaskFormerDecoder(nn.Module):
         return window_mask_func(self.window_size, q_len=q_len, kv_len=kv_len, device=str(device))
 
     def generate_positional_encodings(self, x: dict):
-        phi_shift = self.phi_shift.to(device=x["query_embed"].device, dtype=x["query_embed"].dtype)
+        phi_shift = torch.tensor(self.phi_shift, device=x["query_embed"].device, dtype=x["query_embed"].dtype)
         idx = torch.arange(self.num_queries, device=x["query_embed"].device, dtype=x["query_embed"].dtype)
         x["query_phi"] = 2 * torch.pi * (idx / self.num_queries - phi_shift)
 
