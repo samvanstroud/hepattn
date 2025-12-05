@@ -268,14 +268,14 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim)
-        self.norm_ca = getattr(nn, attn_norm)(dim)
-        self.norm_sa = getattr(nn, attn_norm)(dim)
+        self.norm_ca = getattr(nn, attn_norm)(dim) if attn_norm else nn.Identity()
+        self.norm_sa = getattr(nn, attn_norm)(dim) if attn_norm else nn.Identity()
         self.q_ca = Attention(dim, qkv_norm=qkv_norm, **attn_kwargs)
         self.q_sa = Attention(dim, qkv_norm=qkv_norm, **attn_kwargs)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         if self.bidirectional_ca:
-            self.norm_kv_ca = getattr(nn, attn_norm)(dim)
+            self.norm_kv_ca = getattr(nn, attn_norm)(dim) if attn_norm else nn.Identity()
             self.kv_ca = Attention(dim, qkv_norm=qkv_norm, **attn_kwargs)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
