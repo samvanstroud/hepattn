@@ -238,8 +238,6 @@ class MaskFormerDecoderLayer(nn.Module):
         bidirectional_ca: bool = True,
         qkv_norm: bool = False,
         hybrid_norm: bool = False,
-        legacy: bool = True,
-        skip_first_layer_pe: bool = False,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
 
@@ -252,14 +250,10 @@ class MaskFormerDecoderLayer(nn.Module):
             bidirectional_ca: Enable bidirectional cross-attention.
             qkv_norm: Apply normalization to QKV in attention.
             hybrid_norm: Enable hybrid normalization from 2503.04598.
-            legacy: Use legacy attention implementation.
-            skip_first_layer_pe: Skip positional encoding for the first layer.
         """
         super().__init__()
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
-        self.skip_first_layer_pe = skip_first_layer_pe
-        self.legacy = legacy
 
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
@@ -268,21 +262,18 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim)
-        self.norm_ca = getattr(nn, attn_norm)(dim) if attn_norm else nn.Identity()
-        self.norm_sa = getattr(nn, attn_norm)(dim) if attn_norm else nn.Identity()
-        self.q_ca = Attention(dim, qkv_norm=qkv_norm, **attn_kwargs)
-        self.q_sa = Attention(dim, qkv_norm=qkv_norm, **attn_kwargs)
+        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm, kv_norm=attn_norm)
+        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm, kv_norm=attn_norm)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         if self.bidirectional_ca:
-            self.norm_kv_ca = getattr(nn, attn_norm)(dim) if attn_norm else nn.Identity()
-            self.kv_ca = Attention(dim, qkv_norm=qkv_norm, **attn_kwargs)
+            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm, kv_norm=attn_norm)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(
         self,
-        queries: Tensor,
-        keys: Tensor,
+        q: Tensor,
+        kv: Tensor,
         attn_mask: Tensor | None = None,
         q_mask: Tensor | None = None,
         kv_mask: Tensor | None = None,
@@ -293,8 +284,8 @@ class MaskFormerDecoderLayer(nn.Module):
         """Forward pass for the decoder layer.
 
         Args:
-            queries: Query embeddings.
-            keys: Key/value embeddings.
+            q: Query embeddings.
+            kv: Key/value embeddings.
             attn_mask: Optional attention mask.
             q_mask: Optional query mask.
             kv_mask: Optional key/value mask.
@@ -302,22 +293,14 @@ class MaskFormerDecoderLayer(nn.Module):
             key_posenc: Optional key positional encoding.
             attn_mask_transpose: Optional transposed attention mask.
         """
-        if self.skip_first_layer_pe:
-            queries = queries + self.q_sa(self.self.norm_sa(queries), kv=self.self.norm_sa(queries), v=self.self.norm_sa(queries), q_mask=q_mask)
-        else:
-            q = queries if query_posenc is None else queries + query_posenc
-            if self.legacy:
-                queries = q
-            queries = queries + self.q_sa(self.norm_sa(q), kv=self.norm_sa(q), v=self.norm_sa(queries), q_mask=q_mask)
+        q_pe = q if query_posenc is None else q + query_posenc
+        kv_pe = kv if key_posenc is None else kv + key_posenc
 
-        kv = keys if key_posenc is None else keys + key_posenc
-        if self.legacy:
-            keys = kv
-        else:
-            q = queries if query_posenc is None else queries + query_posenc
+        q = q + self.q_ca(q_pe, kv=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
+        q = self.q_dense(q)
 
-        queries = queries + self.q_ca(self.norm_ca(q), kv=kv, v=keys, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
-        queries = self.q_dense(queries)
+        q_pe = q if query_posenc is None else q + query_posenc
+        q = q + self.q_sa(q_pe, kv=q_pe, v=q, q_mask=q_mask)
 
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
@@ -327,17 +310,13 @@ class MaskFormerDecoderLayer(nn.Module):
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)
 
-            if self.legacy:
-                q = queries
-                kv = keys
-            else:
-                q = queries if query_posenc is None else queries + query_posenc
-                kv = keys if key_posenc is None else keys + key_posenc
+            q_pe = q if query_posenc is None else q + query_posenc
+            kv_pe = kv if key_posenc is None else kv + key_posenc
 
-            keys = keys + self.kv_ca(self.norm_kv_ca(kv), kv=q, v=queries, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
-            keys = self.kv_dense(keys)
+            kv = kv + self.kv_ca(kv_pe, kv=q_pe, v=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
+            kv = self.kv_dense(kv)
 
-        return queries, keys
+        return q, kv
 
     def set_backend(self, attn_type: str) -> None:
         """Set the backend for the attention layers.
