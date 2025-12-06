@@ -199,7 +199,15 @@ class Attention(nn.Module):
             x = x.transpose(-3, -2)  # B H S Dh -> B S H Dh
         return x.flatten(-2)  # B S H Dh -> B S D
 
-    def _prepare_qkv(self, q: Tensor, kv: Tensor | None = None, initial_values: dict | None = None) -> tuple[Tensor, Tensor, Tensor]:
+    def _prepare_qkv(
+        self,
+        q: Tensor,
+        kv: Tensor,
+        v: Tensor,
+        initial_values: dict | None = None,
+        q_mask: Tensor | None = None,
+        kv_mask: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
         # Mix for value residual
         mix = None
         if self.value_residual and not self.is_first_layer:
@@ -213,9 +221,7 @@ class Attention(nn.Module):
             # If it is a nested tensor, we need to project the packed input
             q, k, v = projection_packed(q, kv, self.in_proj_weight, self.in_proj_bias)
         else:
-            if kv is None:
-                kv = q
-            q, k, v = F._in_projection_packed(q, kv, kv, self.in_proj_weight, self.in_proj_bias)  # noqa: SLF001  # ty: ignore [unresolved-attribute]
+            q, k, v = F._in_projection_packed(q, kv, v, self.in_proj_weight, self.in_proj_bias)  # noqa: SLF001  # ty: ignore [unresolved-attribute]
 
         # Normalize queries, keys, and values
         if self.qkv_norm:
@@ -248,7 +254,8 @@ class Attention(nn.Module):
     def forward(
         self,
         q: Tensor,
-        kv: Tensor | None = None,
+        k: Tensor | None = None,
+        v: Tensor | None = None,
         q_mask: Tensor | None = None,
         kv_mask: Tensor | None = None,
         attn_mask: BlockMask | Tensor | None = None,
@@ -263,8 +270,10 @@ class Attention(nn.Module):
         ----------
         q : Tensor
             Queries tensor of shape (B, N, D).
-        kv : Tensor, optional
+        k : Tensor, optional
             Keys tensor of shape (B, M, D). If None, defaults to q.
+        v : Tensor, optional
+            Values tensor of shape (B, M, D). If None, defaults to k.
         q_mask : Tensor, optional
             Query mask to apply. If None, no mask is applied.
             True values indicate that a value is not padded and should partake in computation.
@@ -291,13 +300,15 @@ class Attention(nn.Module):
         Raises:
             ValueError: If the input arguments are invalid or if flash-varlen is used without varlen_kwargs.
         """
-        if kv is None:
-            # If self-attention, we use the same tensor for q, k, and v
-            q_shape = kv_shape = q.shape
-        else:
-            # If cross-attention, we expect q and kv to be different tensors
-            q_shape = q.shape
-            kv_shape = kv.shape
+        q_shape = q.shape
+        if k is None and v is None:  # Self-attention
+            k = v = q
+            kv_shape = q.shape
+        else:  # Cross attention
+            if v is None:
+                v = k
+            kv_shape = k.shape
+            assert k.shape == v.shape
 
         # Check that the specified attention backend actualy supports kv masking / jagged inputs
         if kv_mask is not None:
@@ -313,7 +324,7 @@ class Attention(nn.Module):
             assert self.attn_type in ATTN_BIAS_ATTN_TYPES, msg
 
         # Prepare queries, keys, and values
-        q, k, v = self._prepare_qkv(q, kv, initial_values)
+        q, k, v = self._prepare_qkv(q, k, v, initial_values)
 
         # Handle flash-varlen attention
         if self.attn_type == "flash-varlen":
