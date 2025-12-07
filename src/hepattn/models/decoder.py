@@ -304,7 +304,9 @@ class MaskFormerDecoderLayer(nn.Module):
 
         if self.sa_pe:
             q_pe = q if query_posenc is None else q + query_posenc
-        q = self.q_sa(q_pe, k=q_pe, v=q, q_mask=q_mask)
+            q = self.q_sa(q_pe, k=q_pe, v=q, q_mask=q_mask)
+        else:
+            q = self.q_sa(q, k=q, v=q, q_mask=q_mask)
 
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
