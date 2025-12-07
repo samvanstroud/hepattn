@@ -251,6 +251,7 @@ class MaskFormerDecoderLayer(nn.Module):
             bidirectional_ca: Enable bidirectional cross-attention.
             qkv_norm: Apply normalization to QKV in attention.
             hybrid_norm: Enable hybrid normalization from 2503.04598.
+            sa_pe: Add PE pre self attention.
         """
         super().__init__()
         self.dim = dim
