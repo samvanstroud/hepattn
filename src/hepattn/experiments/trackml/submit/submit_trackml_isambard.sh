@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #SBATCH --job-name=trackml-train
-#SBATCH --gpus=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --time=24:00:00
+#SBATCH --gpus=2
+#SBATCH --ntasks-per-node=2
+#SBATCH --time=12:00:00
 #SBATCH --output=logs/trackml/trackml-train_%j.out
 
 # Comet variables
@@ -33,8 +33,8 @@ nvidia-smi
 echo "Running training script..."
 
 # Python command that will be run
-#PYTORCH_CMD="python run_filtering.py fit --config configs/filtering.yaml --trainer.devices 1"
-PYTORCH_CMD="python run_tracking.py fit --config configs/tracking.yaml --trainer.devices 1"
+#PYTORCH_CMD="python run_filtering.py fit --config configs/filtering.yaml"
+PYTORCH_CMD="python run_tracking.py fit --config configs/tracking.yaml"
 
 # Do testing instead
 #PYTORCH_CMD="python run_filtering.py test --config /share/rcifdata/svanstroud/hepattn/logs/ec_eta4_20250409-T184858/config.yaml --ckpt_path /share/rcifdata/svanstroud/hepattn/logs/ec_eta4_20250409-T184858/ckpts/epoch=029-val_loss=0.05526.ckpt"
@@ -47,5 +47,5 @@ PIXI_CMD="pixi run -e isambard $PYTORCH_CMD"
 
 # Run the final command
 echo "Running command: $PIXI_CMD"
-$PIXI_CMD
+srun $PIXI_CMD
 echo "Done!"
