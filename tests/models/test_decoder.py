@@ -171,7 +171,7 @@ class TestMaskFormerDecoder:
     def test_forward_local_strided_attn(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
         """Test forward pass with local_strided_attn=True."""
         x, input_names = sample_local_strided_decoder_data
-        decoder_local_strided_attn.tasks = [MockTask1]
+        decoder_local_strided_attn.tasks = [MockTask1()]
 
         updated_x, outputs = decoder_local_strided_attn(x, input_names)
 
@@ -195,7 +195,7 @@ class TestMaskFormerDecoder:
     def test_forward_shapes(self, decoder_no_mask_attention, sample_decoder_data):
         """Test that forward pass maintains correct tensor shapes."""
         x, input_names = sample_decoder_data
-        decoder_no_mask_attention.tasks = [MockTask1]
+        decoder_no_mask_attention.tasks = [MockTask1()]
 
         original_query_shape = x["query_embed"].shape
         original_key_shape = x["key_embed"].shape
@@ -208,7 +208,7 @@ class TestMaskFormerDecoder:
     def test_forward_shapes_local_strided_attn(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
         """Test that forward pass maintains correct tensor shapes with local_strided_attn."""
         x, input_names = sample_local_strided_decoder_data
-        decoder_local_strided_attn.tasks = [MockTask1]
+        decoder_local_strided_attn.tasks = [MockTask1()]
 
         original_query_shape = x["query_embed"].shape
         original_key_shape = x["key_embed"].shape
@@ -397,7 +397,7 @@ class TestMaskFormerDecoderUnified:
     def test_unified_forward_without_tasks(self, unified_decoder, sample_unified_decoder_data):
         """Test unified decoder forward pass without tasks."""
         x, input_names = sample_unified_decoder_data
-        unified_decoder.tasks = [MockTask1]
+        unified_decoder.tasks = [MockTask1()]
 
         x_out, outputs = unified_decoder(x, input_names)
 
