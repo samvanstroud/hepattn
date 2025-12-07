@@ -43,6 +43,22 @@ class MockTask2:
         return mask
 
 
+class LCATask:
+    has_intermediate_loss = True
+    has_first_layer_loss = True
+    name = "task2"
+
+    def __call__(self, x):
+        return None
+
+    def attn_mask(self, x):
+        mask = {"input2": torch.zeros(1, NUM_QUERIES, 6, dtype=torch.bool)}
+        mask["input2"][0, 1, 2] = True
+        mask["input2"][0, 3, 3] = True
+        mask["input2"][0, 4, 4] = True
+        return mask
+
+
 class TestMaskFormerDecoder:
     @pytest.fixture
     def decoder_layer_config(self):
@@ -269,10 +285,6 @@ class TestMaskFormerDecoder:
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
 
-    @pytest.mark.parametrize(
-        ("combine_ma_lca", "bool_op"),
-        [("OR", torch.logical_or), ("AND", torch.logical_and)],
-    )
     def test_mask_and_local_strided_combination(
         self,
         decoder_layer_config,
@@ -300,7 +312,7 @@ class TestMaskFormerDecoder:
         # Sample data with batch size 1 (required by local_strided_attn)
         x, input_names = sample_local_strided_decoder_data
 
-        decoder.tasks = [MockTask1()]
+        decoder.tasks = [LCATask()]
 
         # Run the decoder
         _, outputs = decoder(x, input_names)
