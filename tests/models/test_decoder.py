@@ -312,7 +312,7 @@ class TestMaskFormerDecoder:
         # Sample data with batch size 1 (required by local_strided_attn)
         x, input_names = sample_local_strided_decoder_data
 
-        decoder.tasks = [LCATask()]
+        decoder.tasks = [LCATask()]  # ty: ignore
 
         # Run the decoder
         _, outputs = decoder(x, input_names)
