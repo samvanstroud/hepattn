@@ -286,7 +286,7 @@ class TestMaskFormerDecoder:
             assert not attn_mask[1, 4, 5]
 
     @pytest.mark.parametrize(
-        {"combine_ma_lca, bool_op"},
+        ("combine_ma_lca", "bool_op"),
         [
             ("OR", torch.logical_or),
             ("AND", torch.logical_and),
