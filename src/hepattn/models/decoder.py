@@ -3,6 +3,7 @@
 - https://github.com/facebookresearch/Mask2Former.
 """
 
+import sys
 from functools import partial
 
 import torch
@@ -18,6 +19,10 @@ from hepattn.models.posenc import pos_enc_symmetric
 from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.local_ca import auto_local_ca_mask
 from hepattn.utils.model_utils import unmerge_inputs
+
+
+# Provide a module handle so tests can monkeypatch decoder helpers
+decoder_module = sys.modules[__name__]
 
 
 class MaskFormerDecoder(nn.Module):
@@ -82,6 +87,10 @@ class MaskFormerDecoder(nn.Module):
             )
         if combine_ma_lca is None:
             assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
+        if self.local_strided_attn and self.mask_attention:
+            assert combine_ma_lca in {"OR", "AND"}, (
+                "When both mask_attention and local_strided_attn are True, combine_ma_lca must be either 'OR' or 'AND'."
+            )
         self.combine_ma_lca = combine_ma_lca
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
@@ -197,13 +206,10 @@ class MaskFormerDecoder(nn.Module):
                         attn_mask = attn_mask | attn_mask_lca
                     elif self.combine_ma_lca == "AND":
                         attn_mask = attn_mask & attn_mask_lca
-                    else:
-                        raise ValueError("combine_ma_lca must be either OR or AND if both mask_attention and local_strided_attn are true.")
                 else:
-                    # attn_mask was set (unexpectedly) but mask_attention is False, so just use attn_mask_lca
                     attn_mask = attn_mask_lca
 
-            if attn_mask is not None and self.attn_type != "flex":
+            if (attn_mask is not None) and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
@@ -241,10 +247,8 @@ class MaskFormerDecoder(nn.Module):
         return window_mask_func(self.window_size, stride=stride, q_len=q_len, kv_len=kv_len, device=str(device))
 
     def generate_positional_encodings(self, x: dict):
-        phi_shift = torch.tensor(self.phi_shift, device=x["query_embed"].device, dtype=x["query_embed"].dtype)
         idx = torch.arange(self.num_queries, device=x["query_embed"].device, dtype=x["query_embed"].dtype)
-        x["query_phi"] = 2 * torch.pi * (idx / self.num_queries - phi_shift)
-
+        x["query_phi"] = 2 * torch.pi * (idx / self.num_queries - self.phi_shift)
         query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
