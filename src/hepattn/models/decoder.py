@@ -20,7 +20,6 @@ from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTas
 from hepattn.utils.local_ca import auto_local_ca_mask
 from hepattn.utils.model_utils import unmerge_inputs
 
-
 # Provide a module handle so tests can monkeypatch decoder helpers
 decoder_module = sys.modules[__name__]
 
