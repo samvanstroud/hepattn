@@ -76,7 +76,7 @@ def repad_from_flash_varlen(x: Tensor, batch_size: int, seq_len: int, indices: T
     return pad_input(x.squeeze(0), indices, batch_size, seq_len)
 
 
-def projection_packed(q: Tensor, kv: Tensor | None, weight: Tensor, bias: Tensor | None = None) -> tuple[Tensor, ...]:
+def projection_packed(q: Tensor, k: Tensor | None, v: Tensor | None, weight: Tensor, bias: Tensor | None = None) -> tuple[Tensor, ...]:
     """Efficient input projection for MHA when using a single linear layer.
 
     Essentially the same as torch.nn.functional._in_projection_packed.
@@ -98,25 +98,36 @@ def projection_packed(q: Tensor, kv: Tensor | None, weight: Tensor, bias: Tensor
     q_proj, k_proj, v_proj : tuple
         The projected queries, keys, and values tensors.
     """
-    # If the q tensor is the only input, then we assume we are doing self-attention.
+    # If the queries, key and value tensors are equal, then we assume we are doing self-attention.
     # This is made (slightly) faster by using a single linear layer, then chunking rather than
     # three seperate linear layers processed one at a time.
-    if kv is None:
+    if q == k == v:
         return F.linear(q, weight, bias).chunk(3, dim=-1)
 
-    # If the kv tensor is present, then we are doing cross-attention.
+    # If the q != k tensor, then we are doing cross-attention.
     # This means we must project the q and kv tensors seperately.
-    # The kv linear layer can remain packed, allowing us to project together then chunk,
+    # If k == v, the kv linear layer can remain packed, allowing us to project together then chunk,
     # using the same trick as above. We must however first seperate weights (and biases if present)
     # of the linear layers for the q and kv parts. We use torch.split which returns a veiw of the
     # original tensor so this step doesnt required any extra memory or much time.
+    if k == v:
+        dim = q.size(-1)
+        w_q, w_kv = weight.split([dim, dim * 2])
+        b_q, b_kv = bias.split([dim, dim * 2]) if bias is not None else (None, None)
+
+        # Now we can do the seperate projections
+        q_proj = F.linear(q, w_q, b_q)
+        k_proj, v_proj = F.linear(k, w_kv, b_kv).chunk(2, dim=-1)
+        return q_proj, k_proj, v_proj
+
     dim = q.size(-1)
-    w_q, w_kv = weight.split([dim, dim * 2])
-    b_q, b_kv = bias.split([dim, dim * 2]) if bias is not None else (None, None)
+    w_q, w_k, w_v = weight.split(dim, dim=0)
+    b_q, b_k, b_v = bias.split(dim, dim=0) if bias is not None else (None, None, None)
 
     # Now we can do the seperate projections
     q_proj = F.linear(q, w_q, b_q)
-    k_proj, v_proj = F.linear(kv, w_kv, b_kv).chunk(2, dim=-1)
+    k_proj = F.linear(k, w_k, b_k)
+    v_proj = F.linear(v, w_v, b_v)
     return q_proj, k_proj, v_proj
 
 
@@ -217,7 +228,7 @@ class Attention(nn.Module):
         # Check if the input is nested tensor
         if q.is_nested:
             # If it is a nested tensor, we need to project the packed input
-            q, k, v = projection_packed(q, k, self.in_proj_weight, self.in_proj_bias)
+            q, k, v = projection_packed(q, k, v, self.in_proj_weight, self.in_proj_bias)
         else:
             q, k, v = F._in_projection_packed(q, k, v, self.in_proj_weight, self.in_proj_bias)  # noqa: SLF001  # ty: ignore [unresolved-attribute]
 
@@ -306,7 +317,7 @@ class Attention(nn.Module):
             if v is None:
                 v = k
             kv_shape = k.shape
-            assert k.shape == v.shape
+            assert k.shape == v.shape, f"Shape mismatch: k.shape={k.shape} vs v.shape={v.shape}"
 
         # Check that the specified attention backend actualy supports kv masking / jagged inputs
         if kv_mask is not None:

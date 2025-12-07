@@ -295,6 +295,11 @@ class MaskFormerDecoderLayer(nn.Module):
             query_posenc: Optional query positional encoding.
             key_posenc: Optional key positional encoding.
             attn_mask_transpose: Optional transposed attention mask.
+
+        Returns:
+            tuple[Tensor, Tensor]: A tuple containing:
+                - The updated query embeddings (Tensor).
+                - The updated key/value embeddings (Tensor).
         """
         q_pe = q if query_posenc is None else q + query_posenc
         kv_pe = kv if key_posenc is None else kv + key_posenc
