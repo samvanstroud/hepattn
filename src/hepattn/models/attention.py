@@ -134,6 +134,25 @@ class Attention(nn.Module):
         value_residual: bool = False,
         is_first_layer: bool = False,
     ) -> None:
+        """Multi-head attention with optional QKV normalization.
+
+        Args:
+            dim: Embedding dimension (must be divisible by num_heads).
+            num_heads: Number of attention heads.
+            bias: Whether to use bias in linear projections.
+            attn_type: Attention backend ('torch', 'flex', 'flash', 'flash-varlen').
+            torch_compile: Whether to compile the attention function.
+            window_size: Window size for sliding window attention (flash/flash-varlen only).
+            qkv_norm: Whether to normalize Q, K, V after projection, before attention.
+                Recommended for cross-attention to prevent distribution mismatch between Q and K/V.
+            norm: Normalization type to use for QKV normalization (required if qkv_norm=True).
+                Must be one of: LayerNorm, RMSNorm, FastLayerNorm, CustomRMSNorm, SimpleRMSNorm, DyT.
+            value_residual: Whether to use value residual connections across layers.
+            is_first_layer: Whether this is the first layer (for value residual).
+
+        Raises:
+            ValueError: If qkv_norm is True but norm is not provided, or if norm type is unsupported.
+        """
         super().__init__()
         assert dim % num_heads == 0, "num_heads must divide dim."
         assert attn_type in ATTN_TYPES, f"Invalid attention type: {attn_type}"
