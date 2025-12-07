@@ -183,7 +183,7 @@ def test_projection_packed_identity_checks():
     q1_proj, k1_proj, v1_proj = projection_packed(q, q, q, weight, bias_tensor)
 
     # Test 2: k is v but different from q (cross-attention with shared kv)
-    q2_proj, k2_proj, v2_proj = projection_packed(q, k, k, weight, bias_tensor)
+    q2_proj, _, _ = projection_packed(q, k, k, weight, bias_tensor)
 
     # Test 3: All different (cross-attention with separate kv)
     q3_proj, _, _ = projection_packed(q, k, v, weight, bias_tensor)
@@ -192,11 +192,11 @@ def test_projection_packed_identity_checks():
     torch.testing.assert_close(q1_proj, q2_proj, rtol=1e-5, atol=1e-5)
     torch.testing.assert_close(q1_proj, q3_proj, rtol=1e-5, atol=1e-5)
 
-    # For test 2, k and v projections should be the same (same input k, same combined kv weight)
-    torch.testing.assert_close(k2_proj, v2_proj, rtol=1e-5, atol=1e-5)
-
-    # For test 1 and test 3, k_proj and v_proj are different projections (different weight slices)
-    # so we don't expect them to be equal
+    # Note: k_proj and v_proj are different in all cases because they use different weight slices
+    # - Test 1 (q is k is v): chunks the combined projection into 3 parts
+    # - Test 2 (k is v): chunks the kv projection into 2 parts
+    # - Test 3 (separate k, v): uses separate weight slices for k and v
+    # In all cases, the k and v projections are different outputs
 
     # Verify all outputs have correct shapes
     assert q1_proj.shape == (batch_size, seq_len, dim)
