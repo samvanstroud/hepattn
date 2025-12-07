@@ -1,6 +1,5 @@
 seed_everything: 42
-name: TRK-v0-full
-
+name: TRK-v6
 data:
   # hypatia
   #train_dir: data/trackml/prepped/
@@ -75,7 +74,7 @@ trainer:
   # Training stuff here
   max_epochs: 30
   accelerator: gpu
-  devices: 1
+  devices: 2
   precision: bf16-mixed
   log_every_n_steps: 50
   default_root_dir: logs
@@ -177,25 +176,27 @@ model:
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 12
+          num_layers: 8
           dim: *dim
           attn_type: flash
           window_size: 512
           window_wrap: true
           hybrid_norm: true
-          norm: RMSNorm
+          norm: LayerNorm
           dense_kwargs: {activation: SwiGLU}
+          attn_kwargs: {bias: false}
 
       decoder:
-        num_decoder_layers: 8
+        num_decoder_layers: 4
         num_queries: *num_objects
         mask_attention: true
         use_query_masks: false
         decoder_layer_config:
           dim: *dim
-          norm: RMSNorm
+          norm: LayerNorm
           hybrid_norm: true
           dense_kwargs: {activation: SwiGLU}
+          attn_kwargs: {bias: false}
 
       tasks:
         class_path: torch.nn.ModuleList
@@ -226,10 +227,10 @@ model:
                 dim: *dim
                 losses:
                   mask_dice: 2.0
-                  mask_focal: 70.0
+                  mask_focal: 100.0
                 costs:
                   mask_dice: 2.0
-                  mask_focal: 70.0
+                  mask_focal: 100.0
                 null_weight: 1.0
 
       matcher:

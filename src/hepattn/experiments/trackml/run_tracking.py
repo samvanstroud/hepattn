@@ -20,6 +20,15 @@ class TrackMLTracker(ModelWrapper):
         super().__init__(name, model, lrs_config, optimizer, mtl)
 
     def log_custom_metrics(self, preds, targets, stage):
+        # log intermediate layer mask predictions
+        for layer_name, layer_preds in preds.items():
+            mask = layer_preds["track_hit_valid"]["track_hit_valid"]
+            if mask is not None:
+                num_valid = mask.sum(-1).float()
+                frac_valid = num_valid / mask.shape[-1]
+                self.log(f"{stage}/{layer_name}_avg_num_valid_hits", torch.mean(num_valid), sync_dist=True)
+                self.log(f"{stage}/{layer_name}_avg_frac_valid_hits", torch.mean(frac_valid), sync_dist=True)
+
         # Just log predictions from the final layer
         preds = preds["final"]
 
