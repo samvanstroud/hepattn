@@ -8,7 +8,7 @@ from hepattn.flex import relative_position, relative_position_wrapped
 from hepattn.flex.sliding_window import sliding_window_mask, sliding_window_mask_wrapped
 from hepattn.models.attention import Attention, repad_from_flash_varlen, unpad_for_flash_varlen
 from hepattn.models.dense import Dense
-from hepattn.models.norm import get_hybrid_norm_config
+from hepattn.models.norm import NORM_TYPES, get_hybrid_norm_config
 
 create_block_mask = torch.compile(create_block_mask, dynamic=True)  # ty: ignore[invalid-assignment]
 
@@ -78,8 +78,8 @@ class Residual(nn.Module):
             raise ValueError("post_norm is True but no norm is provided.")
         if norm is not None and not isinstance(norm, str):
             raise ValueError("norm must be a string or None.")
-        if norm is not None and not hasattr(nn, norm):
-            raise ValueError(f"Unsupported norm: {norm}. Must be a valid torch.nn module.")
+        if norm is not None and norm not in NORM_TYPES:
+            raise ValueError(f"Unsupported norm: {norm}. Must be one of {list(NORM_TYPES.keys())}")
         if post_norm and kv_norm:
             raise ValueError("kv_norm and post_norm cannot both be True.")
 
@@ -88,8 +88,8 @@ class Residual(nn.Module):
         self.dp = DropPath(drop_path) if drop_path else nn.Identity()
         self.post_norm = post_norm
 
-        self.norm = getattr(nn, norm)(dim) if norm else nn.Identity()
-        self.kv_norm = getattr(nn, norm)(dim) if kv_norm and norm else None
+        self.norm = NORM_TYPES[norm](dim) if norm else nn.Identity()
+        self.kv_norm = NORM_TYPES[norm](dim) if kv_norm and norm else None
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
         if self.post_norm:

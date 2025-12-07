@@ -2,6 +2,12 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+# Mapping of normalization type strings to their corresponding nn.Module classes
+NORM_TYPES: dict[str, type[nn.Module]] = {
+    "LayerNorm": nn.LayerNorm,
+    "RMSNorm": nn.RMSNorm,
+}
+
 
 class LayerNorm(nn.LayerNorm):
     """Slightly faster LayerNorm by seting elementwise_affine=False."""
