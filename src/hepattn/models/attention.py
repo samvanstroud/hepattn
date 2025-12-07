@@ -76,7 +76,7 @@ def repad_from_flash_varlen(x: Tensor, batch_size: int, seq_len: int, indices: T
     return pad_input(x.squeeze(0), indices, batch_size, seq_len)
 
 
-def projection_packed(q: Tensor, k: Tensor | None, v: Tensor | None, weight: Tensor, bias: Tensor | None = None) -> tuple[Tensor, ...]:
+def projection_packed(q: Tensor, k: Tensor, v: Tensor, weight: Tensor, bias: Tensor | None = None) -> tuple[Tensor, ...]:
     """Efficient input projection for MHA when using a single linear layer.
 
     Essentially the same as torch.nn.functional._in_projection_packed.
@@ -317,7 +317,7 @@ class Attention(nn.Module):
             if v is None:
                 v = k
             kv_shape = k.shape
-            assert k.shape == v.shape, f"Shape mismatch: k.shape={k.shape} vs v.shape={v.shape}"
+            assert k.shape == v.shape, f"Shape mismatch: k.shape={k.shape} vs v.shape={v.shape}"  # type: ignore[possibly-none]
 
         # Check that the specified attention backend actualy supports kv masking / jagged inputs
         if kv_mask is not None:
