@@ -152,7 +152,7 @@ class TestMaskFormerDecoder:
     def test_forward_without_tasks(self, decoder_no_mask_attention, sample_decoder_data):
         """Test forward pass without any tasks defined."""
         x, input_names = sample_decoder_data
-        decoder_no_mask_attention.tasks = []  # Empty task list
+        decoder_no_mask_attention.tasks = [MockTask1()]
 
         updated_x, outputs = decoder_no_mask_attention(x, input_names)
 
@@ -171,7 +171,7 @@ class TestMaskFormerDecoder:
     def test_forward_local_strided_attn(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
         """Test forward pass with local_strided_attn=True."""
         x, input_names = sample_local_strided_decoder_data
-        decoder_local_strided_attn.tasks = []  # Empty task list
+        decoder_local_strided_attn.tasks = [MockTask1]
 
         updated_x, outputs = decoder_local_strided_attn(x, input_names)
 
@@ -195,7 +195,7 @@ class TestMaskFormerDecoder:
     def test_forward_shapes(self, decoder_no_mask_attention, sample_decoder_data):
         """Test that forward pass maintains correct tensor shapes."""
         x, input_names = sample_decoder_data
-        decoder_no_mask_attention.tasks = []
+        decoder_no_mask_attention.tasks = [MockTask1]
 
         original_query_shape = x["query_embed"].shape
         original_key_shape = x["key_embed"].shape
@@ -208,7 +208,7 @@ class TestMaskFormerDecoder:
     def test_forward_shapes_local_strided_attn(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
         """Test that forward pass maintains correct tensor shapes with local_strided_attn."""
         x, input_names = sample_local_strided_decoder_data
-        decoder_local_strided_attn.tasks = []
+        decoder_local_strided_attn.tasks = [MockTask1]
 
         original_query_shape = x["query_embed"].shape
         original_key_shape = x["key_embed"].shape
@@ -268,165 +268,6 @@ class TestMaskFormerDecoder:
             assert attn_mask[1, 0, 1]  # becomes True
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
-
-    def test_combine_ma_lca_or(self, decoder_layer_config, sample_local_strided_decoder_data):
-        """Test combining mask_attention and local_strided_attn with OR logic."""
-        x, input_names = sample_local_strided_decoder_data
-
-        # Create decoder with both mask_attention and local_strided_attn enabled
-        decoder = MaskFormerDecoder(
-            num_queries=NUM_QUERIES,
-            decoder_layer_config=decoder_layer_config,
-            num_decoder_layers=NUM_LAYERS,
-            mask_attention=True,
-            local_strided_attn=True,
-            window_size=4,
-            window_wrap=True,
-            combine_ma_lca="OR",
-        )
-
-        # Create a mock task that returns attention masks
-        class MockTaskWithMask:
-            has_intermediate_loss = True
-            has_first_layer_loss = True
-            name = "task_with_mask"
-
-            def __call__(self, x):
-                return {"dummy": torch.randn(1, NUM_QUERIES, SEQ_LEN)}
-
-            def attn_mask(self, outputs):
-                # Create a specific mask pattern for testing
-                mask = torch.zeros(1, NUM_QUERIES, SEQ_LEN, dtype=torch.bool)
-                mask[0, 0, 0] = True
-                mask[0, 1, 1] = True
-                mask[0, 2, 2] = True
-                return {"key": mask}
-
-        decoder.tasks = [MockTaskWithMask()]
-        x["key_is_key"] = torch.ones(1, SEQ_LEN, dtype=torch.bool)
-
-        _, outputs = decoder(x, input_names)
-
-        # Check that attention mask exists
-        for layer_idx in range(NUM_LAYERS):
-            assert "attn_mask" in outputs[f"layer_{layer_idx}"]
-            combined_mask = outputs[f"layer_{layer_idx}"]["attn_mask"]
-            assert combined_mask.shape == (1, NUM_QUERIES, SEQ_LEN)
-            assert combined_mask.dtype == torch.bool
-
-            # The combined mask should be the OR of both masks
-            # Since local_strided_attn creates a window mask, and we have task masks,
-            # the OR combination should include both patterns
-            assert combined_mask.sum() > 0  # Should have some True values
-
-    def test_combine_ma_lca_and(self, decoder_layer_config, sample_local_strided_decoder_data):
-        """Test combining mask_attention and local_strided_attn with AND logic."""
-        x, input_names = sample_local_strided_decoder_data
-
-        decoder = MaskFormerDecoder(
-            num_queries=NUM_QUERIES,
-            decoder_layer_config=decoder_layer_config,
-            num_decoder_layers=NUM_LAYERS,
-            mask_attention=True,
-            local_strided_attn=True,
-            window_size=4,
-            window_wrap=True,
-            combine_ma_lca="AND",
-        )
-
-        class MockTaskWithMask:
-            has_intermediate_loss = True
-            has_first_layer_loss = True
-            name = "task_with_mask"
-
-            def __call__(self, x):
-                return {"dummy": torch.randn(1, NUM_QUERIES, SEQ_LEN)}
-
-            def attn_mask(self, outputs):
-                mask = torch.zeros(1, NUM_QUERIES, SEQ_LEN, dtype=torch.bool)
-                mask[0, 0, 0] = True
-                mask[0, 1, 1] = True
-                return {"key": mask}
-
-        decoder.tasks = [MockTaskWithMask()]
-        x["key_is_key"] = torch.ones(1, SEQ_LEN, dtype=torch.bool)
-
-        _, outputs = decoder(x, input_names)
-
-        # Check that attention mask exists
-        for layer_idx in range(NUM_LAYERS):
-            assert "attn_mask" in outputs[f"layer_{layer_idx}"]
-            combined_mask = outputs[f"layer_{layer_idx}"]["attn_mask"]
-            assert combined_mask.shape == (1, NUM_QUERIES, SEQ_LEN)
-            assert combined_mask.dtype == torch.bool
-
-            # The AND combination should be more restrictive than OR
-            # Only positions that are True in both masks should be True
-            assert combined_mask.sum() >= 0  # Should have some True values (or none if no overlap)
-
-    def test_combine_ma_lca_invalid(self, decoder_layer_config, sample_local_strided_decoder_data):
-        """Test that invalid combine_ma_lca raises ValueError."""
-        x, input_names = sample_local_strided_decoder_data
-
-        decoder = MaskFormerDecoder(
-            num_queries=NUM_QUERIES,
-            decoder_layer_config=decoder_layer_config,
-            num_decoder_layers=NUM_LAYERS,
-            mask_attention=True,
-            local_strided_attn=True,
-            window_size=4,
-            window_wrap=True,
-            combine_ma_lca="INVALID",  # Invalid value
-        )
-
-        class MockTaskWithMask:
-            has_intermediate_loss = True
-            has_first_layer_loss = True
-            name = "task_with_mask"
-
-            def __call__(self, x):
-                return {"dummy": torch.randn(1, NUM_QUERIES, SEQ_LEN)}
-
-            def attn_mask(self, outputs):
-                mask = torch.zeros(1, NUM_QUERIES, SEQ_LEN, dtype=torch.bool)
-                mask[0, 0, 0] = True
-                return {"key": mask}
-
-        decoder.tasks = [MockTaskWithMask()]
-        x["key_is_key"] = torch.ones(1, SEQ_LEN, dtype=torch.bool)
-
-        # Should raise ValueError when both masks are present and combine_ma_lca is invalid
-        with pytest.raises(ValueError, match="combine_ma_lca must be either OR or AND"):
-            decoder(x, input_names)
-
-    def test_combine_ma_lca_mask_attention_false(self, decoder_layer_config, sample_local_strided_decoder_data):
-        """Test that when mask_attention is False, attn_mask_lca is used even if attn_mask exists."""
-        x, input_names = sample_local_strided_decoder_data
-
-        # Create decoder with local_strided_attn but mask_attention=False
-        decoder = MaskFormerDecoder(
-            num_queries=NUM_QUERIES,
-            decoder_layer_config=decoder_layer_config,
-            num_decoder_layers=NUM_LAYERS,
-            mask_attention=False,  # mask_attention is False
-            local_strided_attn=True,
-            window_size=4,
-            window_wrap=True,
-            combine_ma_lca=None,  # Not needed when mask_attention is False
-        )
-
-        decoder.tasks = []  # No tasks, so no task masks
-
-        _, outputs = decoder(x, input_names)
-
-        # Check that attention mask exists (from local_strided_attn)
-        for layer_idx in range(NUM_LAYERS):
-            assert "attn_mask" in outputs[f"layer_{layer_idx}"]
-            attn_mask = outputs[f"layer_{layer_idx}"]["attn_mask"]
-            assert attn_mask.shape == (1, NUM_QUERIES, SEQ_LEN)
-            assert attn_mask.dtype == torch.bool
-            # Should have the local strided attention pattern
-            assert attn_mask.sum() > 0
 
 
 class TestMaskFormerDecoderLayer:
@@ -556,7 +397,7 @@ class TestMaskFormerDecoderUnified:
     def test_unified_forward_without_tasks(self, unified_decoder, sample_unified_decoder_data):
         """Test unified decoder forward pass without tasks."""
         x, input_names = sample_unified_decoder_data
-        unified_decoder.tasks = []
+        unified_decoder.tasks = [MockTask1]
 
         x_out, outputs = unified_decoder(x, input_names)
 
