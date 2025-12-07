@@ -17,7 +17,7 @@ from torch import Size, Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention
 from torch.nn.functional import scaled_dot_product_attention
 
-from hepattn.models.norm import LayerNorm
+from hepattn.models.norm import NORM_TYPES
 from hepattn.utils.bert_padding import pad_input, unpad_input
 
 ATTN_TYPES = {"torch": scaled_dot_product_attention, "flex": flex_attention, "flash": flash_attn_func, "flash-varlen": flash_attn_varlen_func}
@@ -141,13 +141,37 @@ class Attention(nn.Module):
         torch_compile: bool = False,
         window_size: int | None = None,
         qkv_norm: bool = False,
+        norm: str | None = None,
         value_residual: bool = False,
         is_first_layer: bool = False,
     ) -> None:
+        """Multi-head attention with optional QKV normalization.
+
+        Args:
+            dim: Embedding dimension (must be divisible by num_heads).
+            num_heads: Number of attention heads.
+            bias: Whether to use bias in linear projections.
+            attn_type: Attention backend ('torch', 'flex', 'flash', 'flash-varlen').
+            torch_compile: Whether to compile the attention function.
+            window_size: Window size for sliding window attention (flash/flash-varlen only).
+            qkv_norm: Whether to normalize Q, K, V after projection, before attention.
+                Recommended for cross-attention to prevent distribution mismatch between Q and K/V.
+            norm: Normalization type to use for QKV normalization (required if qkv_norm=True).
+                Must be one of: LayerNorm, RMSNorm, FastLayerNorm, CustomRMSNorm, SimpleRMSNorm, DyT.
+            value_residual: Whether to use value residual connections across layers.
+            is_first_layer: Whether this is the first layer (for value residual).
+
+        Raises:
+            ValueError: If qkv_norm is True but norm is not provided, or if norm type is unsupported.
+        """
         super().__init__()
         assert dim % num_heads == 0, "num_heads must divide dim."
         assert attn_type in ATTN_TYPES, f"Invalid attention type: {attn_type}"
         assert window_size is None or attn_type in WINDOW_ATTN_TYPES, f"Window size can only be specified for {WINDOW_ATTN_TYPES}"
+        if qkv_norm and not norm:
+            raise ValueError("norm must be provided when qkv_norm is True")
+        if norm is not None and norm not in NORM_TYPES:
+            raise ValueError(f"Unsupported norm: {norm}. Must be one of {list(NORM_TYPES.keys())}")
 
         self.dim = dim
         self.bias = bias
@@ -166,9 +190,11 @@ class Attention(nn.Module):
             self.value_residual_mix = nn.Sequential(nn.Linear(dim, num_heads), nn.Sigmoid())
 
         if self.qkv_norm:
-            self.q_norm = LayerNorm(dim)
-            self.k_norm = LayerNorm(dim)
-            self.v_norm = LayerNorm(dim)
+            assert norm is not None
+            norm_cls = NORM_TYPES[norm]
+            self.q_norm = norm_cls(dim)
+            self.k_norm = norm_cls(dim)
+            self.v_norm = norm_cls(dim)
 
         self.set_backend(attn_type, torch_compile=torch_compile, window_size=window_size)
         self.reset_parameters()
