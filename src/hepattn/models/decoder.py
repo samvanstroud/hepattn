@@ -296,11 +296,11 @@ class MaskFormerDecoderLayer(nn.Module):
         q_pe = q if query_posenc is None else q + query_posenc
         kv_pe = kv if key_posenc is None else kv + key_posenc
 
-        q = q + self.q_ca(q_pe, kv=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
+        q = q + self.q_ca(q_pe, k=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         q = self.q_dense(q)
 
         q_pe = q if query_posenc is None else q + query_posenc
-        q = q + self.q_sa(q_pe, kv=q_pe, v=q, q_mask=q_mask)
+        q = q + self.q_sa(q_pe, k=q_pe, v=q, q_mask=q_mask)
 
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
@@ -313,7 +313,7 @@ class MaskFormerDecoderLayer(nn.Module):
             q_pe = q if query_posenc is None else q + query_posenc
             kv_pe = kv if key_posenc is None else kv + key_posenc
 
-            kv = kv + self.kv_ca(kv_pe, kv=q_pe, v=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
+            kv = kv + self.kv_ca(kv_pe, k=q_pe, v=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
             kv = self.kv_dense(kv)
 
         return q, kv
