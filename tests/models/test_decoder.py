@@ -285,6 +285,13 @@ class TestMaskFormerDecoder:
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
 
+    @pytest.mark.parametrize(
+        {"combine_ma_lca, bool_op"},
+        [
+            ("OR", torch.logical_or),
+            ("AND", torch.logical_and),
+        ],
+    )
     def test_mask_and_local_strided_combination(
         self,
         decoder_layer_config,
