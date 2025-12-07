@@ -27,7 +27,7 @@ def test_projection_packed_self_attention(batch_size, seq_len, dim, bias):
     q_proj, k_proj, v_proj = projection_packed(q, q, q, weight, bias_tensor)
 
     # Compare with reference implementation (PyTorch's _in_projection_packed)
-    q_ref, k_ref, v_ref = F._in_projection_packed(q, q, q, weight, bias_tensor)  # noqa: SLF001
+    q_ref, k_ref, v_ref = F._in_projection_packed(q, q, q, weight, bias_tensor)  # noqa: SLF001  # type: ignore[unresolved-attribute]
 
     # Check shapes
     assert q_proj.shape == (batch_size, seq_len, dim)
@@ -59,7 +59,7 @@ def test_projection_packed_cross_attention_shared_kv(batch_size, q_len, kv_len, 
     q_proj, k_proj, v_proj = projection_packed(q, kv, kv, weight, bias_tensor)
 
     # Compare with reference implementation
-    q_ref, k_ref, v_ref = F._in_projection_packed(q, kv, kv, weight, bias_tensor)  # noqa: SLF001
+    q_ref, k_ref, v_ref = F._in_projection_packed(q, kv, kv, weight, bias_tensor)  # noqa: SLF001  # type: ignore[unresolved-attribute]
 
     # Check shapes
     assert q_proj.shape == (batch_size, q_len, dim)
@@ -93,7 +93,7 @@ def test_projection_packed_cross_attention_separate_kv(batch_size, q_len, k_len,
     q_proj, k_proj, v_proj = projection_packed(q, k, v, weight, bias_tensor)
 
     # Compare with reference implementation
-    q_ref, k_ref, v_ref = F._in_projection_packed(q, k, v, weight, bias_tensor)  # noqa: SLF001
+    q_ref, k_ref, v_ref = F._in_projection_packed(q, k, v, weight, bias_tensor)  # noqa: SLF001  # type: ignore[unresolved-attribute]
 
     # Check shapes
     assert q_proj.shape == (batch_size, q_len, dim)
@@ -188,18 +188,20 @@ def test_projection_packed_identity_checks():
     # Test 3: All different (cross-attention with separate kv)
     q3_proj, _, _ = projection_packed(q, k, v, weight, bias_tensor)
 
-    # Results should be the same for q in all cases
+    # Results should be the same for q in all cases (same input, same weight slice)
     torch.testing.assert_close(q1_proj, q2_proj, rtol=1e-5, atol=1e-5)
     torch.testing.assert_close(q1_proj, q3_proj, rtol=1e-5, atol=1e-5)
 
-    # For test 1, k and v projections should be the same
-    torch.testing.assert_close(k1_proj, v1_proj, rtol=1e-5, atol=1e-5)
-
-    # For test 2, k and v projections should be the same
+    # For test 2, k and v projections should be the same (same input k, same combined kv weight)
     torch.testing.assert_close(k2_proj, v2_proj, rtol=1e-5, atol=1e-5)
 
-    # For test 3, k and v projections should be different inputs
-    # (but we can't directly test the projection difference without knowing the weights)
+    # For test 1 and test 3, k_proj and v_proj are different projections (different weight slices)
+    # so we don't expect them to be equal
+
+    # Verify all outputs have correct shapes
+    assert q1_proj.shape == (batch_size, seq_len, dim)
+    assert k1_proj.shape == (batch_size, seq_len, dim)
+    assert v1_proj.shape == (batch_size, seq_len, dim)
 
 
 @pytest.mark.parametrize("dim", [64, 128, 256])

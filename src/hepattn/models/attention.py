@@ -342,11 +342,12 @@ class Attention(nn.Module):
         if k is None and v is None:  # Self-attention
             k = v = q
             kv_shape = q.shape
-        else:  # Cross attention
+        else:  # Cross-attention
+            assert k is not None, "k must be provided for cross-attention"
             if v is None:
                 v = k
             kv_shape = k.shape
-            assert k.shape == v.shape, f"Shape mismatch: k.shape={k.shape} vs v.shape={v.shape}"  # type: ignore[possibly-none]
+            assert k.shape == v.shape, f"Shape mismatch: k.shape={k.shape} vs v.shape={v.shape}"
 
         # Check that the specified attention backend actualy supports kv masking / jagged inputs
         if kv_mask is not None:
