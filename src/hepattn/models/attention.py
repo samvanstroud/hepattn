@@ -179,6 +179,7 @@ class Attention(nn.Module):
             self.value_residual_mix = nn.Sequential(nn.Linear(dim, num_heads), nn.Sigmoid())
 
         if self.qkv_norm:
+            assert norm is not None
             norm_cls = NORM_TYPES[norm]
             self.q_norm = norm_cls(dim)
             self.k_norm = norm_cls(dim)
