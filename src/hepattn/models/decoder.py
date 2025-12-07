@@ -238,6 +238,7 @@ class MaskFormerDecoderLayer(nn.Module):
         bidirectional_ca: bool = True,
         qkv_norm: bool = False,
         hybrid_norm: bool = False,
+        sa_pe: bool = False,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
 
@@ -250,10 +251,12 @@ class MaskFormerDecoderLayer(nn.Module):
             bidirectional_ca: Enable bidirectional cross-attention.
             qkv_norm: Apply normalization to QKV in attention.
             hybrid_norm: Enable hybrid normalization from 2503.04598.
+            sa_pe: Add PE pre self attention.
         """
         super().__init__()
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
+        self.sa_pe = sa_pe
 
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
@@ -294,17 +297,21 @@ class MaskFormerDecoderLayer(nn.Module):
             attn_mask_transpose: Optional transposed attention mask.
 
         Returns:
-            Tuple of updated query and key/value embeddings.
+            tuple[Tensor, Tensor]: A tuple containing:
+                - The updated query embeddings (Tensor).
+                - The updated key/value embeddings (Tensor).
         """
-        if query_posenc is not None:
-            q = q + query_posenc
-        if key_posenc is not None:
-            kv = kv + key_posenc
+        q_pe = q if query_posenc is None else q + query_posenc
+        kv_pe = kv if key_posenc is None else kv + key_posenc
 
-        # Update query/object embeddings with the key/constituent embeddings
-        q = self.q_ca(q, kv=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
-        q = self.q_sa(q, q_mask=q_mask)
+        q = self.q_ca(q_pe, k=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         q = self.q_dense(q)
+
+        if self.sa_pe:
+            q_pe = q if query_posenc is None else q + query_posenc
+            q = self.q_sa(q_pe, k=q_pe, v=q, q_mask=q_mask)
+        else:
+            q = self.q_sa(q, k=q, v=q, q_mask=q_mask)
 
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
@@ -314,12 +321,10 @@ class MaskFormerDecoderLayer(nn.Module):
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)
 
-            if query_posenc is not None:
-                q = q + query_posenc
-            if key_posenc is not None:
-                kv = kv + key_posenc
+            q_pe = q if query_posenc is None else q + query_posenc
+            kv_pe = kv if key_posenc is None else kv + key_posenc
 
-            kv = self.kv_ca(kv, kv=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
+            kv = self.kv_ca(kv_pe, k=q_pe, v=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
             kv = self.kv_dense(kv)
 
         return q, kv
