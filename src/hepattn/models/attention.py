@@ -80,14 +80,16 @@ def projection_packed(q: Tensor, k: Tensor, v: Tensor, weight: Tensor, bias: Ten
     """Efficient input projection for MHA when using a single linear layer.
 
     Essentially the same as torch.nn.functional._in_projection_packed.
-    Used for netsted tensors, but has issues with flex attention.
+    Used for nested tensors, but has issues with flex attention.
 
     Parameters
     ----------
     q : Tensor
         The queries tensor of shape (batch, q_len, dim).
-    kv : Tensor | None
-        The keys and values tensor of shape (batch, kv_len, dim).
+    k : Tensor
+        The keys tensor of shape (batch, kv_len, dim).
+    v : Tensor
+        The values tensor of shape (batch, kv_len, dim).
     weight : Tensor
         The packed weight tensor of the input linear projection with shape (3 * dim, dim).
     bias : Tensor | None
@@ -100,31 +102,32 @@ def projection_packed(q: Tensor, k: Tensor, v: Tensor, weight: Tensor, bias: Ten
     """
     # If the queries, key and value tensors are equal, then we assume we are doing self-attention.
     # This is made (slightly) faster by using a single linear layer, then chunking rather than
-    # three seperate linear layers processed one at a time.
-    if q == k == v:
+    # three separate linear layers processed one at a time.
+    if q is k and k is v:
         return F.linear(q, weight, bias).chunk(3, dim=-1)
 
     # If the q != k tensor, then we are doing cross-attention.
-    # This means we must project the q and kv tensors seperately.
+    # This means we must project the q and kv tensors separately.
     # If k == v, the kv linear layer can remain packed, allowing us to project together then chunk,
-    # using the same trick as above. We must however first seperate weights (and biases if present)
-    # of the linear layers for the q and kv parts. We use torch.split which returns a veiw of the
-    # original tensor so this step doesnt required any extra memory or much time.
-    if k == v:
+    # using the same trick as above. We must however first separate weights (and biases if present)
+    # of the linear layers for the q and kv parts. We use torch.split which returns a view of the
+    # original tensor so this step doesn't require any extra memory or much time.
+    if k is v:
         dim = q.size(-1)
         w_q, w_kv = weight.split([dim, dim * 2])
         b_q, b_kv = bias.split([dim, dim * 2]) if bias is not None else (None, None)
 
-        # Now we can do the seperate projections
+        # Now we can do the separate projections
         q_proj = F.linear(q, w_q, b_q)
         k_proj, v_proj = F.linear(k, w_kv, b_kv).chunk(2, dim=-1)
         return q_proj, k_proj, v_proj
 
+    # All three tensors are different, so we need to split and project separately
     dim = q.size(-1)
-    w_q, w_k, w_v = weight.split(dim, dim=0)
-    b_q, b_k, b_v = bias.split(dim, dim=0) if bias is not None else (None, None, None)
+    w_q, w_k, w_v = weight.chunk(3, dim=0)
+    b_q, b_k, b_v = bias.chunk(3, dim=0) if bias is not None else (None, None, None)
 
-    # Now we can do the seperate projections
+    # Now we can do the separate projections
     q_proj = F.linear(q, w_q, b_q)
     k_proj = F.linear(k, w_k, b_k)
     v_proj = F.linear(v, w_v, b_v)
