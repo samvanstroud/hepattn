@@ -52,7 +52,6 @@ class Residual(nn.Module):
         dim: int,
         norm: str | None,
         post_norm: bool = False,
-        kv_norm: bool = False,
         layer_scale: float | None = None,
         drop_path: float = 0.0,
     ) -> None:
@@ -63,7 +62,6 @@ class Residual(nn.Module):
             fn: The module to wrap. Must be non-resizing.
             norm: The normalization layer.
             post_norm: Whether to apply hybrid norm [2503.04598] style post norm.
-            kv_norm: Whether to apply normalization to the key and value inputs (for attention modules).
             layer_scale: Initial value for the layer_scale. If None, no layer_scale is applied.
             drop_path: Drop path rate.
 
@@ -72,16 +70,12 @@ class Residual(nn.Module):
         """
         super().__init__()
 
-        if kv_norm and not norm:
-            raise ValueError("kv_norm is True but no norm is provided.")
         if post_norm and not norm:
             raise ValueError("post_norm is True but no norm is provided.")
         if norm is not None and not isinstance(norm, str):
             raise ValueError("norm must be a string or None.")
         if norm is not None and norm not in NORM_TYPES:
             raise ValueError(f"Unsupported norm: {norm}. Must be one of {list(NORM_TYPES.keys())}")
-        if post_norm and kv_norm:
-            raise ValueError("kv_norm and post_norm cannot both be True.")
 
         self.fn = fn
         self.ls = LayerScale(dim, layer_scale) if layer_scale is not None else nn.Identity()
@@ -89,14 +83,11 @@ class Residual(nn.Module):
         self.post_norm = post_norm
 
         self.norm = NORM_TYPES[norm](dim) if norm else nn.Identity()
-        self.kv_norm = NORM_TYPES[norm](dim) if kv_norm and norm else None
 
     def forward(self, x: Tensor, **kwargs) -> Tensor:
         if self.post_norm:
             x = self.norm(x)
             return x + self.dp(self.ls(self.fn(x, **kwargs)))
-        if self.kv_norm and "kv" in kwargs:  # TODO: require kv norm if doing cross attention
-            kwargs["kv"] = self.kv_norm(kwargs["kv"])
         return x + self.dp(self.ls(self.fn(self.norm(x), **kwargs)))
 
 
