@@ -202,11 +202,9 @@ class Attention(nn.Module):
     def _prepare_qkv(
         self,
         q: Tensor,
-        kv: Tensor,
+        k: Tensor,
         v: Tensor,
         initial_values: dict | None = None,
-        q_mask: Tensor | None = None,
-        kv_mask: Tensor | None = None,
     ) -> tuple[Tensor, Tensor, Tensor]:
         # Mix for value residual
         mix = None
@@ -219,9 +217,9 @@ class Attention(nn.Module):
         # Check if the input is nested tensor
         if q.is_nested:
             # If it is a nested tensor, we need to project the packed input
-            q, k, v = projection_packed(q, kv, self.in_proj_weight, self.in_proj_bias)
+            q, k, v = projection_packed(q, k, self.in_proj_weight, self.in_proj_bias)
         else:
-            q, k, v = F._in_projection_packed(q, kv, v, self.in_proj_weight, self.in_proj_bias)  # noqa: SLF001  # ty: ignore [unresolved-attribute]
+            q, k, v = F._in_projection_packed(q, k, v, self.in_proj_weight, self.in_proj_bias)  # noqa: SLF001  # ty: ignore [unresolved-attribute]
 
         # Normalize queries, keys, and values
         if self.qkv_norm:

@@ -238,6 +238,7 @@ class MaskFormerDecoderLayer(nn.Module):
         bidirectional_ca: bool = True,
         qkv_norm: bool = False,
         hybrid_norm: bool = False,
+        sa_pe: bool = False,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
 
@@ -254,6 +255,7 @@ class MaskFormerDecoderLayer(nn.Module):
         super().__init__()
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
+        self.sa_pe = sa_pe
 
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
@@ -262,12 +264,12 @@ class MaskFormerDecoderLayer(nn.Module):
         dense_kwargs = dense_kwargs or {}
 
         residual = partial(Residual, dim=dim)
-        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm, kv_norm=attn_norm)
-        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm, kv_norm=attn_norm)
+        self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
+        self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
         if self.bidirectional_ca:
-            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm, kv_norm=attn_norm)
+            self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, **attn_kwargs), norm=attn_norm)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
 
     def forward(
@@ -296,11 +298,12 @@ class MaskFormerDecoderLayer(nn.Module):
         q_pe = q if query_posenc is None else q + query_posenc
         kv_pe = kv if key_posenc is None else kv + key_posenc
 
-        q = q + self.q_ca(q_pe, k=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
+        q = self.q_ca(q_pe, k=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         q = self.q_dense(q)
 
-        q_pe = q if query_posenc is None else q + query_posenc
-        q = q + self.q_sa(q_pe, k=q_pe, v=q, q_mask=q_mask)
+        if self.sa_pe:
+            q_pe = q if query_posenc is None else q + query_posenc
+        q = self.q_sa(q_pe, k=q_pe, v=q, q_mask=q_mask)
 
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
@@ -313,7 +316,7 @@ class MaskFormerDecoderLayer(nn.Module):
             q_pe = q if query_posenc is None else q + query_posenc
             kv_pe = kv if key_posenc is None else kv + key_posenc
 
-            kv = kv + self.kv_ca(kv_pe, k=q_pe, v=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
+            kv = self.kv_ca(kv_pe, k=q_pe, v=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
             kv = self.kv_dense(kv)
 
         return q, kv
