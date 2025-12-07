@@ -17,7 +17,6 @@ from torch import Size, Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention
 from torch.nn.functional import scaled_dot_product_attention
 
-from hepattn.models.norm import LayerNorm
 from hepattn.utils.bert_padding import pad_input, unpad_input
 
 ATTN_TYPES = {"torch": scaled_dot_product_attention, "flex": flex_attention, "flash": flash_attn_func, "flash-varlen": flash_attn_varlen_func}
@@ -130,6 +129,7 @@ class Attention(nn.Module):
         torch_compile: bool = False,
         window_size: int | None = None,
         qkv_norm: bool = False,
+        norm: str | None = None,
         value_residual: bool = False,
         is_first_layer: bool = False,
     ) -> None:
@@ -137,6 +137,10 @@ class Attention(nn.Module):
         assert dim % num_heads == 0, "num_heads must divide dim."
         assert attn_type in ATTN_TYPES, f"Invalid attention type: {attn_type}"
         assert window_size is None or attn_type in WINDOW_ATTN_TYPES, f"Window size can only be specified for {WINDOW_ATTN_TYPES}"
+        if qkv_norm and not norm:
+            raise ValueError("norm must be provided when qkv_norm is True")
+        if norm is not None and not hasattr(nn, norm):
+            raise ValueError(f"Unsupported norm: {norm}. Must be a valid torch.nn module.")
 
         self.dim = dim
         self.bias = bias
@@ -155,9 +159,9 @@ class Attention(nn.Module):
             self.value_residual_mix = nn.Sequential(nn.Linear(dim, num_heads), nn.Sigmoid())
 
         if self.qkv_norm:
-            self.q_norm = LayerNorm(dim)
-            self.k_norm = LayerNorm(dim)
-            self.v_norm = LayerNorm(dim)
+            self.q_norm = getattr(nn, norm)(dim)
+            self.k_norm = getattr(nn, norm)(dim)
+            self.v_norm = getattr(nn, norm)(dim)
 
         self.set_backend(attn_type, torch_compile=torch_compile, window_size=window_size)
         self.reset_parameters()
