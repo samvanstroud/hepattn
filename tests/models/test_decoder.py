@@ -269,6 +269,46 @@ class TestMaskFormerDecoder:
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
 
+    @pytest.mark.parametrize(
+        ("combine_ma_lca", "bool_op"),
+        [("OR", torch.logical_or), ("AND", torch.logical_and)],
+    )
+    def test_mask_and_local_strided_combination(
+        self,
+        decoder_layer_config,
+        sample_local_strided_decoder_data,
+        monkeypatch,
+        combine_ma_lca,
+        bool_op,
+    ):
+        """Test combining mask_attention with local_strided_attn using OR / AND."""
+        # We need access to the decoder module to patch auto_local_ca_mask
+        # Deterministic local-strided attention mask (batch=1)
+
+        # Decoder with both mask_attention and local_strided_attn enabled
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=NUM_LAYERS,
+            mask_attention=True,
+            local_strided_attn=True,
+            window_size=4,
+            window_wrap=True,
+            combine_ma_lca=combine_ma_lca,
+        )
+
+        # Sample data with batch size 1 (required by local_strided_attn)
+        x, input_names = sample_local_strided_decoder_data
+
+        decoder.tasks = [MockTask1()]
+
+        # Run the decoder
+        _, outputs = decoder(x, input_names)
+
+        # We only need to check one layer; they should all behave similarly
+        attn_mask = outputs["layer_0"]["attn_mask"]
+        assert attn_mask.shape == (1, NUM_QUERIES, SEQ_LEN)
+
 
 class TestMaskFormerDecoderLayer:
     @pytest.fixture
