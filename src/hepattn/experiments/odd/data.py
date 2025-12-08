@@ -1,10 +1,8 @@
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import torch
 import awkward as ak
-
+import numpy as np
+import torch
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 
@@ -14,7 +12,7 @@ def is_valid_file(path):
     return path.is_file() and path.stat().st_size > 0
 
 
-class ODDEventDataset(Dataset):
+class ODDDataset(Dataset):
     def __init__(
         self,
         dirpath: str,
@@ -52,9 +50,9 @@ class ODDEventDataset(Dataset):
         self.sample_ids = sample_ids[:num_events]
 
         # Sample ID is an integer that can uniquely identify each event/sample, used for picking out events during eval etc
-        #self.sample_ids = np.array([int(name.split("event")[-1]) for name in self.event_names], dtype=np.int64)
-        #self.sample_ids_to_event_names = {self.sample_ids[i]: str(self.event_names[i]) for i in range(len(self.sample_ids))}
-        #self.event_names_to_sample_ids = {v: k for k, v in self.sample_ids_to_event_names.items()}
+        # self.sample_ids = np.array([int(name.split("event")[-1]) for name in self.event_names], dtype=np.int64)
+        # self.sample_ids_to_event_names = {self.sample_ids[i]: str(self.event_names[i]) for i in range(len(self.sample_ids))}
+        # self.event_names_to_sample_ids = {v: k for k, v in self.sample_ids_to_event_names.items()}
 
         # Particle level cuts
         self.particle_min_pt = particle_min_pt
@@ -106,14 +104,14 @@ class ODDEventDataset(Dataset):
         # Calculate the particle cuts
         particle_valid = targets["particle_pt"] >= self.particle_min_pt
         particle_valid = particle_valid & (torch.abs(targets["particle_eta"]) <= self.particle_max_abs_eta)
-        
+
         # Apply the particle cut
-        
+
         for field in particles.fields:
             if field == "event_id":
                 continue
             targets[f"particle_{field}"] = targets[f"particle_{field}"][particle_valid]
-        
+
         targets["particle_valid"] = torch.full_like(targets["particle_pt"], True, dtype=torch.bool)
         targets["particle_sihit_valid"] = targets["particle_particle_id"][:, None] == inputs["sihit_particle_id"][None, :]
 
@@ -136,6 +134,7 @@ class ODDEventDataset(Dataset):
 
             targets["particle_calohit_valid"] = ak.to_torch(particle_calohit_valid)
             targets["particle_calohit_energy"] = ak.to_torch(particle_calohit_energy)
+            targets["particle_calohit_time"] = ak.to_torch(particle_calohit_time)
 
         # Return ACTS track info if requested
         if self.return_tracks:
@@ -147,7 +146,7 @@ class ODDEventDataset(Dataset):
                 if field == "hit_ids":
                     continue
                 targets[f"track_{field}"] = ak.to_torch(tracks[field])
-            
+
             # Now add the track masks
             inputs["sihit_valid"] = torch.full_like(inputs["sihit_x"], True)
             targets["track_valid"] = torch.full_like(targets["track_phi"], True)
@@ -172,7 +171,7 @@ class ODDEventDataset(Dataset):
         return inputs_out, targets_out
 
 
-class ODDEventDataModule(LightningDataModule):
+class ODDDataModule(LightningDataModule):
     def __init__(
         self,
         train_dir: str,
@@ -199,10 +198,10 @@ class ODDEventDataModule(LightningDataModule):
 
     def setup(self, stage: str):
         if stage in {"fit", "test"}:
-            self.train_dset = ODDEventDataset(dirpath=self.train_dir, num_events=self.num_train, **self.kwargs)
+            self.train_dset = ODDDataset(dirpath=self.train_dir, num_events=self.num_train, **self.kwargs)
 
         if stage == "fit":
-            self.val_dset = ODDEventDataset(dirpath=self.val_dir, num_events=self.num_val, **self.kwargs)
+            self.val_dset = ODDDataset(dirpath=self.val_dir, num_events=self.num_val, **self.kwargs)
 
         # Only print train/val dataset details when actually training
         if stage == "fit" and self.trainer.is_global_zero:
@@ -211,10 +210,10 @@ class ODDEventDataModule(LightningDataModule):
 
         if stage == "test":
             assert self.test_dir is not None, "No test file specified, see --data.test_dir"
-            self.test_dset = ODDEventDataset(dirpath=self.test_dir, num_events=self.num_test, **self.kwargs)
+            self.test_dset = ODDDataset(dirpath=self.test_dir, num_events=self.num_test, **self.kwargs)
             print(f"Created test dataset with {len(self.test_dset):,} events")
 
-    def get_dataloader(self, stage: str, dataset: ODDEventDataset, shuffle: bool):
+    def get_dataloader(self, stage: str, dataset: ODDDataset, shuffle: bool):
         return DataLoader(
             dataset=dataset,
             batch_size=None,

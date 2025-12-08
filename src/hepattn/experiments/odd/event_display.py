@@ -1,11 +1,10 @@
-import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import torch
 
 plt.rcParams["figure.dpi"] = 300
 
 
-def plot_odd_event(data, axes_spec, object_name, batch_idx=0, valid=True, mark_transparent=None, label_objects=False, gridspec_kw=None):
+def plot_odd_event(data, axes_spec, object_name, batch_idx=0, valid=True, mark_transparent=None, gridspec_kw=None):
     fig, ax = plt.subplots(1, len(axes_spec), gridspec_kw=gridspec_kw)
     fig.set_size_inches(8 * len(axes_spec), 8)
     ax = [ax] if len(axes_spec) == 1 else ax.flatten()

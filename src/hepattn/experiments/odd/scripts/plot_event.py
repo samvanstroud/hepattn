@@ -1,13 +1,9 @@
 from pathlib import Path
+
 import yaml
-import torch
-import matplotlib.pyplot as plt
-from torch.utils.data import DataLoader
 
-
-from hepattn.experiments.odd.data import ODDEventDataModule, ODDEventDataset
+from hepattn.experiments.odd.data import ODDEventDataModule
 from hepattn.experiments.odd.event_display import plot_odd_event
-
 
 # Setup the dataloader
 config_path = Path("src/hepattn/experiments/odd/configs/base.yaml")
