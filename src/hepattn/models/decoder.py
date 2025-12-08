@@ -3,7 +3,6 @@
 - https://github.com/facebookresearch/Mask2Former.
 """
 
-import sys
 from functools import partial
 
 import torch

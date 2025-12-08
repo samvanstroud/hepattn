@@ -1,7 +1,6 @@
-# Standard library
+import uuid
 from contextlib import suppress
 from pathlib import Path
-import uuid
 
 import matplotlib.pyplot as plt
 import numpy as np
