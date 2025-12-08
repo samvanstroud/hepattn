@@ -3,8 +3,8 @@ from torch import nn
 from torch.nn import functional as F
 
 
-class LayerNorm(nn.LayerNorm):
-    """Slightly faster LayerNorm by seting elementwise_affine=False."""
+class FastLayerNorm(nn.LayerNorm):
+    """Slightly faster LayerNorm by setting elementwise_affine=False."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs, elementwise_affine=False)
@@ -14,8 +14,8 @@ class LayerNorm(nn.LayerNorm):
         return super().forward(x).to(dtype)
 
 
-class RMSNorm(nn.Module):
-    """RNMSNorm from https://arxiv.org/abs/1910.07467."""
+class CustomRMSNorm(nn.Module):
+    """Custom RMSNorm implementation from https://arxiv.org/abs/1910.07467."""
 
     def __init__(self, dim: int):
         super().__init__()
@@ -49,3 +49,37 @@ class DyT(nn.Module):
     def forward(self, x):
         x = torch.tanh(self.alpha * x)
         return x * self.weight + self.bias
+
+
+def get_hybrid_norm_config(norm: str | None, depth: int, hybrid_norm: bool, qkv_norm: bool) -> tuple[str | None, bool, bool]:
+    """Get the normalization configuration for HybridNorm.
+
+    Args:
+        norm: The normalization type.
+        depth: The layer depth.
+        hybrid_norm: Whether to use HybridNorm.
+        qkv_norm: Whether to use QKV normalization.
+
+    Returns:
+        attn_norm: The normalization to use before attention.
+        dense_post_norm: Whether to use post-normalization for the dense layer.
+        qkv_norm: Whether to use QKV normalization.
+    """
+    qkv_norm = qkv_norm or hybrid_norm
+    is_hybrid_subsequent = hybrid_norm and depth > 0
+    attn_norm = None if is_hybrid_subsequent else norm
+    dense_post_norm = is_hybrid_subsequent
+
+    return attn_norm, dense_post_norm, qkv_norm
+
+
+# Mapping of normalization type strings to their corresponding nn.Module classes
+# Includes both PyTorch built-ins and custom implementations
+NORM_TYPES: dict[str, type[nn.Module]] = {
+    "LayerNorm": nn.LayerNorm,
+    "RMSNorm": nn.RMSNorm,
+    "FastLayerNorm": FastLayerNorm,
+    "CustomRMSNorm": CustomRMSNorm,
+    "SimpleRMSNorm": SimpleRMSNorm,
+    "DyT": DyT,
+}

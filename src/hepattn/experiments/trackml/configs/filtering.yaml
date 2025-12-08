@@ -1,10 +1,13 @@
 seed_everything: 42
-name: HC-v3
+name: HF-v1
 
 data:
-  train_dir: data/trackml/prepped/
-  val_dir: data/trackml/prepped/
-  test_dir: data/trackml/prepped/
+  #train_dir: data/trackml/prepped/
+  #val_dir: data/trackml/prepped/
+  #test_dir: data/trackml/prepped/
+  train_dir: /projects/u5du/pduckett/data_new/train/
+  val_dir: /projects/u5du/pduckett/data_new/val/
+  test_dir: /projects/u5du/pduckett/data_new/test/
 
   num_workers: 10
   num_train: -1
@@ -27,6 +30,7 @@ data:
 
   # Maximum number of reconstructable particles allowed in an event (not relevant for filtering)
   event_max_num_particles: 3000
+  strict_max_objects: false
 
   # Define which inputs will be available to the model
   inputs:
@@ -54,10 +58,11 @@ data:
   targets:
     hit:
       - on_valid_particle
+    particle:
+      - pt
 
 trainer:
-  # Training stuff here
-  max_epochs: 30
+  max_epochs: 50
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
@@ -80,10 +85,10 @@ trainer:
         monitor: val/loss
     - class_path: hepattn.callbacks.PredictionWriter
       init_args:
-        write_inputs: false
+        write_inputs: true
         write_outputs: false
         write_preds: true
-        write_targets: false
+        write_targets: true
         write_losses: false
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
@@ -132,22 +137,12 @@ model:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: 16
+                    hidden_layers: [128]
                     output_size: &dim 256
-                    norm_input: true
-                posenc:
-                  class_path: hepattn.models.FourierPositionEncoder
-                  init_args:
-                    input_name: hit
-                    fields:
-                      - r
-                      - eta
-                      - phi
-                    dim: *dim
-                    scale: 0.1
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 10
+          num_layers: 8
           dim: *dim
           attn_type: flash
           window_size: 1024

@@ -45,12 +45,12 @@ class MaskFormer(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
         self.decoder.tasks = tasks
-        self.decoder.unified_decoding = unified_decoding
         self.pooling = pooling
         self.tasks = tasks
         self.target_object = target_object
         self.matcher = matcher
         self.unified_decoding = unified_decoding
+        self.decoder.unified_decoding = unified_decoding
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
@@ -132,11 +132,9 @@ class MaskFormer(nn.Module):
 
             # Need this for incidence-based regression task
             if isinstance(task, IncidenceRegressionTask):
-                # Assume that the incidence task has only one output
-                x["incidence"] = outputs["final"][task.name][task.outputs[0]].detach()
+                x["incidence"] = outputs["final"][task.name][task.incidence_key].detach()
             if isinstance(task, ObjectClassificationTask):
-                # Assume that the classification task has only one output
-                x["class_probs"] = outputs["final"][task.name][task.outputs[0]].detach()
+                x["class_probs"] = outputs["final"][task.name][task.probs_key].detach()
 
         # store info about the input sort field for each input type
         if self.sorter is not None:
@@ -163,7 +161,7 @@ class MaskFormer(nn.Module):
             preds[layer_name] = {}
 
             for task in self.tasks:
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in layer_outputs:
                     continue
                 preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
 
@@ -195,10 +193,10 @@ class MaskFormer(nn.Module):
             # Get the cost contribution from each of the tasks
             for task in self.tasks:
                 # Skip tasks that do not contribute intermediate losses
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in layer_outputs:
                     continue
-                # Only use the cost from the final set of predictions
 
+                # Compute costs
                 task_costs = task.cost(layer_outputs[task.name], targets)
 
                 # Add the cost on to our running cost total, otherwise initialise a running cost matrix
@@ -229,7 +227,7 @@ class MaskFormer(nn.Module):
                     continue
 
                 # The task didn't produce an output for this layer, so skip it
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in outputs[layer_name]:
                     continue
 
                 for output_name in task.outputs:
@@ -239,9 +237,17 @@ class MaskFormer(nn.Module):
         losses: dict[str, dict[str, Tensor]] = {}
         for layer_name in outputs:
             losses[layer_name] = {}
+            is_final_layer = layer_name == "final"
             for task in self.tasks:
-                if layer_name != "final" and not task.has_intermediate_loss:
+                if task.name not in outputs[layer_name]:
                     continue
-                losses[layer_name][task.name] = task.loss(outputs[layer_name][task.name], targets)
+
+                task_losses = task.loss(outputs[layer_name][task.name], targets)
+
+                # Remove IoU loss from intermediate layers (only keep it for final layer)
+                if not is_final_layer:
+                    task_losses.pop("iou_mse", None)
+
+                losses[layer_name][task.name] = task_losses
 
         return losses, targets

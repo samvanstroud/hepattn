@@ -8,27 +8,24 @@ class Dense(nn.Module):
         self,
         input_size: int,
         output_size: int | None = None,
-        hidden_layers: list[int] | None = None,
+        hidden_layers: int | list[int] | None = None,
         hidden_dim_scale: int = 2,
-        activation: nn.Module | None = None,
+        activation: nn.Module | str | None = None,
         final_activation: nn.Module | None = None,
         dropout: float = 0.0,
         bias: bool = True,
-        norm_input: bool = False,
     ) -> None:
         """A fully connected feed forward neural network, which can take in additional contextual information.
 
         Args:
             input_size: Input size.
             output_size: Output size. If not specified, this will be the same as the input size.
-            hidden_layers: Number of nodes per layer. If not specified, the network will have a single hidden layer with size
-                `input_size * hidden_dim_scale`.
-            hidden_dim_scale: Scale factor for the hidden layer size.
+            hidden_layers: Number of hidden layers or list of hidden layer sizes. Scaled by hidden_dim_scale if a list is not provided.
+            hidden_dim_scale: Scale factor for the hidden layer size if hidden_layers is not a list.
             activation: Activation function for hidden layers.
             final_activation: Activation function for the output layer.
             dropout: Apply dropout with the supplied probability.
             bias: Whether to use bias in the linear layers.
-            norm_input: Whether to apply layer normalization to the input.
         """
         super().__init__()
 
@@ -36,7 +33,11 @@ class Dense(nn.Module):
             output_size = input_size
         if hidden_layers is None:
             hidden_layers = [input_size * hidden_dim_scale]
+        if isinstance(hidden_layers, int):
+            hidden_layers = [input_size * hidden_dim_scale] * hidden_layers
         if activation is None:
+            activation = nn.SiLU()
+        if activation == "SwiGLU":
             activation = SwiGLU()
 
         self.input_size = input_size
@@ -44,8 +45,6 @@ class Dense(nn.Module):
         gate = isinstance(activation, SwiGLU)
 
         layers = []
-        if norm_input:
-            layers.append(nn.LayerNorm(input_size))
 
         node_list = [input_size, *hidden_layers]
         for i in range(len(node_list) - 1):

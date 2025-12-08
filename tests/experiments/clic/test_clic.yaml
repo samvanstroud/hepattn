@@ -154,7 +154,7 @@ model:
                     output_size: 6
                     hidden_layers: [256, 128, 32]
                 null_weight: 0.5
-                loss_class_weights: [1.0, 3.0, 8.0, 1.5, 1.0]
+                class_weights: [1.0, 3.0, 8.0, 1.5, 1.0]
                 mask_queries: false
                 has_intermediate_loss: true
 
@@ -193,14 +193,12 @@ model:
                   init_args:
                     input_size: *dim
                     activation: torch.nn.SiLU
-                    output_size: *dim
-                    hidden_layers: [*dim, *dim]
+                    hidden_layers: 2
                 node_net:
                   class_path: hepattn.models.Dense
                   init_args:
                     input_size: *dim
-                    output_size: *dim
-                    hidden_layers: [*dim]
+                    hidden_layers: 1
                 has_intermediate_loss: false
 
             - class_path: hepattn.models.task.IncidenceBasedRegressionTask

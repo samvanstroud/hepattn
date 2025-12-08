@@ -38,12 +38,13 @@ dependencies = [
     "einops>=0.8.1,<0.9",
     "atlas-ftag-tools>=0.2.9,<0.3",
     "ty>=0.0.1a20,<0.0.1a21",
+    "lapx>=0.9.2,<0.10",
 ]
 
 [dependency-groups]
 clic = ["pathos", "vector", "fastjet", "energyflow"] # has problems on isambard
 tide = ["numba>=0.61.2"] # has problems on isambard
-fa2 = ["flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiTRUE-cp312-cp312-linux_x86_64.whl",]
+fa2 = ["flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.4.17/flash_attn-2.8.3%2Bcu128torch2.9-cp312-cp312-linux_x86_64.whl"]
 
 [build-system]
 requires = ["scikit-build-core>=0.3.3", "pybind11"]
@@ -65,10 +66,10 @@ no-build-isolation = ["flash-attn"]
 extra-index-urls = ["https://download.pytorch.org/whl/cu128"]
 
 [tool.pixi.feature.gpu.pypi-dependencies]
-torch = { version = "==2.7.1", index = "https://download.pytorch.org/whl/cu128"}
+torch = { version = "==2.9.1", index = "https://download.pytorch.org/whl/cu128"}
 
 [tool.pixi.feature.cpu.pypi-dependencies]
-torch = { version = "==2.7.1", index = "https://download.pytorch.org/whl/cpu" }
+torch = { version = "==2.9.1", index = "https://download.pytorch.org/whl/cpu" }
 
 [tool.pixi.environments]
 default = { features = ["gpu", "fa2"] }
@@ -138,4 +139,5 @@ omit = [
 exclude_lines = [
     "raise AssertionError",
     "raise NotImplementedError",
+    "raise ValueError",
 ]
