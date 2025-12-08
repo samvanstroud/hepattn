@@ -39,21 +39,17 @@ class ODDDataset(IterableDataset):
 
         # If we are requesting calohits, the calohit data for each event used must be available
         if return_calohits:
-            sample_ids &= set(
-                [
-                    int(path.stem.replace("calo_hits_event_", ""))
-                    for path in Path(dirpath).rglob("calo_hits_event*.parquet")
-                ]
-            )
+            sample_ids &= {
+                int(path.stem.replace("calo_hits_event_", ""))
+                for path in Path(dirpath).rglob("calo_hits_event*.parquet")
+            }
 
         # If we are requesting tracks, the track data for each event used must be available
         if return_tracks:
-            sample_ids &= set(
-                [
-                    int(path.stem.replace("tracks_event_", ""))
-                    for path in Path(dirpath).rglob("tracks_event*.parquet")
-                ]
-            )
+            sample_ids &= {
+                int(path.stem.replace("tracks_event_", ""))
+                for path in Path(dirpath).rglob("tracks_event*.parquet")
+            }
 
         sample_ids = list(sample_ids)
         num_events_available = len(sample_ids)
