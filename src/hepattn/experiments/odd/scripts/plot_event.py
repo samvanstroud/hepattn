@@ -35,7 +35,7 @@ fig = plot_odd_event(
     data,
     [
         {"x": "x", "y": "y", "input_names": ["sihit", "calohit"], "xlabel": r"Global $x$", "ylabel": r"Global $y$"},
-        {"x": "z", "y": "y", "input_names": ["sihit", "calohit"], "xlabel": r"Global $z$", "ylabel": r"Global $y$"}
+        {"x": "z", "y": "y", "input_names": ["sihit", "calohit"], "xlabel": r"Global $z$", "ylabel": r"Global $y$"},
     ],
     "particle",
 )
@@ -47,7 +47,7 @@ fig = plot_odd_event(
     data,
     [
         {"x": "x", "y": "y", "input_names": ["sihit"], "xlabel": r"Global $x$", "ylabel": r"Global $y$"},
-        {"x": "z", "y": "y", "input_names": ["sihit"], "xlabel": r"Global $z$", "ylabel": r"Global $y$"}
+        {"x": "z", "y": "y", "input_names": ["sihit"], "xlabel": r"Global $z$", "ylabel": r"Global $y$"},
     ],
     "particle",
 )
@@ -59,7 +59,7 @@ fig = plot_odd_event(
     data,
     [
         {"x": "x", "y": "y", "input_names": ["sihit"], "xlabel": r"Global $x$", "ylabel": r"Global $y$"},
-        {"x": "z", "y": "y", "input_names": ["sihit"], "xlabel": r"Global $z$", "ylabel": r"Global $y$"}
+        {"x": "z", "y": "y", "input_names": ["sihit"], "xlabel": r"Global $z$", "ylabel": r"Global $y$"},
     ],
     "track",
 )

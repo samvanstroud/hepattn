@@ -39,17 +39,11 @@ class ODDDataset(IterableDataset):
 
         # If we are requesting calohits, the calohit data for each event used must be available
         if return_calohits:
-            sample_ids &= {
-                int(path.stem.replace("calo_hits_event_", ""))
-                for path in Path(dirpath).rglob("calo_hits_event*.parquet")
-            }
+            sample_ids &= {int(path.stem.replace("calo_hits_event_", "")) for path in Path(dirpath).rglob("calo_hits_event*.parquet")}
 
         # If we are requesting tracks, the track data for each event used must be available
         if return_tracks:
-            sample_ids &= {
-                int(path.stem.replace("tracks_event_", ""))
-                for path in Path(dirpath).rglob("tracks_event*.parquet")
-            }
+            sample_ids &= {int(path.stem.replace("tracks_event_", "")) for path in Path(dirpath).rglob("tracks_event*.parquet")}
 
         sample_ids = list(sample_ids)
         num_events_available = len(sample_ids)
@@ -110,37 +104,21 @@ class ODDDataset(IterableDataset):
             dtype = torch.int64 if field == "particle_id" else torch.float32
             targets[f"particle_{field}"] = ak.to_torch(particles[field]).to(dtype)
 
-        targets["particle_event_id"] = targets["particle_event_id"].expand_as(
-            targets["particle_particle_id"]
-        )
+        targets["particle_event_id"] = targets["particle_event_id"].expand_as(targets["particle_particle_id"])
 
         # Add extra particle fields
-        targets["particle_pt"] = torch.sqrt(
-            targets["particle_px"] ** 2 + targets["particle_py"] ** 2
-        )
-        targets["particle_p"] = torch.sqrt(
-            targets["particle_px"] ** 2
-            + targets["particle_py"] ** 2
-            + targets["particle_pz"] ** 2
-        )
+        targets["particle_pt"] = torch.sqrt(targets["particle_px"] ** 2 + targets["particle_py"] ** 2)
+        targets["particle_p"] = torch.sqrt(targets["particle_px"] ** 2 + targets["particle_py"] ** 2 + targets["particle_pz"] ** 2)
         targets["particle_qopt"] = targets["particle_charge"] / targets["particle_pt"]
-        targets["particle_eta"] = torch.arctanh(
-            targets["particle_pz"] / targets["particle_p"]
-        )
-        targets["particle_theta"] = torch.arccos(
-            targets["particle_pz"] / targets["particle_p"]
-        )
-        targets["particle_phi"] = torch.arctan2(
-            targets["particle_py"], targets["particle_px"]
-        )
+        targets["particle_eta"] = torch.arctanh(targets["particle_pz"] / targets["particle_p"])
+        targets["particle_theta"] = torch.arccos(targets["particle_pz"] / targets["particle_p"])
+        targets["particle_phi"] = torch.arctan2(targets["particle_py"], targets["particle_px"])
         targets["particle_charged"] = targets["particle_charge"] != 0
         targets["particle_neutral"] = ~targets["particle_charged"]
 
         # Calculate the particle cuts
         particle_valid = targets["particle_pt"] >= self.particle_min_pt
-        particle_valid = particle_valid & (
-            torch.abs(targets["particle_eta"]) <= self.particle_max_abs_eta
-        )
+        particle_valid = particle_valid & (torch.abs(targets["particle_eta"]) <= self.particle_max_abs_eta)
 
         if not self.particle_include_neutral:
             particle_valid = particle_valid & (~targets["particle_neutral"])
@@ -159,9 +137,7 @@ class ODDDataset(IterableDataset):
         if particle_valid.sum() > self.event_max_num_particles:
             return None
 
-        targets["particle_valid"] = torch.full_like(
-            targets["particle_pt"], True, dtype=torch.bool
-        )
+        targets["particle_valid"] = torch.full_like(targets["particle_pt"], True, dtype=torch.bool)
 
         # For now, all sihit fields are not jagged, so can convert straight to tensor
         for field in sihits.fields:
@@ -174,24 +150,15 @@ class ODDDataset(IterableDataset):
 
         # Add extra sihit fields
         inputs["sihit_r"] = torch.sqrt(inputs["sihit_x"] ** 2 + inputs["sihit_y"] ** 2)
-        inputs["sihit_s"] = torch.sqrt(
-            inputs["sihit_x"] ** 2 + inputs["sihit_y"] ** 2 + inputs["sihit_z"] ** 2
-        )
+        inputs["sihit_s"] = torch.sqrt(inputs["sihit_x"] ** 2 + inputs["sihit_y"] ** 2 + inputs["sihit_z"] ** 2)
         inputs["sihit_eta"] = torch.arctanh(inputs["sihit_z"] / inputs["sihit_s"])
         inputs["sihit_theta"] = torch.arccos(inputs["sihit_z"] / inputs["sihit_s"])
         inputs["sihit_phi"] = torch.arctan2(inputs["sihit_y"], inputs["sihit_x"])
 
-        inputs["sihit_valid"] = torch.full_like(
-            inputs["sihit_x"], True, dtype=torch.bool
-        )
+        inputs["sihit_valid"] = torch.full_like(inputs["sihit_x"], True, dtype=torch.bool)
         targets["sihit_valid"] = inputs["sihit_valid"]
-        targets["particle_sihit_valid"] = (
-            targets["particle_particle_id"][:, None]
-            == inputs["sihit_particle_id"][None, :]
-        )
-        targets["particle_num_sihits"] = targets["particle_sihit_valid"].float().sum(
-            -1
-        )
+        targets["particle_sihit_valid"] = targets["particle_particle_id"][:, None] == inputs["sihit_particle_id"][None, :]
+        targets["particle_num_sihits"] = targets["particle_sihit_valid"].float().sum(-1)
 
         # Have to now perform the particle cuts that depend on constituents
         particle_valid = targets["particle_num_sihits"] >= self.particle_min_num_sihits
@@ -208,9 +175,7 @@ class ODDDataset(IterableDataset):
             calohits_path = Path(str(particle_path).replace("particles", "calo_hits"))
 
             if not calohits_path.exists():
-                print(
-                    f"Calo hits data not found at {calohits_path}, so skipping event {sample_id}"
-                )
+                print(f"Calo hits data not found at {calohits_path}, so skipping event {sample_id}")
 
             calohits = ak.from_parquet(calohits_path)[0]
 
@@ -223,31 +188,22 @@ class ODDDataset(IterableDataset):
                     "contrib_times",
                 }:
                     continue
-                inputs[f"calohit_{field}"] = ak.to_torch(calohits[field]).to(
-                    torch.float32
-                )
+                inputs[f"calohit_{field}"] = ak.to_torch(calohits[field]).to(torch.float32)
 
             # Scale coords from mm to m
             for k in ("x", "y", "z"):
                 inputs[f"calohit_{k}"] = inputs[f"calohit_{k}"] / 1000.0
 
             # For the calohits we have to build the mask using awkward arrays since calo hits can be shared
-            particle_calohit_assoc = (
-                targets["particle_particle_id"][:, None, None]
-                == calohits["contrib_particle_ids"][None, :, :]
-            )
+            particle_calohit_assoc = targets["particle_particle_id"][:, None, None] == calohits["contrib_particle_ids"][None, :, :]
             particle_calohit_valid = ak.any(particle_calohit_assoc, axis=-1)
             particle_calohit_energy = ak.sum(
                 calohits["contrib_energies"][None, :, :] * particle_calohit_assoc,
                 axis=-1,
             )
-            particle_calohit_time = ak.sum(
-                calohits["contrib_times"][None, :, :] * particle_calohit_assoc, axis=-1
-            )
+            particle_calohit_time = ak.sum(calohits["contrib_times"][None, :, :] * particle_calohit_assoc, axis=-1)
 
-            inputs["calohit_valid"] = torch.full_like(
-                inputs["calohit_x"], True, dtype=torch.bool
-            )
+            inputs["calohit_valid"] = torch.full_like(inputs["calohit_x"], True, dtype=torch.bool)
             targets["calohit_valid"] = inputs["calohit_valid"]
             targets["particle_calohit_valid"] = ak.to_torch(particle_calohit_valid)
             targets["particle_calohit_energy"] = ak.to_torch(particle_calohit_energy)
@@ -258,9 +214,7 @@ class ODDDataset(IterableDataset):
             tracks_path = Path(str(particle_path).replace("particles", "tracks"))
 
             if not tracks_path.exists():
-                print(
-                    f"Calo hits data not found at {tracks_path}, so skipping event {sample_id}"
-                )
+                print(f"Calo hits data not found at {tracks_path}, so skipping event {sample_id}")
 
             tracks = ak.from_parquet(tracks_path)[0]
 
@@ -270,15 +224,11 @@ class ODDDataset(IterableDataset):
                     continue
                 targets[f"track_{field}"] = ak.to_torch(tracks[field])
 
-            targets["track_valid"] = torch.full_like(
-                targets["track_phi"], True, dtype=torch.bool
-            )
+            targets["track_valid"] = torch.full_like(targets["track_phi"], True, dtype=torch.bool)
 
             # Now add the track masks
             hit_id = ak.from_numpy(np.arange(len(inputs["sihit_valid"])))
-            track_sihit_valid = ak.to_torch(
-                ak.any(tracks["hit_ids"][:, None] == hit_id[None, :], axis=2)
-            )
+            track_sihit_valid = ak.to_torch(ak.any(tracks["hit_ids"][:, None] == hit_id[None, :], axis=2))
 
             targets["track_sihit_valid"] = track_sihit_valid
 
@@ -295,9 +245,7 @@ class ODDDataset(IterableDataset):
         else:
             num_workers = worker_info.num_workers
             worker_id = worker_info.id
-            per_worker = int(
-                np.ceil(len(self.sample_ids) / float(num_workers))
-            )
+            per_worker = int(np.ceil(len(self.sample_ids) / float(num_workers)))
             start = worker_id * per_worker
             end = min(start + per_worker, len(self.sample_ids))
             sample_ids = self.sample_ids[start:end]
@@ -319,9 +267,7 @@ class ODDDataset(IterableDataset):
                         self.event_max_num_particles - x.size(0),
                         *x.shape[1:],
                     )
-                    pad_tensor = x.new_full(
-                        pad_shape, False if x.dtype is torch.bool else 0
-                    )
+                    pad_tensor = x.new_full(pad_shape, False if x.dtype is torch.bool else 0)
 
                     targets[k] = torch.cat([x, pad_tensor], dim=0)
 
@@ -360,14 +306,10 @@ class ODDDataModule(LightningDataModule):
 
     def setup(self, stage: str):
         if stage in {"fit", "test"}:
-            self.train_dset = ODDDataset(
-                dirpath=self.train_dir, num_events=self.num_train, **self.kwargs
-            )
+            self.train_dset = ODDDataset(dirpath=self.train_dir, num_events=self.num_train, **self.kwargs)
 
         if stage == "fit":
-            self.val_dset = ODDDataset(
-                dirpath=self.val_dir, num_events=self.num_val, **self.kwargs
-            )
+            self.val_dset = ODDDataset(dirpath=self.val_dir, num_events=self.num_val, **self.kwargs)
 
         # Only print train/val dataset details when actually training
         if stage == "fit" and self.trainer.is_global_zero:
@@ -375,12 +317,8 @@ class ODDDataModule(LightningDataModule):
             print(f"Created validation dataset with {len(self.val_dset):,} events")
 
         if stage == "test":
-            assert (
-                self.test_dir is not None
-            ), "No test file specified, see --data.test_dir"
-            self.test_dset = ODDDataset(
-                dirpath=self.test_dir, num_events=self.num_test, **self.kwargs
-            )
+            assert self.test_dir is not None, "No test file specified, see --data.test_dir"
+            self.test_dset = ODDDataset(dirpath=self.test_dir, num_events=self.num_test, **self.kwargs)
             print(f"Created test dataset with {len(self.test_dset):,} events")
 
     def get_dataloader(self, stage: str, dataset: ODDDataset, shuffle: bool):
