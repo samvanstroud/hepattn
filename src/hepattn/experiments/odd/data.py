@@ -19,6 +19,8 @@ class ODDDataset(Dataset):
         num_events: int = -1,
         particle_min_pt: float = 0.5,
         particle_max_abs_eta: float = 4.0,
+        particle_include_charged: bool = True,
+        particle_include_neutral: bool = True,
         event_max_num_particles: int = 10_000_000,
         return_calohits: bool = True,
         return_tracks: bool = True,
@@ -44,23 +46,23 @@ class ODDDataset(Dataset):
         if num_events < 0:
             num_events = num_events_available
 
-        # Metadata
+        print(f"Found {num_events_available} available events, using {num_events} events.")
+
+        # Sample ID is an integer that can uniquely identify each event/sample, used for picking out events during eval etc
         self.dirpath = Path(dirpath)
         self.num_events = num_events
         self.sample_ids = sample_ids[:num_events]
 
-        # Sample ID is an integer that can uniquely identify each event/sample, used for picking out events during eval etc
-        # self.sample_ids = np.array([int(name.split("event")[-1]) for name in self.event_names], dtype=np.int64)
-        # self.sample_ids_to_event_names = {self.sample_ids[i]: str(self.event_names[i]) for i in range(len(self.sample_ids))}
-        # self.event_names_to_sample_ids = {v: k for k, v in self.sample_ids_to_event_names.items()}
-
         # Particle level cuts
         self.particle_min_pt = particle_min_pt
         self.particle_max_abs_eta = particle_max_abs_eta
+        self.particle_include_charged = particle_include_charged
+        self.particle_include_neutral = particle_include_neutral
 
         # Event level cuts
         self.event_max_num_particles = event_max_num_particles
 
+        # Whether to return calo/ACTS track collections
         self.return_calohits = return_calohits
         self.return_tracks = return_tracks
 
@@ -89,28 +91,42 @@ class ODDDataset(Dataset):
         for field in sihits.fields:
             inputs[f"sihit_{field}"] = ak.to_torch(sihits[field])
 
+        # Add extra sihit fields
+        inputs["sihit_r"] = torch.sqrt(inputs["sihit_x"]**2 + inputs["sihit_y"]**2)
+        inputs["sihit_s"] = torch.sqrt(inputs["sihit_x"]**2 + inputs["sihit_y"]**2 + inputs["sihit_z"]**2)
+        inputs["sihit_eta"] = torch.arctanh(inputs["sihit_z"] / inputs["sihit_s"])
+        inputs["sihit_theta"] = torch.arccos(inputs["sihit_z"] / inputs["sihit_s"])
+        inputs["sihit_phi"] = torch.arctan2(inputs["sihit_y"], inputs["sihit_x"])
+
         # Add extra particle fields
-        targets["particle_p"] = torch.sqrt(targets["particle_px"] ** 2 + targets["particle_py"] ** 2 + targets["particle_pz"] ** 2)
         targets["particle_pt"] = torch.sqrt(targets["particle_px"] ** 2 + targets["particle_py"] ** 2)
+        targets["particle_p"] = torch.sqrt(targets["particle_px"] ** 2 + targets["particle_py"] ** 2 + targets["particle_pz"] ** 2)
         targets["particle_qopt"] = targets["particle_charge"] / targets["particle_pt"]
         targets["particle_eta"] = torch.arctanh(targets["particle_pz"] / targets["particle_p"])
         targets["particle_theta"] = torch.arccos(targets["particle_pz"] / targets["particle_p"])
         targets["particle_phi"] = torch.arctan2(targets["particle_py"], targets["particle_px"])
-        targets["particle_costheta"] = torch.cos(targets["particle_theta"])
-        targets["particle_sintheta"] = torch.sin(targets["particle_theta"])
-        targets["particle_cosphi"] = torch.cos(targets["particle_phi"])
-        targets["particle_sinphi"] = torch.sin(targets["particle_phi"])
+        targets["particle_charged"] = targets["particle_charge"] != 0
+        targets["particle_neutral"] = ~targets["particle_charged"]
 
         # Calculate the particle cuts
         particle_valid = targets["particle_pt"] >= self.particle_min_pt
         particle_valid = particle_valid & (torch.abs(targets["particle_eta"]) <= self.particle_max_abs_eta)
 
-        # Apply the particle cut
+        if not self.particle_include_neutral:
+            particle_valid = particle_valid & (~targets["particle_neutral"])
 
+        if not self.particle_include_charged:
+            particle_valid = particle_valid & (~targets["particle_charged"])
+
+        # Apply the particle cut
         for field in particles.fields:
             if field == "event_id":
                 continue
             targets[f"particle_{field}"] = targets[f"particle_{field}"][particle_valid]
+
+        # Apply event level cut
+        if particle_valid.sum() > self.event_max_num_particles:
+            return None
 
         targets["particle_valid"] = torch.full_like(targets["particle_pt"], True, dtype=torch.bool)
         targets["particle_sihit_valid"] = targets["particle_particle_id"][:, None] == inputs["sihit_particle_id"][None, :]
@@ -164,7 +180,9 @@ class ODDDataset(Dataset):
     def __getitem__(self, idx):
         sample_id = self.sample_ids[idx]
         inputs, targets = self.load_event(sample_id)
-
+        
+        # Add dummy batch dimension
+        # TODO: Support batch size > 1
         inputs_out = {k: v.unsqueeze(0) for k, v in inputs.items()}
         targets_out = {k: v.unsqueeze(0) for k, v in targets.items()}
 
