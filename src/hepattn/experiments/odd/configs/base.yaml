@@ -13,15 +13,18 @@ data:
   num_val: 100
 
   # Minimum pT for a particle to be deemed reconstructve in GeV
-  particle_min_pt: 0.01
+  particle_min_pt: 1.0
   particle_max_abs_eta: 4.0
 
   # Whether to include charged / neutral particles as targets
   particle_include_charged: true
-  particle_include_neutral: true
+  particle_include_neutral: false
 
   # Number of query slots / particles to generate per event
-  event_max_num_particles: 10000
+  event_max_num_particles: 1024
+
+  return_calohits: false
+  return_tracks: false
 
 # Training stuff here
 trainer:
@@ -32,9 +35,8 @@ trainer:
   log_every_n_steps: 10
   default_root_dir: logs
   gradient_clip_val: 0.1
-  accumulate_grad_batches: 1
-  enable_progress_bar: True
-  val_check_interval: 500
+  enable_progress_bar: true
+  val_check_interval: 1000
 
   logger:
     class_path: hepattn.utils.loggers.MyCometLogger
@@ -60,16 +62,16 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
-        refresh_rate: 50
+        refresh_rate: 10
 
 model:
   optimizer: lion
 
   lrs_config:
     initial: 1e-5
-    max: 4e-5
-    end: 1e-6
-    pct_start: 0.01
+    max: 5e-5
+    end: 1e-5
+    pct_start: 0.001
     skip_scheduler: false
     weight_decay: 1e-5
 
@@ -93,20 +95,27 @@ model:
                   - x
                   - y
                   - z
+                  - r
+                  - s
+                  - eta
+                  - phi
+                  - layer_id
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
-                    input_size: 3
+                    input_size: 8
+                    hidden_layers: [128]
                     output_size: *dim
+                    activation: SwiGLU
                 posenc:
                   class_path: hepattn.models.posenc.PositionEncoder
                   init_args:
                     input_name: sihit
                     dim: *dim
                     fields:
-                      - x
-                      - y
-                      - z
+                      - r
+                      - eta
+                      - phi
 
       encoder:
         class_path: hepattn.models.Encoder
@@ -117,20 +126,21 @@ model:
           window_size: 512
           window_wrap: true
           hybrid_norm: true
-          value_residual: true
-          attn_kwargs:
-            num_heads: 8
+          norm: FastLayerNorm
+          dense_kwargs: {activation: SwiGLU}
+          attn_kwargs: {bias: false}
 
       decoder:
         num_decoder_layers: 4
-        num_queries: 1000
+        num_queries: 1024
         mask_attention: true
         use_query_masks: false
         decoder_layer_config:
           dim: *dim
+          norm: FastLayerNorm
           hybrid_norm: true
-          attn_kwargs:
-            num_heads: 8
+          dense_kwargs: {activation: SwiGLU}
+          attn_kwargs: {bias: false}
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
@@ -143,7 +153,7 @@ model:
         class_path: torch.nn.ModuleList
         init_args:
           modules:
-            - class_path: hepattn.models.task.ObjectValidTask
+            - class_path: hepattn.models.task.ObjectClassificationTask
               init_args:
                 name: flow_valid
                 input_object: query
@@ -152,11 +162,12 @@ model:
                 losses:
                   object_bce: 0.1
                 costs:
-                  object_bce: 1.0
+                  object_bce: 0.1
                 dim: *dim
                 null_weight: 1.0
                 mask_queries: false
-                has_intermediate_loss: False
+                has_intermediate_loss: true
+                has_first_layer_loss: false
 
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
@@ -165,14 +176,13 @@ model:
                 input_object: query
                 output_object: flow
                 target_object: particle
-                has_intermediate_loss: False
+                predict_iou: true
                 losses:
-                  mask_bce: 0.5
-                  mask_dice: 1.0
-                  #mask_focal: 1.0
+                  mask_dice: 2.0
+                  mask_focal: 100.0
                 costs:
-                  #mask_bce: 1.0
-                  mask_dice: 1.0
-                  #mask_focal: 1.0
+                  mask_dice: 2.0
+                  mask_focal: 100.0
+                null_weight: 1.0
                 dim: *dim
                 null_weight: 1.0
