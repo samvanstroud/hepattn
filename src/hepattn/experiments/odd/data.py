@@ -19,6 +19,7 @@ class ODDDataset(Dataset):
         num_events: int = -1,
         particle_min_pt: float = 0.5,
         particle_max_abs_eta: float = 4.0,
+        particle_min_num_sihits: int = 6,
         particle_include_charged: bool = True,
         particle_include_neutral: bool = True,
         event_max_num_particles: int = 10_000_000,
@@ -34,7 +35,22 @@ class ODDDataset(Dataset):
             self.sample_id_file_paths[sample_id] = path
 
         # Calculate the number of events that will actually be used
-        sample_ids = list(self.sample_id_file_paths.keys())
+        sample_ids = set(self.sample_id_file_paths.keys())
+
+        # If we are requesting calohits, the calohit data for each event used must be available
+        if return_calohits:
+            sample_ids &= set([int(path.stem.replace("calo_hits_event_", ""))
+                for path in Path(dirpath).rglob("calo_hits_event*.parquet")
+                ])
+
+        # If we are requesting tracks, the track data for each event used must be available
+        if return_tracks:
+            sample_ids &= set([
+                int(path.stem.replace("tracks_event_", ""))
+                for path in Path(dirpath).rglob("tracks_event*.parquet")
+                ])
+        
+        sample_ids = list(sample_ids)
         num_events_available = len(sample_ids)
 
         if num_events > num_events_available:
@@ -56,6 +72,7 @@ class ODDDataset(Dataset):
         # Particle level cuts
         self.particle_min_pt = particle_min_pt
         self.particle_max_abs_eta = particle_max_abs_eta
+        self.particle_min_num_sihits = particle_min_num_sihits
         self.particle_include_charged = particle_include_charged
         self.particle_include_neutral = particle_include_neutral
 
@@ -146,6 +163,17 @@ class ODDDataset(Dataset):
         inputs["sihit_valid"] = torch.full_like(inputs["sihit_x"], True, dtype=torch.bool)
         targets["sihit_valid"] = inputs["sihit_valid"]
         targets["particle_sihit_valid"] = targets["particle_particle_id"][:, None] == inputs["sihit_particle_id"][None, :]
+        targets["particle_num_sihits"] = targets["particle_sihit_valid"].float().sum(-1)
+
+        # Have to now perform the particle cuts that depend on constituents
+        particle_valid = targets["particle_num_sihits"] >= self.particle_min_num_sihits
+
+        # Apply the constituent based particle cuts
+        for k in targets:
+            if k.split("_")[0] != "particle":
+                continue
+
+            targets[k] = targets[k][particle_valid]
 
         # Return the calorimeter hit info if requested
         if self.return_calohits:
