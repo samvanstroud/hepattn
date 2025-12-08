@@ -1,5 +1,5 @@
 seed_everything: 42
-name: HF-v1
+name: HF-900MeV-eta4
 
 data:
   #train_dir: data/trackml/prepped/
@@ -9,7 +9,7 @@ data:
   val_dir: /projects/u5du/pduckett/data_new/val/
   test_dir: /projects/u5du/pduckett/data_new/test/
 
-  num_workers: 10
+  num_workers: 15
   num_train: -1
   num_test: -1
   num_val: -1
@@ -62,11 +62,11 @@ data:
       - pt
 
 trainer:
-  max_epochs: 50
+  max_epochs: 80
   accelerator: gpu
   devices: 1
-  precision: bf16-mixed
-  log_every_n_steps: 50
+  precision: 16-mixed
+  log_every_n_steps: 100
   default_root_dir: logs
   gradient_clip_val: 0.1
   enable_progress_bar: True
@@ -93,7 +93,7 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
-        refresh_rate: 50
+        refresh_rate: 100
 
 model:
   optimizer: Lion
