@@ -1,3 +1,8 @@
+# Standard library
+from contextlib import suppress
+from pathlib import Path
+import uuid
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -244,6 +249,8 @@ class AttnMaskLogger(Callback):
                     attn_mask = l_out["attn_mask"]
                     attn_mask_im = attn_mask[0].detach().cpu().clone().int()
                     self._log_attention_mask(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+                    if step > 10000:
+                        self._log_mask_points_for_kde(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
                     if self.log_stats:
                         self._log_attention_stats(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
 
@@ -264,3 +271,40 @@ class AttnMaskLogger(Callback):
             return
         step = getattr(trainer, "global_step", batch_idx)
         self._process_attention_masks_from_outputs(pl_module, outputs, step, is_validation=False)
+
+    def _log_mask_points_for_kde(self, pl_module, mask, step, layer, prefix="local_ma_mask"):
+        """Save a subsampled set of (query, key) coordinates where mask==1.
+        These can be used later to build KDE plots without storing full masks.
+        """
+        # mask: [num_queries, num_hits], 0/1 or bool
+        mask_bool = mask.bool()
+        q_idx, k_idx = torch.where(mask_bool)
+
+        # Nothing to save if there are no hits
+        if q_idx.numel() == 0:
+            return
+
+        # Subsample for memory / disk usage
+        max_points = 100_000  # tune as you like
+        num_points = q_idx.numel()
+        if num_points > max_points:
+            perm = torch.randperm(num_points, device=mask.device)[:max_points]
+            q_idx = q_idx[perm]
+            k_idx = k_idx[perm]
+
+        coords = torch.stack([q_idx, k_idx], dim=1).cpu().numpy()
+
+        # Use small integer dtype if sequence length allows it
+        coords = coords.astype("uint16") if (mask.shape[0] < 65535) and (mask.shape[1] < 65535) else coords.astype("uint32")
+
+        # Save as compressed npz
+        filename = Path(f"attn_hits_{prefix}_step{step}_layer{layer}_{uuid.uuid4().hex}.npz")
+        np.savez_compressed(filename, coords=coords, num_queries=mask.shape[0], num_hits=mask.shape[1])
+
+        logger = getattr(pl_module, "logger", None)
+        if logger is not None and hasattr(logger, "experiment"):
+            # For Comet: log as an asset / artifact
+            logger.experiment.log_asset(file_data=filename, file_name=filename, step=step)
+        # Clean up local file
+        with suppress(OSError):
+            filename.unlink()
