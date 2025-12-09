@@ -7,11 +7,6 @@ from lightning import LightningDataModule
 from torch.utils.data import DataLoader, IterableDataset, get_worker_info
 
 
-def is_valid_file(path):
-    path = Path(path)
-    return path.is_file() and path.stat().st_size > 0
-
-
 class ODDDataset(IterableDataset):
     def __init__(
         self,

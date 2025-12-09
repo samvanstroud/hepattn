@@ -185,4 +185,3 @@ model:
                   mask_focal: 100.0
                 null_weight: 1.0
                 dim: *dim
-                null_weight: 1.0

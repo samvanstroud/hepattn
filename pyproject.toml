@@ -103,7 +103,6 @@ cmd = "pytest --ignore=tests/experiments/ -m 'not gpu and not requiresdata' --co
 [tool.pixi.tasks.test-integration-ci]
 cmd = "pytest tests/experiments/ -m 'not gpu and not requiresdata' --cov=src --cov-report=xml --cov-report=term-missing"
 
-
 [tool.ruff]
 src = ["src"]
 line-length = 150
@@ -121,7 +120,6 @@ pydocstyle.convention = "google"
 
 [tool.ty.rules]
 missing-argument = "ignore" # for now as kwarg unpacking is not supported
-
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:.*distutils Version classes are deprecated. Use packaging.version instead.*:DeprecationWarning"]
