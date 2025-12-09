@@ -214,7 +214,7 @@ class ODDDataset(IterableDataset):
             tracks_path = Path(str(particle_path).replace("particles", "tracks"))
 
             if not tracks_path.exists():
-                print(f"Calo hits data not found at {tracks_path}, so skipping event {sample_id}")
+                print(f"Tracks data not found at {tracks_path}, so skipping event {sample_id}")
 
             tracks = ak.from_parquet(tracks_path)[0]
 
