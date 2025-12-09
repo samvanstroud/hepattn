@@ -101,7 +101,7 @@ def _kv_blocks_wrap(
     span = hi_token - low_token + 1  # window width in tokens (inclusive)
 
     kv_len_t = torch.tensor(kv_len, device=device, dtype=torch.int32)
-    base = torch.arange(kv_blocks, device=device, dtype=torch.int64)
+    base = torch.arange(kv_blocks, device=device, dtype=torch.int32)
     base2 = base.unsqueeze(0).expand(q_blocks, kv_blocks)
 
     # If window covers the whole sequence, select all KV blocks
@@ -149,7 +149,6 @@ _kv_blocks_wrap = torch.compile(_kv_blocks_wrap, dynamic=True)  # type: ignore[i
 def build_strided_sliding_window_blockmask(
     *,
     window_size: int,
-    stride: float,
     q_len: int,
     kv_len: int,
     device: str,
@@ -164,13 +163,10 @@ def build_strided_sliding_window_blockmask(
       2) At *token* granularity: `mask_mod` filters inside those blocks so the
          final mask exactly matches a window of width `window_size` centered at
          round(q_idx * stride). If `wrap=True`, the window wraps circularly.
-
     Notes:
       - window_size must be even so the window is symmetric around the center.
-      - `stride` controls how the window center moves as q_idx increases.
       - The compiled helpers scale by kv_len/q_len to get a safe block envelope;
         `mask_mod` does the precise per-token check using `stride`.
-
     Raises:
         ValueError: If window_size is odd.
     """
@@ -178,9 +174,9 @@ def build_strided_sliding_window_blockmask(
         raise ValueError("Window size must be even for strided sliding window")
 
     # Number of query/KV blocks (ceil division)
+    stride_t = torch.tensor(kv_len / q_len, device=device, dtype=dtype_float)
     q_blocks = (q_len + block_size - 1) // block_size
     kv_blocks = (kv_len + block_size - 1) // block_size
-    stride_t = torch.tensor(stride, device=device, dtype=dtype_float)
 
     # Compute the block-level KV visibility (coarse envelope)
     if wrap:

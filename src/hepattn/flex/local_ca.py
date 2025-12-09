@@ -5,9 +5,12 @@ from torch.nn.attention.flex_attention import BlockMask, _mask_mod_signature, cr
 create_block_mask: _mask_mod_signature = torch.compile(create_block_mask, dynamic=True)
 
 
+def _round_mul(q_idx, num, den):
+    return (q_idx * num + (den // 2)) // den
+
+
 def sliding_window_mask_strided(
     window_size: int,
-    stride: float,
     q_len: int,
     kv_len: int,
     device: str,
@@ -15,11 +18,9 @@ def sliding_window_mask_strided(
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
 
-    stride_val = torch.tensor(stride, device=device)
-
     def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
         # b = 0, h = 0 here
-        q_center = torch.round(q_idx * stride_val)
+        q_center = _round_mul(q_idx, kv_len, q_len)
         return (kv_idx - q_center).abs() <= window_size // 2
 
     return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
@@ -27,7 +28,6 @@ def sliding_window_mask_strided(
 
 def sliding_window_mask_strided_wrapped(
     window_size: int,
-    stride: float,
     q_len: int,
     kv_len: int,
     device: str,
@@ -35,16 +35,13 @@ def sliding_window_mask_strided_wrapped(
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
 
-    stride_val = torch.tensor(stride, device=device)
-    kv_len_t = torch.as_tensor(kv_len, device=device).reshape(())
-
     def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
         # b = 0, h = 0 here
-        q_center = torch.round(q_idx * stride_val)
+        q_center = _round_mul(q_idx, kv_len, q_len)
 
         diagonal = (kv_idx - q_center).abs() <= window_size // 2
-        wrap_left = (kv_idx - q_center + kv_len_t).abs() <= window_size // 2
-        wrap_right = (kv_idx - q_center - kv_len_t).abs() <= window_size // 2
+        wrap_left = (kv_idx - q_center + kv_len).abs() <= window_size // 2
+        wrap_right = (kv_idx - q_center - kv_len).abs() <= window_size // 2
 
         return diagonal | wrap_left | wrap_right
 
