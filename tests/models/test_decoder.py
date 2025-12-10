@@ -195,7 +195,7 @@ class TestMaskFormerDecoder:
     def test_forward_shapes(self, decoder_no_mask_attention, sample_decoder_data):
         """Test that forward pass maintains correct tensor shapes."""
         x, input_names = sample_decoder_data
-        decoder_no_mask_attention.tasks = []
+        decoder_no_mask_attention.tasks = []  # Empty task list
 
         original_query_shape = x["query_embed"].shape
         original_key_shape = x["key_embed"].shape
@@ -208,7 +208,7 @@ class TestMaskFormerDecoder:
     def test_forward_shapes_local_strided_attn(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
         """Test that forward pass maintains correct tensor shapes with local_strided_attn."""
         x, input_names = sample_local_strided_decoder_data
-        decoder_local_strided_attn.tasks = []
+        decoder_local_strided_attn.tasks = []  # Empty task list
 
         original_query_shape = x["query_embed"].shape
         original_key_shape = x["key_embed"].shape
