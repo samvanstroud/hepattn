@@ -17,7 +17,7 @@ class TrackMLFilter(ModelWrapper):
         super().__init__(name, model, lrs_config, optimizer)
 
     def log_custom_metrics(self, preds, targets, stage):
-        assert len(self.model.tasks) == 1
+        # assert len(self.model.tasks) == 1
         task = self.model.tasks[0]
         target_field = task.target_field
         input_object = task.input_object
@@ -44,6 +44,8 @@ class TrackMLFilter(ModelWrapper):
             "valid_precision": tp / pred.sum(),
             "noise_recall": tn / (~true).sum(),
             "noise_precision": tn / (~pred).sum(),
+            # other things
+            "num_particles": targets["particle_valid"].float().sum(),
         }
 
         # Now actually log the metrics
