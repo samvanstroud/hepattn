@@ -996,7 +996,7 @@ class ClassificationTask(Task):
         else:
             # Multi-class classification
             probs = torch.nn.functional.softmax(logits, dim=-1)
-            predictions = torch.nn.functional.one_hot(torch.argmax(logits, dim=-1), num_classes=len(self.classes))
+            predictions = torch.nn.functional.one_hot(torch.argmax(logits, dim=-1), num_classes=len(self.classes)).bool()
             for i, class_name in enumerate(self.classes):
                 result[self.output_object + "_" + class_name + "_prob"] = probs[..., i]
                 result[self.output_object + "_" + class_name] = predictions[..., i]
@@ -1029,7 +1029,7 @@ class ClassificationTask(Task):
             losses = torch.nn.functional.binary_cross_entropy_with_logits(logits, target, pos_weight=pos_weight, reduction="none").mean(dim=-1)
         else:
             # Multi-class classification with cross entropy
-            target = torch.stack([targets[self.target_object + "_" + class_name] for class_name in self.classes], dim=-1)
+            target = torch.stack([targets[self.target_object + "_" + class_name] for class_name in self.classes], dim=-1).float()
 
             # Put the class weights into a tensor with the correct dtype
             class_weights = None
