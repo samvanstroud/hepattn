@@ -3,6 +3,17 @@ from torch import nn
 from torch.nn import functional as F
 
 
+class CustomLayerNorm(nn.LayerNorm):
+    """Slightly faster LayerNorm by setting elementwise_affine=False."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, x):
+        dtype = x.dtype
+        return super().forward(x).to(dtype)
+
+
 class FastLayerNorm(nn.LayerNorm):
     """Slightly faster LayerNorm by setting elementwise_affine=False."""
 
@@ -34,7 +45,8 @@ class SimpleRMSNorm(nn.Module):
         self.scale = dim**0.5
 
     def forward(self, x):
-        return F.normalize(x, dim=-1) * self.scale
+        dtype = x.dtype
+        return (F.normalize(x, dim=-1) * self.scale).to(dtype)
 
 
 class DyT(nn.Module):
@@ -78,6 +90,7 @@ def get_hybrid_norm_config(norm: str | None, depth: int, hybrid_norm: bool, qkv_
 NORM_TYPES: dict[str, type[nn.Module]] = {
     "LayerNorm": nn.LayerNorm,
     "RMSNorm": nn.RMSNorm,
+    "CustomLayerNorm": CustomLayerNorm,
     "FastLayerNorm": FastLayerNorm,
     "CustomRMSNorm": CustomRMSNorm,
     "SimpleRMSNorm": SimpleRMSNorm,

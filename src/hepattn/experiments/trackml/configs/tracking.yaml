@@ -185,7 +185,7 @@ model:
           window_size: 512
           window_wrap: true
           hybrid_norm: true
-          norm: LayerNorm
+          norm: CustomLayerNorm
           dense_kwargs: {activation: SwiGLU}
           attn_kwargs: {bias: false}
 
@@ -196,7 +196,7 @@ model:
         use_query_masks: false
         decoder_layer_config:
           dim: *dim
-          norm: LayerNorm
+          norm: CustomLayerNorm
           hybrid_norm: true
           dense_kwargs: {activation: SwiGLU}
           attn_kwargs: {bias: false}
