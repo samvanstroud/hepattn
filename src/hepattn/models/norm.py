@@ -4,7 +4,7 @@ from torch.nn import functional as F
 
 
 class CustomLayerNorm(nn.LayerNorm):
-    """Slightly faster LayerNorm by setting elementwise_affine=False."""
+    """LayerNorm that preserves the input dtype through normalization operations."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
