@@ -330,7 +330,7 @@ class HitFilterTask(Task):
         tp = (pred * true).sum()
         tn = ((~pred) * (~true)).sum()
 
-        metrics = {
+        return {
             # Log quantities based on the number of hits
             "nh_total_pre": float(pred.shape[1]),
             "nh_total_post": float(pred.sum()),
@@ -347,8 +347,6 @@ class HitFilterTask(Task):
             "noise_recall": tn / (~true).sum(),
             "noise_precision": tn / (~pred).sum(),
         }
-
-        return metrics
 
 
 class ObjectHitMaskTask(Task):
