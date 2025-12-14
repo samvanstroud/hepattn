@@ -93,7 +93,10 @@ trainer:
       project: trackml_tracking
 
   callbacks:
-    #- class_path: hepattn.callbacks.Compile
+    - class_path: hepattn.callbacks.Compile
+      init_args:
+        skip_dynamic_cudagraphs: true
+        #mode: max-autotune # use for fastest inference
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint
