@@ -308,16 +308,16 @@ class TestClassificationTask:  # noqa: PLR0904
             loss_weight=1.0,
             threshold=0.9,
         )
-        
+
         # Use the same network weights for fair comparison
         task_high_threshold.net.load_state_dict(task_low_threshold.net.state_dict())
-        
+
         x = {"hit_embed": torch.randn(batch_size, num_hits, dim)}
-        
+
         # Get outputs from both tasks (should be identical since same weights)
         outputs_low = task_low_threshold.forward(x)
         outputs_high = task_high_threshold.forward(x)
-        
+
         pred_low = task_low_threshold.predict(outputs_low)
         pred_high = task_high_threshold.predict(outputs_high)
 
