@@ -78,7 +78,13 @@ class TrackMLTracker(ModelWrapper):
 
         self.log(f"{stage}/num_tracks", torch.mean(pred_num.float()), sync_dist=True)
         self.log(f"{stage}/num_particles", torch.mean(true_num.float()), sync_dist=True)
-        self.log(f"{stage}/num_hits", pred_hit_masks.shape[2], sync_dist=True)
+
+        num_hits_total = pred_hit_masks.shape[-1]
+        num_hits_valid = true_hit_masks.sum()
+        num_hits_noise = num_hits_total - num_hits_valid
+        self.log(f"{stage}/num_hits", num_hits_total, sync_dist=True)
+        self.log(f"{stage}/num_hits_valid", num_hits_valid, sync_dist=True)
+        self.log(f"{stage}/num_hits_noise", num_hits_noise, sync_dist=True)
 
 
 def main(args: ArgsType = None) -> None:
