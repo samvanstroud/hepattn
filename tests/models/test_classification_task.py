@@ -95,7 +95,7 @@ class TestClassificationTask:  # noqa: PLR0904
         """Test predict method for binary classification."""
         x = {"hit_embed": torch.randn(batch_size, num_hits, dim)}
         outputs = binary_single_output_task.forward(x)
-        predictions = binary_single_output_task.predict(outputs, threshold=0.5)
+        predictions = binary_single_output_task.predict(outputs)
 
         assert "hit_is_first" in predictions
         assert predictions["hit_is_first"].shape == (batch_size, num_hits)
@@ -147,7 +147,7 @@ class TestClassificationTask:  # noqa: PLR0904
         """Test predict method for multilabel classification."""
         x = {"hit_embed": torch.randn(batch_size, num_hits, dim)}
         outputs = multilabel_task.forward(x)
-        predictions = multilabel_task.predict(outputs, threshold=0.5)
+        predictions = multilabel_task.predict(outputs)
 
         assert "hit_is_first" in predictions
         assert "hit_is_last" in predictions
@@ -205,7 +205,7 @@ class TestClassificationTask:  # noqa: PLR0904
         num_particles = 50
         x = {"particle_embed": torch.randn(batch_size, num_particles, dim)}
         outputs = multiclass_task.forward(x)
-        predictions = multiclass_task.predict(outputs, threshold=0.5)
+        predictions = multiclass_task.predict(outputs)
 
         assert "particle_electron" in predictions
         assert "particle_muon" in predictions
@@ -270,7 +270,7 @@ class TestClassificationTask:  # noqa: PLR0904
         """Test metrics computation."""
         x = {"hit_embed": torch.randn(batch_size, num_hits, dim)}
         outputs = binary_single_output_task.forward(x)
-        predictions = binary_single_output_task.predict(outputs, threshold=0.5)
+        predictions = binary_single_output_task.predict(outputs)
 
         targets = {
             "hit_is_first": torch.randint(0, 2, (batch_size, num_hits), dtype=torch.bool),
@@ -283,13 +283,43 @@ class TestClassificationTask:  # noqa: PLR0904
         assert 0 <= metrics["is_first_eff"] <= 1
         assert 0 <= metrics["is_first_pur"] <= 1
 
-    def test_threshold_effect_on_predictions(self, binary_single_output_task, batch_size, num_hits, dim):
+    def test_threshold_effect_on_predictions(self, batch_size, num_hits, dim):
         """Test that threshold affects predictions."""
+        # Create two tasks with different thresholds
+        task_low_threshold = ClassificationTask(
+            name="binary_low",
+            input_object="hit",
+            output_object="hit",
+            target_object="hit",
+            classes=["is_first"],
+            net=Dense(input_size=dim, output_size=1),
+            multilabel=False,
+            loss_weight=1.0,
+            threshold=0.1,
+        )
+        task_high_threshold = ClassificationTask(
+            name="binary_high",
+            input_object="hit",
+            output_object="hit",
+            target_object="hit",
+            classes=["is_first"],
+            net=Dense(input_size=dim, output_size=1),
+            multilabel=False,
+            loss_weight=1.0,
+            threshold=0.9,
+        )
+        
+        # Use the same network weights for fair comparison
+        task_high_threshold.net.load_state_dict(task_low_threshold.net.state_dict())
+        
         x = {"hit_embed": torch.randn(batch_size, num_hits, dim)}
-        outputs = binary_single_output_task.forward(x)
-
-        pred_low = binary_single_output_task.predict(outputs, threshold=0.1)
-        pred_high = binary_single_output_task.predict(outputs, threshold=0.9)
+        
+        # Get outputs from both tasks (should be identical since same weights)
+        outputs_low = task_low_threshold.forward(x)
+        outputs_high = task_high_threshold.forward(x)
+        
+        pred_low = task_low_threshold.predict(outputs_low)
+        pred_high = task_high_threshold.predict(outputs_high)
 
         # Lower threshold should predict more True values
         assert pred_low["hit_is_first"].sum() >= pred_high["hit_is_first"].sum()
