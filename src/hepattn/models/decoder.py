@@ -35,6 +35,7 @@ class MaskFormerDecoder(nn.Module):
         fast_local_ca: bool = False,
         block_size: int = 128,
         unified_decoding: bool = False,
+        unmask_all_false: bool = True,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -52,6 +53,7 @@ class MaskFormerDecoder(nn.Module):
             fast_local_ca: If True, uses fast local CA.
             block_size: The size of the block for fast local CA.
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
+            unmask_all_false: If True, queries with all-false attention masks will be unmasked to attend everywhere.
         """
         super().__init__()
 
@@ -70,6 +72,7 @@ class MaskFormerDecoder(nn.Module):
         self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
         self.fast_local_ca = fast_local_ca
         self.block_size = block_size
+        self.unmask_all_false = unmask_all_false
 
         if self.local_strided_attn:
             assert self.attn_type in {"torch", "flex"}, (
@@ -180,7 +183,8 @@ class MaskFormerDecoder(nn.Module):
                 # True values indicate a slot will be included in the attention computation, while False will be ignored.
                 # If the attn mask is completely invalid for a given query, allow it to attend everywhere
                 # TODO: check and see see if this is really necessary
-                attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
+                if self.unmask_all_false:
+                    attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
 
             if attn_mask is not None and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask

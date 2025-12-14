@@ -194,6 +194,7 @@ model:
         num_queries: *num_objects
         mask_attention: true
         use_query_masks: false
+        unmask_all_false: false
         decoder_layer_config:
           dim: *dim
           norm: CustomLayerNorm
