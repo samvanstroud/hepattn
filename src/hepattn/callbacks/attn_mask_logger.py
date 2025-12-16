@@ -262,5 +262,4 @@ class AttnMaskLogger(Callback):
         # only process if this batch is selected by the sampler
         if batch_idx % self.log_every_n_batches != 0:
             return
-        step = getattr(trainer, "global_step", batch_idx)
-        self._process_attention_masks_from_outputs(pl_module, outputs, step, is_validation=False)
+        self._process_attention_masks_from_outputs(pl_module, outputs, batch_idx, is_validation=False)

@@ -8,7 +8,6 @@ from functools import partial
 import torch
 from torch import Tensor, nn
 
-from hepattn.flex.fast_local_ca import build_strided_sliding_window_blockmask
 from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped, transpose_blockmask
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
@@ -32,7 +31,6 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
-        fast_local_ca: bool = False,
         block_size: int = 128,
         unified_decoding: bool = False,
         phi_shift: float = 0.0,
@@ -50,7 +48,6 @@ class MaskFormerDecoder(nn.Module):
             window_size: The size of the window for local strided window attention.
             window_wrap: If True, wraps the window for local strided window attention.
             attn_type: The attention type to use (e.g., 'torch', 'flex').
-            fast_local_ca: If True, uses fast local CA.
             block_size: The size of the block for fast local CA.
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
             phi_shift: The shift in the phi angle for positional encoding.
@@ -71,9 +68,7 @@ class MaskFormerDecoder(nn.Module):
         self.window_wrap = window_wrap
         self.unified_decoding = unified_decoding
         self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
-        self.fast_local_ca = fast_local_ca
         self.block_size = block_size
-        self.phi_shift = phi_shift
 
         if self.local_strided_attn:
             assert self.attn_type in {"torch", "flex"}, (
@@ -116,20 +111,8 @@ class MaskFormerDecoder(nn.Module):
                 device = x["query_embed"].device
                 q_len = x["query_embed"].shape[1]
                 kv_len = int(x["key_embed"].shape[1])
-                dtype_float = x["query_embed"].dtype
-                if self.fast_local_ca:
-                    attn_mask = build_strided_sliding_window_blockmask(
-                        window_size=self.window_size,
-                        block_size=self.block_size,
-                        q_len=q_len,
-                        kv_len=kv_len,
-                        device=device,
-                        wrap=self.window_wrap,
-                        dtype_float=dtype_float,
-                    )
-                else:
-                    attn_mask = self.flex_local_ca_mask(q_len, kv_len, device)
-                attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=device)
+                attn_mask_lca = self.flex_local_ca_mask(q_len, kv_len, device)
+                attn_mask_transpose = transpose_blockmask(attn_mask_lca, q_tokens=q_len, kv_tokens=kv_len, dev=device)
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -201,6 +184,7 @@ class MaskFormerDecoder(nn.Module):
 
             if attn_mask is not None and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
+
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"],
@@ -208,8 +192,8 @@ class MaskFormerDecoder(nn.Module):
                 attn_mask=attn_mask,
                 q_mask=x.get("query_mask"),
                 kv_mask=x.get("key_valid"),
-                query_posenc=x["query_posenc"] if self.posenc else None,
-                key_posenc=x["key_posenc"] if self.posenc else None,
+                query_posenc=x["query_posenc"] if (self.posenc and not self.mask_attention) else None,
+                key_posenc=x["key_posenc"] if (self.posenc and not self.mask_attention) else None,
                 attn_mask_transpose=attn_mask_transpose,
             )
 
@@ -226,10 +210,7 @@ class MaskFormerDecoder(nn.Module):
         return sliding_window_mask_strided(self.window_size, q_len, kv_len, str(device))
 
     def generate_positional_encodings(self, x: dict):
-        phi_shift = torch.tensor(self.phi_shift, device=x["query_embed"].device, dtype=x["query_embed"].dtype)
-        idx = torch.arange(self.num_queries, device=x["query_embed"].device, dtype=x["query_embed"].dtype)
-        x["query_phi"] = 2 * torch.pi * (idx / self.num_queries - phi_shift)
-
+        x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
         query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
