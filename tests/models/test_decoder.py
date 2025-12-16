@@ -328,6 +328,37 @@ class TestMaskFormerDecoder:
         attn_mask = outputs["layer_0"]["attn_mask"]
         assert attn_mask.shape == (1, NUM_QUERIES, SEQ_LEN)
 
+    def test_flex_local_cross_attention(self, decoder_layer_config, sample_local_strided_decoder_data):
+        """Test flex implementation of local cross attention in the decoder."""
+        # Configure decoder to use flex attention with local_strided_attn
+        config = decoder_layer_config.copy()
+        config["attn_kwargs"] = {"attn_type": "flex"}
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            local_strided_attn=True,
+            window_size=4,
+            window_wrap=True,
+        )
+
+        # flex local-strided attention only supports batch size 1
+        x, input_names = sample_local_strided_decoder_data
+        decoder.tasks = []  # no tasks / pure local CA
+
+        # Forward pass should exercise the flex local CA path, including transpose_blockmask
+        updated_x, outputs = decoder(x, input_names)
+
+        # Basic shape checks on embeddings
+        assert updated_x["query_embed"].shape == (1, NUM_QUERIES, DIM)
+        assert updated_x["key_embed"].shape == (1, SEQ_LEN, DIM)
+
+        # For flex attention, attention masks are fed directly to the backend and
+        # not stored in outputs, but the layer should still produce a valid entry.
+        assert "layer_0" in outputs
+        assert isinstance(outputs["layer_0"], dict)
+
 
 class TestMaskFormerDecoderLayer:
     @pytest.fixture
