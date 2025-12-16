@@ -36,7 +36,6 @@ class MaskFormerDecoder(nn.Module):
         block_size: int = 128,
         unified_decoding: bool = False,
         phi_shift: float = 0.0,
-        combine_ma_lca: str | None = None,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -55,12 +54,12 @@ class MaskFormerDecoder(nn.Module):
             block_size: The size of the block for fast local CA.
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
             phi_shift: The shift in the phi angle for positional encoding.
-            combine_ma_lca: The method to combine the mask attention and local strided attention.
         """
         super().__init__()
 
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
         self.dim = decoder_layer_config["dim"]
+        
         self.tasks: list | None = None  # Will be set by MaskFormer
         self.num_queries = num_queries
         self.mask_attention = mask_attention
@@ -80,9 +79,9 @@ class MaskFormerDecoder(nn.Module):
             assert self.attn_type in {"torch", "flex"}, (
                 f"Invalid attention type when local_strided_attn is True: {self.attn_type}, must be 'torch' or 'flex'"
             )
-        if combine_ma_lca is None:
-            assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
-        self.combine_ma_lca = combine_ma_lca
+        
+        assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
+
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -112,14 +111,14 @@ class MaskFormerDecoder(nn.Module):
         if self.local_strided_attn:
             assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
             if self.attn_type == "torch":
-                attn_mask_lca = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
+                attn_mask = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
             elif self.attn_type == "flex":
                 device = x["query_embed"].device
                 q_len = x["query_embed"].shape[1]
                 kv_len = int(x["key_embed"].shape[1])
                 dtype_float = x["query_embed"].dtype
                 if self.fast_local_ca:
-                    attn_mask_lca = build_strided_sliding_window_blockmask(
+                    attn_mask = build_strided_sliding_window_blockmask(
                         window_size=self.window_size,
                         block_size=self.block_size,
                         q_len=q_len,
@@ -129,8 +128,8 @@ class MaskFormerDecoder(nn.Module):
                         dtype_float=dtype_float,
                     )
                 else:
-                    attn_mask_lca = self.flex_local_ca_mask(q_len, kv_len, device)
-                attn_mask_transpose = transpose_blockmask(attn_mask_lca, q_tokens=q_len, kv_tokens=kv_len, dev=device)
+                    attn_mask = self.flex_local_ca_mask(q_len, kv_len, device)
+                attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=device)
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -199,19 +198,6 @@ class MaskFormerDecoder(nn.Module):
                 # If the attn mask is completely invalid for a given query, allow it to attend everywhere
                 # TODO: check and see see if this is really necessary
                 attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
-
-            if self.local_strided_attn and attn_mask_lca is not None:
-                if self.mask_attention and attn_mask is not None:
-                    # Both mask_attention and local_strided_attn are True, need to combine
-                    if self.combine_ma_lca == "OR":
-                        attn_mask = attn_mask | attn_mask_lca
-                    elif self.combine_ma_lca == "AND":
-                        attn_mask = attn_mask & attn_mask_lca
-                    else:
-                        raise ValueError("combine_ma_lca must be either OR or AND if both mask_attention and local_strided_attn are true.")
-                else:
-                    # attn_mask was set (unexpectedly) but mask_attention is False, so just use attn_mask_lca
-                    attn_mask = attn_mask_lca
 
             if attn_mask is not None and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
