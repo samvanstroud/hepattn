@@ -112,7 +112,8 @@ class MaskFormerDecoder(nn.Module):
                 q_len = x["query_embed"].shape[1]
                 kv_len = int(x["key_embed"].shape[1])
                 attn_mask_lca = self.flex_local_ca_mask(q_len, kv_len, device)
-                attn_mask_transpose = transpose_blockmask(attn_mask_lca, q_tokens=q_len, kv_tokens=kv_len, dev=device)
+                if self.bidirectional_ca:
+                    attn_mask_transpose = transpose_blockmask(attn_mask_lca, q_tokens=q_len, kv_tokens=kv_len, dev=device)
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
