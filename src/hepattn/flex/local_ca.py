@@ -53,14 +53,9 @@ def sliding_window_mask_strided_wrapped(
         raise ValueError("Window size must be even for strided sliding window")
 
     def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
-        # b = 0, h = 0 here
         q_center = _round_mul(q_idx, kv_len, q_len)
-
-        diagonal = (kv_idx - q_center).abs() <= window_size // 2
-        wrap_left = (kv_idx - q_center + kv_len).abs() <= window_size // 2
-        wrap_right = (kv_idx - q_center - kv_len).abs() <= window_size // 2
-
-        return diagonal | wrap_left | wrap_right
+        diff = (kv_idx - q_center).abs()
+        return diff.min(kv_len - diff) <= window_size // 2
 
     return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
 
