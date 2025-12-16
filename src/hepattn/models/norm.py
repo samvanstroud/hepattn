@@ -3,8 +3,19 @@ from torch import nn
 from torch.nn import functional as F
 
 
-class LayerNorm(nn.LayerNorm):
-    """Slightly faster LayerNorm by seting elementwise_affine=False."""
+class CustomLayerNorm(nn.LayerNorm):
+    """LayerNorm that preserves the input dtype through normalization operations."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, x):
+        dtype = x.dtype
+        return super().forward(x).to(dtype)
+
+
+class FastLayerNorm(nn.LayerNorm):
+    """Slightly faster LayerNorm by setting elementwise_affine=False."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs, elementwise_affine=False)
@@ -14,8 +25,8 @@ class LayerNorm(nn.LayerNorm):
         return super().forward(x).to(dtype)
 
 
-class RMSNorm(nn.Module):
-    """RNMSNorm from https://arxiv.org/abs/1910.07467."""
+class CustomRMSNorm(nn.Module):
+    """Custom RMSNorm implementation from https://arxiv.org/abs/1910.07467."""
 
     def __init__(self, dim: int):
         super().__init__()
@@ -34,7 +45,8 @@ class SimpleRMSNorm(nn.Module):
         self.scale = dim**0.5
 
     def forward(self, x):
-        return F.normalize(x, dim=-1) * self.scale
+        dtype = x.dtype
+        return (F.normalize(x, dim=-1) * self.scale).to(dtype)
 
 
 class DyT(nn.Module):
@@ -71,3 +83,16 @@ def get_hybrid_norm_config(norm: str | None, depth: int, hybrid_norm: bool, qkv_
     dense_post_norm = is_hybrid_subsequent
 
     return attn_norm, dense_post_norm, qkv_norm
+
+
+# Mapping of normalization type strings to their corresponding nn.Module classes
+# Includes both PyTorch built-ins and custom implementations
+NORM_TYPES: dict[str, type[nn.Module]] = {
+    "LayerNorm": nn.LayerNorm,
+    "RMSNorm": nn.RMSNorm,
+    "CustomLayerNorm": CustomLayerNorm,
+    "FastLayerNorm": FastLayerNorm,
+    "CustomRMSNorm": CustomRMSNorm,
+    "SimpleRMSNorm": SimpleRMSNorm,
+    "DyT": DyT,
+}

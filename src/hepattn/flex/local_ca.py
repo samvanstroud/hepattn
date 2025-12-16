@@ -6,7 +6,23 @@ create_block_mask: _mask_mod_signature = torch.compile(create_block_mask, dynami
 
 
 def _round_mul(q_idx, num, den):
-    """Compute round(q_idx * num / den) using integer arithmetic to avoid floating point operations."""
+    """
+    Compute round(q_idx * num / den) using integer arithmetic (round-half-up, also known as banker's rounding).
+
+    This function avoids floating point operations by using integer math.
+
+    Args:
+        q_idx (int or torch.Tensor): Query index or tensor of indices.
+        num (int or torch.Tensor): Numerator or tensor.
+        den (int or torch.Tensor): Denominator or tensor.
+
+    Returns:
+        int or torch.Tensor: The rounded result of (q_idx * num / den).
+
+    Note:
+        - Implements round-half-up (banker's rounding) behavior.
+        - If `q_idx * num` is large, integer overflow may occur for fixed-width integer types or tensors.
+    """
     return (q_idx * num + (den // 2)) // den
 
 

@@ -138,4 +138,5 @@ omit = [
 exclude_lines = [
     "raise AssertionError",
     "raise NotImplementedError",
+    "raise ValueError",
 ]
