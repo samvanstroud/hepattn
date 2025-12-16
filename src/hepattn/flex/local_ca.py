@@ -6,8 +6,7 @@ create_block_mask: _mask_mod_signature = torch.compile(create_block_mask, dynami
 
 
 def _round_mul(q_idx, num, den):
-    """
-    Compute round(q_idx * num / den) using integer arithmetic (round-half-up, also known as banker's rounding).
+    """Compute round(q_idx * num / den) using integer arithmetic (round-half-up, also known as banker's rounding).
 
     This function avoids floating point operations by using integer math.
 
