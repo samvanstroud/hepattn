@@ -313,7 +313,6 @@ class TestMaskFormerDecoder:
             local_strided_attn=True,
             window_size=4,
             window_wrap=True,
-            combine_ma_lca=combine_ma_lca,
         )
 
         # Sample data with batch size 1 (required by local_strided_attn)
