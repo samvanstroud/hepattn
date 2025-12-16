@@ -15,16 +15,14 @@ class DummyExperiment:
             coords = data["coords"]
             num_queries = int(data["num_queries"])
             num_hits = int(data["num_hits"])
-        self.logged_assets.append(
-            {
-                "file_data": file_data,
-                "file_name": file_name,
-                "step": step,
-                "coords": coords,
-                "num_queries": num_queries,
-                "num_hits": num_hits,
-            }
-        )
+        self.logged_assets.append({
+            "file_data": file_data,
+            "file_name": file_name,
+            "step": step,
+            "coords": coords,
+            "num_queries": num_queries,
+            "num_hits": num_hits,
+        })
 
 
 class DummyLogger:
