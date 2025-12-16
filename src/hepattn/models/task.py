@@ -322,6 +322,32 @@ class HitFilterTask(Task):
 
         return {self.input_object: outputs[f"{self.input_object}_logit"].detach().sigmoid() >= threshold}
 
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        expected_key = f"{self.input_object}_{self.target_field}"
+        pred = preds[expected_key]
+        true = targets[expected_key]
+
+        tp = (pred * true).sum()
+        tn = ((~pred) * (~true)).sum()
+
+        return {
+            # Log quantities based on the number of hits
+            "nh_total_pre": float(pred.shape[1]),
+            "nh_total_post": float(pred.sum()),
+            "nh_pred_true": pred.float().sum(),
+            "nh_pred_false": (~pred).float().sum(),
+            "nh_valid_pre": true.float().sum(),
+            "nh_valid_post": (pred & true).float().sum(),
+            "nh_noise_pre": (~true).float().sum(),
+            "nh_noise_post": (pred & ~true).float().sum(),
+            # Standard binary classification metrics
+            "acc": (pred == true).half().mean(),
+            "valid_recall": tp / true.sum(),
+            "valid_precision": tp / pred.sum(),
+            "noise_recall": tn / (~true).sum(),
+            "noise_precision": tn / (~pred).sum(),
+        }
+
 
 class ObjectHitMaskTask(Task):
     def __init__(
@@ -889,12 +915,13 @@ class ClassificationTask(Task):
         self,
         name: str,
         input_object: str,
-        output_object: str,
-        target_object: str,
         classes: list[str],
         net: nn.Module,
+        output_object: str | None = None,
+        target_object: str | None = None,
         class_weights: dict[str, float] | None = None,
         loss_weight: float = 1.0,
+        threshold: float = 0.5,
         multilabel: bool = False,
         permute_loss: bool = True,
         has_intermediate_loss: bool = True,
@@ -915,25 +942,27 @@ class ClassificationTask(Task):
         Args:
             name: Name of the task.
             input_object: Name of the input object.
-            output_object: Name of the output object.
-            target_object: Name of the target object.
             classes: List of class names (no null class - all inputs assumed valid).
             net: Network for classification. Should output len(classes) logits.
             class_weights: Weights for each class in the loss function.
             loss_weight: Weight for the loss function.
+            threshold: Threshold for classification predictions.
             multilabel: Whether this is a multilabel classification.
             permute_loss: Whether to permute loss.
             has_intermediate_loss: Whether the task has intermediate loss.
+            output_object: Name of the output object. Defaults to input_object if empty string.
+            target_object: Name of the target object. Defaults to input_object if empty string.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss, permute_loss=permute_loss)
 
         self.name = name
         self.input_object = input_object
-        self.output_object = output_object
-        self.target_object = target_object
+        self.output_object = output_object if output_object is not None else input_object
+        self.target_object = target_object if target_object is not None else input_object
         self.classes = classes
         self.class_weights = class_weights
         self.loss_weight = loss_weight
+        self.threshold = threshold
         self.multilabel = multilabel
         self.net = net
 
@@ -941,42 +970,82 @@ class ClassificationTask(Task):
             self.class_weights_values = torch.tensor([self.class_weights[class_name] for class_name in self.classes])
 
         self.inputs = [input_object + "_embed"]
-        self.outputs = [output_object + "_logits"]
+        self.outputs = [self.output_object + "_logits"]
 
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         # Get class logits from the configurable network
         x = self.net(x[f"{self.input_object}_embed"])
         return {f"{self.output_object}_logits": x}
 
-    def predict(self, outputs: dict[str, Tensor], threshold: float = 0.5) -> dict[str, Tensor]:
-        # Split the regression vector into the separate fields
+    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         logits = outputs[self.output_object + "_logits"].detach()
-        if self.multilabel:
-            predictions = torch.nn.functional.sigmoid(logits) >= threshold
+        result = {}
+
+        if len(self.classes) == 1 and not self.multilabel:
+            # Binary classification with single output
+            logits = logits.squeeze(-1) if logits.shape[-1] == 1 else logits
+            probs = torch.nn.functional.sigmoid(logits)
+            result[self.output_object + "_" + self.classes[0] + "_prob"] = probs
+            result[self.output_object + "_" + self.classes[0]] = probs >= self.threshold
+        elif self.multilabel:
+            # Multilabel classification
+            probs = torch.nn.functional.sigmoid(logits)
+            for i, class_name in enumerate(self.classes):
+                result[self.output_object + "_" + class_name + "_prob"] = probs[..., i]
+                result[self.output_object + "_" + class_name] = probs[..., i] >= self.threshold
         else:
-            predictions = torch.nn.functional.one_hot(torch.argmax(logits, dim=-1), num_classes=len(self.classes))
-        return {self.output_object + "_" + class_name: predictions[..., i] for i, class_name in enumerate(self.classes)}
+            # Multi-class classification
+            probs = torch.nn.functional.softmax(logits, dim=-1)
+            predictions = torch.nn.functional.one_hot(torch.argmax(logits, dim=-1), num_classes=len(self.classes)).bool()
+            for i, class_name in enumerate(self.classes):
+                result[self.output_object + "_" + class_name + "_prob"] = probs[..., i]
+                result[self.output_object + "_" + class_name] = predictions[..., i]
+
+        return result
 
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        # Get the targets and predictions
-        target = torch.stack([targets[self.target_object + "_" + class_name] for class_name in self.classes], dim=-1)
         logits = outputs[f"{self.output_object}_logits"]
 
-        # Put the class weights into a tensor with the correct dtype
-        class_weights = None
-        if self.class_weights is not None:
-            class_weights = self.class_weights_values.type_as(target)
+        if len(self.classes) == 1 and not self.multilabel:
+            # Binary classification with single output
+            target = targets[self.target_object + "_" + self.classes[0]].float()
+            logits = logits.squeeze(-1) if logits.dim() > target.dim() else logits
 
-        # Compute the loss, using the class weights
-        losses = torch.nn.functional.cross_entropy(
-            logits.view(-1, logits.shape[-1]),
-            target.view(-1, target.shape[-1]),
-            weight=class_weights,
-            reduction="none",
-        )
+            # Apply class weight if specified
+            pos_weight = None
+            if self.class_weights is not None:
+                pos_weight = torch.tensor([self.class_weights[self.classes[0]]], dtype=logits.dtype, device=logits.device)
 
-        # Only consider valid targets
-        losses = losses[targets[f"{self.target_object}_valid"].view(-1)]
+            losses = torch.nn.functional.binary_cross_entropy_with_logits(logits, target, pos_weight=pos_weight, reduction="none")
+        elif self.multilabel:
+            # Multilabel classification with BCE per class
+            target = torch.stack([targets[self.target_object + "_" + class_name] for class_name in self.classes], dim=-1).float()
+
+            # Apply class weights if specified
+            pos_weight = None
+            if self.class_weights is not None:
+                pos_weight = self.class_weights_values.type_as(target)
+
+            losses = torch.nn.functional.binary_cross_entropy_with_logits(logits, target, pos_weight=pos_weight, reduction="none").mean(dim=-1)
+        else:
+            # Multi-class classification with cross entropy
+            target = torch.stack([targets[self.target_object + "_" + class_name] for class_name in self.classes], dim=-1).float()
+
+            # Put the class weights into a tensor with the correct dtype
+            class_weights = None
+            if self.class_weights is not None:
+                class_weights = self.class_weights_values.type_as(target)
+
+            losses = torch.nn.functional.cross_entropy(
+                logits.view(-1, logits.shape[-1]),
+                target.view(-1, target.shape[-1]),
+                weight=class_weights,
+                reduction="none",
+            )
+
+        # Only consider valid targets - flatten both losses and mask
+        valid_mask = targets[f"{self.target_object}_valid"].view(-1)
+        losses = losses.view(-1)[valid_mask]
         return {"bce": self.loss_weight * losses.mean()}
 
     def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -985,8 +1054,13 @@ class ClassificationTask(Task):
             target = targets[f"{self.target_object}_{class_name}"][targets[f"{self.target_object}_valid"]].bool()
             pred = preds[f"{self.output_object}_{class_name}"][targets[f"{self.target_object}_valid"]].bool()
 
-            metrics[f"{class_name}_eff"] = (target & pred).sum() / target.sum()
-            metrics[f"{class_name}_pur"] = (target & pred).sum() / pred.sum()
+            true_positives = float((target & pred).sum())
+            false_positives = float((~target & pred).sum())
+
+            metrics[f"{class_name}_eff"] = true_positives / target.sum()
+            metrics[f"{class_name}_pur"] = true_positives / pred.sum()
+            metrics[f"{class_name}_tp"] = true_positives
+            metrics[f"{class_name}_fp"] = false_positives
 
         return metrics
 
