@@ -52,7 +52,7 @@ def test_log_mask_points_for_kde_basic(tmp_path, monkeypatch, shape):
     layer = 4
     prefix = "local_ma_mask"
 
-    callback._log_mask_points_for_kde(pl_module, mask, step, layer, prefix)
+    callback._log_mask_points_for_kde(pl_module, mask, step, layer, prefix)  # noqa: SLF001
 
     assets = pl_module.logger.experiment.logged_assets
     assert len(assets) == 1
@@ -88,7 +88,7 @@ def test_log_mask_points_for_kde_no_hits(tmp_path, monkeypatch):
     callback = AttnMaskLogger()
     pl_module = DummyModule()
 
-    callback._log_mask_points_for_kde(pl_module, mask, step=0, layer=0, prefix="local_ma_mask")
+    callback._log_mask_points_for_kde(pl_module, mask, step=0, layer=0, prefix="local_ma_mask")  # noqa: SLF001
 
     # Early return, so no assets are logged
     assert pl_module.logger.experiment.logged_assets == []
@@ -106,7 +106,7 @@ def test_log_mask_points_for_kde_uses_uint32_for_large_masks(tmp_path, monkeypat
     callback = AttnMaskLogger()
     pl_module = DummyModule()
 
-    callback._log_mask_points_for_kde(pl_module, mask, step=1, layer=1, prefix="local_ma_mask")
+    callback._log_mask_points_for_kde(pl_module, mask, step=1, layer=1, prefix="local_ma_mask")  # noqa: SLF001
 
     assets = pl_module.logger.experiment.logged_assets
     assert len(assets) == 1
@@ -114,5 +114,3 @@ def test_log_mask_points_for_kde_uses_uint32_for_large_masks(tmp_path, monkeypat
 
     # Subsampling may have occurred, but dtype should reflect large dimensions
     assert coords.dtype == np.uint32
-
-

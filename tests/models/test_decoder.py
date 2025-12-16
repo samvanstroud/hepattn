@@ -345,7 +345,7 @@ class TestMaskFormerDecoder:
 
         # flex local-strided attention only supports batch size 1
         x, input_names = sample_local_strided_decoder_data
-        decoder.tasks = []  # no tasks / pure local CA
+        decoder.tasks = []  # ty: ignore[unresolved-attribute]  # no tasks / pure local CA
 
         # Forward pass should exercise the flex local CA path, including transpose_blockmask
         updated_x, outputs = decoder(x, input_names)
