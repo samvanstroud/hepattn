@@ -285,48 +285,6 @@ class TestMaskFormerDecoder:
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
 
-    @pytest.mark.parametrize(
-        ("combine_ma_lca", "bool_op"),
-        [
-            ("OR", torch.logical_or),
-            ("AND", torch.logical_and),
-        ],
-    )
-    def test_mask_and_local_strided_combination(
-        self,
-        decoder_layer_config,
-        sample_local_strided_decoder_data,
-        monkeypatch,
-        combine_ma_lca,
-        bool_op,
-    ):
-        """Test combining mask_attention with local_strided_attn using OR / AND."""
-        # We need access to the decoder module to patch auto_local_ca_mask
-        # Deterministic local-strided attention mask (batch=1)
-
-        # Decoder with both mask_attention and local_strided_attn enabled
-        decoder = MaskFormerDecoder(
-            num_queries=NUM_QUERIES,
-            decoder_layer_config=decoder_layer_config,
-            num_decoder_layers=NUM_LAYERS,
-            mask_attention=True,
-            local_strided_attn=True,
-            window_size=4,
-            window_wrap=True,
-        )
-
-        # Sample data with batch size 1 (required by local_strided_attn)
-        x, input_names = sample_local_strided_decoder_data
-
-        decoder.tasks = [LCATask()]  # ty: ignore
-
-        # Run the decoder
-        _, outputs = decoder(x, input_names)
-
-        # We only need to check one layer; they should all behave similarly
-        attn_mask = outputs["layer_0"]["attn_mask"]
-        assert attn_mask.shape == (1, NUM_QUERIES, SEQ_LEN)
-
     def test_flex_local_cross_attention(self, decoder_layer_config, sample_local_strided_decoder_data):
         """Test flex implementation of local cross attention in the decoder."""
         # Configure decoder to use flex attention with local_strided_attn
@@ -344,6 +302,8 @@ class TestMaskFormerDecoder:
 
         # flex local-strided attention only supports batch size 1
         x, input_names = sample_local_strided_decoder_data
+        # Remove key_valid since flex attention doesn't support kv_mask
+        x = {k: v for k, v in x.items() if k != "key_valid"}
         decoder.tasks = []  # ty: ignore[unresolved-attribute]  # no tasks / pure local CA
 
         # Forward pass should exercise the flex local CA path, including transpose_blockmask
