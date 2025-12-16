@@ -56,7 +56,7 @@ class MaskFormerDecoder(nn.Module):
 
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
         self.dim = decoder_layer_config["dim"]
-        
+        self.bidirectional_ca = decoder_layer_config.get("bidirectional_ca", True)
         self.tasks: list | None = None  # Will be set by MaskFormer
         self.num_queries = num_queries
         self.mask_attention = mask_attention
