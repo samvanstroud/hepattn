@@ -37,6 +37,7 @@ class MaskFormerDecoder(nn.Module):
         unified_decoding: bool = False,
         phi_shift: float = 0.0,
         unmask_all_false: bool = True,
+        add_pre_layer_pe: bool = False,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -76,6 +77,7 @@ class MaskFormerDecoder(nn.Module):
         self.block_size = block_size
         self.phi_shift = phi_shift
         self.unmask_all_false = unmask_all_false
+        self.add_pre_layer_pe = add_pre_layer_pe
 
         if self.local_strided_attn:
             assert self.attn_type in {"torch", "flex"}, (
@@ -125,7 +127,7 @@ class MaskFormerDecoder(nn.Module):
             outputs[f"layer_{layer_index}"] = {}
 
             # if maskattention, PE should be added before generating the mask
-            if self.posenc and self.mask_attention:
+            if self.posenc and self.mask_attention and self.add_pre_layer_pe:
                 x["query_embed"] = x["query_embed"] + x["query_posenc"]
                 x["key_embed"] = x["key_embed"] + x["key_posenc"]
 
@@ -245,6 +247,7 @@ class MaskFormerDecoderLayer(nn.Module):
         bidirectional_ca: bool = True,
         qkv_norm: bool = False,
         hybrid_norm: bool = False,
+        scale_pe: float = 1.0,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
 
@@ -272,6 +275,7 @@ class MaskFormerDecoderLayer(nn.Module):
         self.q_ca = residual(Attention(dim, qkv_norm=qkv_norm, norm=norm, **attn_kwargs), norm=attn_norm)
         self.q_sa = residual(Attention(dim, qkv_norm=qkv_norm, norm=norm, **attn_kwargs), norm=attn_norm)
         self.q_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
+        self.scale_pe = float(scale_pe)
 
         if self.bidirectional_ca:
             self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, norm=norm, **attn_kwargs), norm=attn_norm)
@@ -305,6 +309,9 @@ class MaskFormerDecoderLayer(nn.Module):
                 - The updated query embeddings (Tensor).
                 - The updated key/value embeddings (Tensor).
         """
+        query_posenc = self.scale_pe * query_posenc
+        key_posenc = self.scale_pe * key_posenc
+
         q_pe = q if query_posenc is None else q + query_posenc
         kv_pe = kv if key_posenc is None else kv + key_posenc
 
