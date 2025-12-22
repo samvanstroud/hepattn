@@ -318,6 +318,253 @@ class TestMaskFormerDecoder:
         assert "layer_0" in outputs
         assert isinstance(outputs["layer_0"], dict)
 
+    def test_add_direct_pe(self, decoder_layer_config, sample_decoder_data):
+        """Test that add_direct_pe adds positional encoding before mask generation."""
+        x, input_names = sample_decoder_data
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=True,
+            posenc={"alpha": 1.0, "base": 2.0},
+            add_direct_pe=True,
+        )
+        x["key_phi"] = torch.randn(BATCH_SIZE, SEQ_LEN)
+
+        # Create a task that will generate attention masks
+        class TaskWithMask:
+            has_intermediate_loss = True
+            has_first_layer_loss = True
+            name = "task"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                return {"input1": outputs["logit"].sigmoid() > 0.5}
+
+        decoder.tasks = [TaskWithMask()]
+
+        # Store original embeddings before forward
+        original_query_embed = x["query_embed"].clone()
+        original_key_embed = x["key_embed"].clone()
+
+        # Forward pass
+        updated_x, _ = decoder(x, input_names)
+
+        # With add_direct_pe, the embeddings should have been modified by PE before mask generation
+        # The embeddings should be different from the original (PE was added)
+        assert not torch.allclose(updated_x["query_embed"], original_query_embed, atol=1e-5)
+        assert not torch.allclose(updated_x["key_embed"], original_key_embed, atol=1e-5)
+
+    def test_use_query_masks(self, decoder_layer_config, sample_decoder_data):
+        """Test that use_query_masks collects and uses query masks from tasks."""
+        x, input_names = sample_decoder_data
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=True,
+            use_query_masks=True,
+        )
+
+        # Create a task that provides query masks
+        class TaskWithQueryMask:
+            has_intermediate_loss = True
+            has_first_layer_loss = True
+            name = "task"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                return {"input1": outputs["logit"].sigmoid() > 0.5}
+
+            def query_mask(self, outputs):
+                # Return a query mask indicating which queries are valid
+                return outputs["logit"].sum(dim=-1) > 0
+
+        decoder.tasks = [TaskWithQueryMask()]
+
+        updated_x, _ = decoder(x, input_names)
+
+        # Check that query_mask was set in x
+        assert "query_mask" in updated_x
+        assert updated_x["query_mask"].shape == (BATCH_SIZE, NUM_QUERIES)
+        assert updated_x["query_mask"].dtype == torch.bool
+
+    def test_fast_local_ca(self, decoder_layer_config, sample_local_strided_decoder_data):
+        """Test fast_local_ca=True uses build_strided_sliding_window_blockmask."""
+        config = decoder_layer_config.copy()
+        config["attn_kwargs"] = {"attn_type": "flex"}
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            local_strided_attn=True,
+            window_size=4,
+            window_wrap=True,
+            fast_local_ca=True,
+            block_size=64,
+        )
+
+        x, input_names = sample_local_strided_decoder_data
+        x = {k: v for k, v in x.items() if k != "key_valid"}
+        decoder.tasks = []
+
+        # Forward pass should use fast_local_ca path
+        updated_x, outputs = decoder(x, input_names)
+
+        # Basic shape checks
+        assert updated_x["query_embed"].shape == (1, NUM_QUERIES, DIM)
+        assert updated_x["key_embed"].shape == (1, SEQ_LEN, DIM)
+        assert "layer_0" in outputs
+
+    def test_task_skipping_has_intermediate_loss(self, decoder_layer_config, sample_decoder_data):
+        """Test that tasks with has_intermediate_loss=False are skipped."""
+        x, input_names = sample_decoder_data
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=True,
+        )
+
+        # Create tasks with different has_intermediate_loss values
+        class TaskWithIntermediate:
+            has_intermediate_loss = True
+            has_first_layer_loss = True
+            name = "task_with"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                return {"input1": outputs["logit"].sigmoid() > 0.5}
+
+        class TaskWithoutIntermediate:
+            has_intermediate_loss = False
+            has_first_layer_loss = False
+            name = "task_without"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                return {"input1": outputs["logit"].sigmoid() > 0.5}
+
+        decoder.tasks = [TaskWithIntermediate(), TaskWithoutIntermediate()]
+
+        _, outputs = decoder(x, input_names)
+
+        # Task with has_intermediate_loss=True should appear in outputs
+        assert "task_with" in outputs["layer_0"]
+        # Task with has_intermediate_loss=False should NOT appear in outputs
+        assert "task_without" not in outputs["layer_0"]
+
+    def test_task_skipping_has_first_layer_loss(self, decoder_layer_config, sample_decoder_data):
+        """Test that tasks with has_first_layer_loss=False are skipped in layer 0."""
+        x, input_names = sample_decoder_data
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=2,  # Need at least 2 layers to test this
+            mask_attention=True,
+        )
+
+        # Create a task that skips first layer
+        class TaskSkipFirstLayer:
+            has_intermediate_loss = True
+            has_first_layer_loss = False  # Skip layer 0
+            name = "task_skip_first"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                return {"input1": outputs["logit"].sigmoid() > 0.5}
+
+        decoder.tasks = [TaskSkipFirstLayer()]
+
+        _, outputs = decoder(x, input_names)
+
+        # Task should NOT appear in layer 0
+        assert "task_skip_first" not in outputs["layer_0"]
+        # Task should appear in layer 1
+        assert "task_skip_first" in outputs["layer_1"]
+
+    def test_phi_shift(self, decoder_layer_config, sample_decoder_data):
+        """Test that phi_shift affects positional encoding generation."""
+        x, _ = sample_decoder_data
+        x["key_phi"] = torch.randn(BATCH_SIZE, SEQ_LEN)
+
+        decoder_shift_0 = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            posenc={"alpha": 1.0, "base": 2.0},
+            phi_shift=0.0,
+        )
+
+        decoder_shift_1 = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            posenc={"alpha": 1.0, "base": 2.0},
+            phi_shift=0.5,
+        )
+
+        decoder_shift_0.tasks = []
+        decoder_shift_1.tasks = []
+
+        # Generate positional encodings with different shifts
+        pe0_q, pe0_k = decoder_shift_0.generate_positional_encodings(x.copy())
+        pe1_q, pe1_k = decoder_shift_1.generate_positional_encodings(x.copy())
+
+        # Different phi_shift should produce different positional encodings
+        assert not torch.allclose(pe0_q, pe1_q, atol=1e-5)
+        # Key positional encodings should be the same (phi_shift only affects queries)
+        assert torch.allclose(pe0_k, pe1_k, atol=1e-5)
+
+    def test_unmask_all_false(self, decoder_layer_config, sample_decoder_data):
+        """Test that unmask_all_false=False doesn't unmask all-false attention masks."""
+        x, input_names = sample_decoder_data
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=True,
+            unmask_all_false=False,
+        )
+
+        # Create a task that produces all-false masks for some queries
+        class TaskAllFalse:
+            has_intermediate_loss = True
+            has_first_layer_loss = True
+            name = "task"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                # Create masks where query 0 has all False
+                mask = torch.zeros(BATCH_SIZE, NUM_QUERIES, 4, dtype=torch.bool)
+                mask[0, 1, 1] = True  # Only query 1 has some True
+                return {"input1": mask}
+
+        decoder.tasks = [TaskAllFalse()]
+
+        _, outputs = decoder(x, input_names)
+
+        attn_mask = outputs["layer_0"]["attn_mask"]
+        # With unmask_all_false=False, query 0 should still have all False
+        # (it won't be automatically unmasked)
+        assert not attn_mask[0, 0, :].any()  # Query 0 should have all False
+        assert attn_mask[0, 1, :].any()  # Query 1 should have some True
+
 
 class TestMaskFormerDecoderLayer:
     @pytest.fixture
