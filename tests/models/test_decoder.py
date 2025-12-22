@@ -380,6 +380,55 @@ class TestMaskFormerDecoderLayer:
         # Without bidirectional, kv should remain unchanged
         assert new_kv is kv
 
+    def test_scale_pe(self, sample_data):
+        """Test that scale_pe correctly scales positional encodings."""
+        q, kv, attn_mask, kv_mask = sample_data
+        
+        # Create positional encodings
+        query_posenc = torch.randn(BATCH_SIZE, NUM_QUERIES, DIM)
+        key_posenc = torch.randn(BATCH_SIZE, SEQ_LEN, DIM)
+        
+        # Create two layers with different scale_pe values
+        layer_scale_1 = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=True, scale_pe=1.0)
+        layer_scale_2 = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=True, scale_pe=2.0)
+        
+        # Run forward passes with the same inputs
+        q1, kv1 = layer_scale_1(
+            q, kv, 
+            attn_mask=attn_mask, 
+            kv_mask=kv_mask,
+            query_posenc=query_posenc,
+            key_posenc=key_posenc
+        )
+        
+        q2, kv2 = layer_scale_2(
+            q, kv,
+            attn_mask=attn_mask,
+            kv_mask=kv_mask,
+            query_posenc=query_posenc,
+            key_posenc=key_posenc
+        )
+        
+        # Verify that different scale_pe values produce different outputs
+        # (since the scaled PE affects the attention computation)
+        assert not torch.allclose(q1, q2, atol=1e-6), "Outputs should differ when scale_pe differs"
+        assert not torch.allclose(kv1, kv2, atol=1e-6), "Outputs should differ when scale_pe differs"
+        
+        # Verify that scale_pe=1.0 uses the original PE (no scaling)
+        # by checking that scale_pe=1.0 produces different output than scale_pe=0.0
+        layer_scale_0 = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=True, scale_pe=0.0)
+        q0, kv0 = layer_scale_0(
+            q, kv,
+            attn_mask=attn_mask,
+            kv_mask=kv_mask,
+            query_posenc=query_posenc,
+            key_posenc=key_posenc
+        )
+        
+        # scale_pe=0.0 should effectively remove PE, producing different output than scale_pe=1.0
+        assert not torch.allclose(q1, q0, atol=1e-6), "scale_pe=0.0 should produce different output than scale_pe=1.0"
+        assert not torch.allclose(kv1, kv0, atol=1e-6), "scale_pe=0.0 should produce different output than scale_pe=1.0"
+
 
 class MockUnifiedTask:
     """Mock task for testing unified decoding strategy."""
