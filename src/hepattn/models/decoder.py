@@ -127,7 +127,7 @@ class MaskFormerDecoder(nn.Module):
             outputs[f"layer_{layer_index}"] = {}
 
             # if maskattention, PE should be added before generating the mask
-            if self.posenc and self.mask_attention and self.add_pre_layer_pe:
+            if self.posenc and self.add_pre_layer_pe:
                 x["query_embed"] = x["query_embed"] + x["query_posenc"]
                 x["key_embed"] = x["key_embed"] + x["key_posenc"]
 
