@@ -393,21 +393,9 @@ class TestMaskFormerDecoderLayer:
         layer_scale_2 = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=True, scale_pe=2.0)
 
         # Run forward passes with the same inputs
-        q1, kv1 = layer_scale_1(
-            q, kv,
-            attn_mask=attn_mask,
-            kv_mask=kv_mask,
-            query_posenc=query_posenc,
-            key_posenc=key_posenc
-        )
+        q1, kv1 = layer_scale_1(q, kv, attn_mask=attn_mask, kv_mask=kv_mask, query_posenc=query_posenc, key_posenc=key_posenc)
 
-        q2, kv2 = layer_scale_2(
-            q, kv,
-            attn_mask=attn_mask,
-            kv_mask=kv_mask,
-            query_posenc=query_posenc,
-            key_posenc=key_posenc
-        )
+        q2, kv2 = layer_scale_2(q, kv, attn_mask=attn_mask, kv_mask=kv_mask, query_posenc=query_posenc, key_posenc=key_posenc)
 
         # Verify that different scale_pe values produce different outputs
         # (since the scaled PE affects the attention computation)
@@ -417,13 +405,7 @@ class TestMaskFormerDecoderLayer:
         # Verify that scale_pe=1.0 uses the original PE (no scaling)
         # by checking that scale_pe=1.0 produces different output than scale_pe=0.0
         layer_scale_0 = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=True, scale_pe=0.0)
-        q0, kv0 = layer_scale_0(
-            q, kv,
-            attn_mask=attn_mask,
-            kv_mask=kv_mask,
-            query_posenc=query_posenc,
-            key_posenc=key_posenc
-        )
+        q0, kv0 = layer_scale_0(q, kv, attn_mask=attn_mask, kv_mask=kv_mask, query_posenc=query_posenc, key_posenc=key_posenc)
 
         # scale_pe=0.0 should effectively remove PE, producing different output than scale_pe=1.0
         assert not torch.allclose(q1, q0, atol=1e-6), "scale_pe=0.0 should produce different output than scale_pe=1.0"
