@@ -224,7 +224,7 @@ class Attention(nn.Module):
         if attn_type in FLASH_ATTN_TYPES:
             # TODO: Will need to change when supporting window with flex
             self.window_size = (window_size // 2, window_size // 2) if window_size is not None else (-1, -1)
-        if torch_compile or attn_type == "flex":
+        if torch_compile:
             self.attn = torch.compile(self.attn, dynamic=True)
         return self.attn_type
 

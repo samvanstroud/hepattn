@@ -833,21 +833,6 @@ class ObjectRegressionTask(RegressionTask):
     def latent(self, x: dict[str, Tensor]) -> Tensor:
         return self.net(x[self.input_object + "_embed"])
 
-    def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        output = outputs[self.regression_key].detach().to(torch.float32)
-        target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1).to(torch.float32)
-        num_objects = output.shape[1]
-        # Index from the front so it works for both object and mask regression
-        # The expand is not necessary but stops a broadcasting warning from smooth_l1_loss
-        costs = self.loss_fn(
-            output.unsqueeze(2).expand(-1, -1, num_objects, -1),
-            target.unsqueeze(1).expand(-1, num_objects, -1, -1),
-            reduction="none",
-        )
-        # Average over the regression fields dimension
-        costs = costs.mean(-1)
-        return {f"regr_{self.loss_fn_name}": self.cost_weight * costs}
-
 
 class ObjectHitRegressionTask(RegressionTask):
     def __init__(

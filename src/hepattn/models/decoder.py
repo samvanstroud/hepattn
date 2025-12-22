@@ -71,6 +71,7 @@ class MaskFormerDecoder(nn.Module):
         self.unified_decoding = unified_decoding
         self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
         self.block_size = block_size
+        self.phi_shift = phi_shift
         self.unmask_all_false = unmask_all_false
 
         if self.local_strided_attn:
@@ -186,9 +187,8 @@ class MaskFormerDecoder(nn.Module):
                 if self.unmask_all_false:
                     attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
 
-            if attn_mask is not None and self.attn_type != "flex":
+            if (attn_mask is not None) and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
-
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"],
@@ -196,8 +196,8 @@ class MaskFormerDecoder(nn.Module):
                 attn_mask=attn_mask,
                 q_mask=x.get("query_mask"),
                 kv_mask=x.get("key_valid"),
-                query_posenc=x["query_posenc"] if (self.posenc and not self.mask_attention) else None,
-                key_posenc=x["key_posenc"] if (self.posenc and not self.mask_attention) else None,
+                query_posenc=x["query_posenc"] if self.posenc else None,
+                key_posenc=x["key_posenc"] if self.posenc else None,
                 attn_mask_transpose=attn_mask_transpose,
             )
 
@@ -214,7 +214,8 @@ class MaskFormerDecoder(nn.Module):
         return sliding_window_mask_strided(self.window_size, q_len, kv_len, str(device))
 
     def generate_positional_encodings(self, x: dict):
-        x["query_phi"] = 2 * torch.pi * torch.arange(self.num_queries, device=x["query_embed"].device) / self.num_queries
+        idx = torch.arange(self.num_queries, device=x["query_embed"].device, dtype=x["query_embed"].dtype)
+        x["query_phi"] = 2 * torch.pi * (idx / self.num_queries - self.phi_shift)
         query_posenc = pos_enc_symmetric(x["query_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         key_posenc = pos_enc_symmetric(x["key_phi"], self.dim, self.posenc["alpha"], self.posenc["base"])
         return query_posenc, key_posenc
@@ -231,7 +232,6 @@ class MaskFormerDecoderLayer(nn.Module):
         bidirectional_ca: bool = True,
         qkv_norm: bool = False,
         hybrid_norm: bool = False,
-        sa_pe: bool = False,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
 
@@ -244,12 +244,10 @@ class MaskFormerDecoderLayer(nn.Module):
             bidirectional_ca: Enable bidirectional cross-attention.
             qkv_norm: Apply normalization to QKV in attention.
             hybrid_norm: Enable hybrid normalization from 2503.04598.
-            sa_pe: Add PE pre self attention.
         """
         super().__init__()
         self.dim = dim
         self.bidirectional_ca = bidirectional_ca
-        self.sa_pe = sa_pe
 
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
@@ -300,11 +298,7 @@ class MaskFormerDecoderLayer(nn.Module):
         q = self.q_ca(q_pe, k=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         q = self.q_dense(q)
 
-        if self.sa_pe:
-            q_pe = q if query_posenc is None else q + query_posenc
-            q = self.q_sa(q_pe, k=q_pe, v=q, q_mask=q_mask)
-        else:
-            q = self.q_sa(q, k=q, v=q, q_mask=q_mask)
+        q = self.q_sa(q, k=q, v=q, q_mask=q_mask)
 
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:

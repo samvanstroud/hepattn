@@ -43,6 +43,22 @@ class MockTask2:
         return mask
 
 
+class LCATask:
+    has_intermediate_loss = True
+    has_first_layer_loss = True
+    name = "task2"
+
+    def __call__(self, x):
+        return None
+
+    def attn_mask(self, x):
+        mask = {"input2": torch.zeros(1, NUM_QUERIES, 6, dtype=torch.bool)}
+        mask["input2"][0, 1, 2] = True
+        mask["input2"][0, 3, 3] = True
+        mask["input2"][0, 4, 4] = True
+        return mask
+
+
 class TestMaskFormerDecoder:
     @pytest.fixture
     def decoder_layer_config(self):
@@ -268,6 +284,39 @@ class TestMaskFormerDecoder:
             assert attn_mask[1, 0, 1]  # becomes True
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
+
+    def test_flex_local_cross_attention(self, decoder_layer_config, sample_local_strided_decoder_data):
+        """Test flex implementation of local cross attention in the decoder."""
+        # Configure decoder to use flex attention with local_strided_attn
+        config = decoder_layer_config.copy()
+        config["attn_kwargs"] = {"attn_type": "flex"}
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            local_strided_attn=True,
+            window_size=4,
+            window_wrap=True,
+        )
+
+        # flex local-strided attention only supports batch size 1
+        x, input_names = sample_local_strided_decoder_data
+        # Remove key_valid since flex attention doesn't support kv_mask
+        x = {k: v for k, v in x.items() if k != "key_valid"}
+        decoder.tasks = []  # ty: ignore[unresolved-attribute]  # no tasks / pure local CA
+
+        # Forward pass should exercise the flex local CA path, including transpose_blockmask
+        updated_x, outputs = decoder(x, input_names)
+
+        # Basic shape checks on embeddings
+        assert updated_x["query_embed"].shape == (1, NUM_QUERIES, DIM)
+        assert updated_x["key_embed"].shape == (1, SEQ_LEN, DIM)
+
+        # For flex attention, attention masks are fed directly to the backend and
+        # not stored in outputs, but the layer should still produce a valid entry.
+        assert "layer_0" in outputs
+        assert isinstance(outputs["layer_0"], dict)
 
 
 class TestMaskFormerDecoderLayer:
