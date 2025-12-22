@@ -1,7 +1,9 @@
 import pytest
 import torch
+from torch.nn.attention.flex_attention import create_mask
 
 from hepattn.models.decoder import MaskFormerDecoder, MaskFormerDecoderLayer
+from hepattn.utils.local_ca import auto_local_ca_mask
 
 BATCH_SIZE = 2
 SEQ_LEN = 10
@@ -284,6 +286,39 @@ class TestMaskFormerDecoder:
             assert attn_mask[1, 0, 1]  # becomes True
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
+
+    def test_flex_local_ca_mask(self, decoder_layer_config):
+        """Test that flex_local_ca_mask produces the same mask as auto_local_ca_mask."""
+        window_size = 4
+        q_len = NUM_QUERIES
+        kv_len = SEQ_LEN * 4  # longer key sequence to exercise striding
+        device = "cpu"
+
+        # Configure decoder to use flex attention with local_strided_attn
+        config = decoder_layer_config.copy()
+        config["attn_kwargs"] = {"attn_type": "flex"}
+        decoder = MaskFormerDecoder(
+            num_queries=q_len,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            local_strided_attn=True,
+            window_size=window_size,
+            window_wrap=False,
+        )
+
+        # Dummy query / key embeddings for reference mask
+        query_embed = torch.randn(1, q_len)
+        key_embed = torch.randn(1, kv_len)
+
+        # Reference torch implementation mask
+        attn_mask_torch = auto_local_ca_mask(query_embed, key_embed, decoder.window_size, wrap=decoder.window_wrap)
+
+        # Mask produced by flex_local_ca_mask, converted via flex_attention.create_mask
+        block_mask = decoder.flex_local_ca_mask(q_len, kv_len, device)
+        attn_mask_flex = create_mask(block_mask.mask_mod, 1, 1, q_len, kv_len, device)
+
+        assert torch.allclose(attn_mask_torch, attn_mask_flex)
 
     def test_flex_local_cross_attention(self, decoder_layer_config, sample_local_strided_decoder_data):
         """Test flex implementation of local cross attention in the decoder."""
