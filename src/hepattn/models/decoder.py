@@ -37,7 +37,7 @@ class MaskFormerDecoder(nn.Module):
         unified_decoding: bool = False,
         phi_shift: float = 0.0,
         unmask_all_false: bool = True,
-        add_pre_layer_pe: bool = False,
+        add_direct_pe: bool = False,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -77,7 +77,7 @@ class MaskFormerDecoder(nn.Module):
         self.block_size = block_size
         self.phi_shift = phi_shift
         self.unmask_all_false = unmask_all_false
-        self.add_pre_layer_pe = add_pre_layer_pe
+        self.add_direct_pe = add_direct_pe
 
         if self.local_strided_attn:
             assert self.attn_type in {"torch", "flex"}, (
@@ -127,7 +127,7 @@ class MaskFormerDecoder(nn.Module):
             outputs[f"layer_{layer_index}"] = {}
 
             # if maskattention, PE should be added before generating the mask
-            if self.posenc and self.add_pre_layer_pe:
+            if self.posenc and self.add_direct_pe:
                 x["query_embed"] = x["query_embed"] + x["query_posenc"]
                 x["key_embed"] = x["key_embed"] + x["key_posenc"]
 
