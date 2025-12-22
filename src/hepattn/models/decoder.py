@@ -57,6 +57,7 @@ class MaskFormerDecoder(nn.Module):
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
             phi_shift: The shift in the phi angle for positional encoding.
             unmask_all_false: If True, queries with all-false attention masks will be unmasked to attend everywhere.
+            add_direct_pe: If True, positional encoding is added directly to embeddings before generating attention masks.
         """
         super().__init__()
 
@@ -126,7 +127,7 @@ class MaskFormerDecoder(nn.Module):
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
             outputs[f"layer_{layer_index}"] = {}
 
-            # if maskattention, PE should be added before generating the mask
+            # if add_direct_pe, PE should be added before generating the mask
             if self.posenc and self.add_direct_pe:
                 x["query_embed"] = x["query_embed"] + x["query_posenc"]
                 x["key_embed"] = x["key_embed"] + x["key_posenc"]
@@ -260,6 +261,7 @@ class MaskFormerDecoderLayer(nn.Module):
             bidirectional_ca: Enable bidirectional cross-attention.
             qkv_norm: Apply normalization to QKV in attention.
             hybrid_norm: Enable hybrid normalization from 2503.04598.
+            scale_pe: Scaling factor for positional encodings.
         """
         super().__init__()
         self.dim = dim
@@ -309,8 +311,9 @@ class MaskFormerDecoderLayer(nn.Module):
                 - The updated query embeddings (Tensor).
                 - The updated key/value embeddings (Tensor).
         """
-        query_posenc = self.scale_pe * query_posenc
-        key_posenc = self.scale_pe * key_posenc
+        if (query_posenc is not None) and (key_posenc is not None):
+            query_posenc = self.scale_pe * query_posenc
+            key_posenc = self.scale_pe * key_posenc
 
         q_pe = q if query_posenc is None else q + query_posenc
         kv_pe = kv if key_posenc is None else kv + key_posenc
