@@ -59,7 +59,7 @@ class LCATask:
         return mask
 
 
-class TestMaskFormerDecoder:
+class TestMaskFormerDecoder:  # noqa: PLR0904
     @pytest.fixture
     def decoder_layer_config(self):
         return {
