@@ -8,7 +8,6 @@ from functools import partial
 import torch
 from torch import Tensor, nn
 
-from hepattn.flex.fast_local_ca import build_strided_sliding_window_blockmask
 from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped, transpose_blockmask
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
@@ -32,7 +31,6 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
-        fast_local_ca: bool = False,
         block_size: int = 128,
         unified_decoding: bool = False,
         phi_shift: float = 0.0,
@@ -51,7 +49,6 @@ class MaskFormerDecoder(nn.Module):
             window_size: The size of the window for local strided window attention.
             window_wrap: If True, wraps the window for local strided window attention.
             attn_type: The attention type to use (e.g., 'torch', 'flex').
-            fast_local_ca: If True, uses fast local CA.
             block_size: The size of the block for fast local CA.
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
             phi_shift: The shift in the phi angle for positional encoding.
@@ -61,6 +58,7 @@ class MaskFormerDecoder(nn.Module):
 
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
         self.dim = decoder_layer_config["dim"]
+        self.bidirectional_ca = decoder_layer_config.get("bidirectional_ca", True)
         self.tasks: list | None = None  # Will be set by MaskFormer
         self.num_queries = num_queries
         self.mask_attention = mask_attention
@@ -72,7 +70,6 @@ class MaskFormerDecoder(nn.Module):
         self.window_wrap = window_wrap
         self.unified_decoding = unified_decoding
         self.initial_queries = nn.Parameter(torch.randn(self.num_queries, decoder_layer_config["dim"]))
-        self.fast_local_ca = fast_local_ca
         self.block_size = block_size
         self.phi_shift = phi_shift
         self.unmask_all_false = unmask_all_false
@@ -81,6 +78,7 @@ class MaskFormerDecoder(nn.Module):
             assert self.attn_type in {"torch", "flex"}, (
                 f"Invalid attention type when local_strided_attn is True: {self.attn_type}, must be 'torch' or 'flex'"
             )
+
         assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
@@ -115,10 +113,10 @@ class MaskFormerDecoder(nn.Module):
             elif self.attn_type == "flex":
                 device = x["query_embed"].device
                 q_len = x["query_embed"].shape[1]
-                kv_len = x["key_embed"].shape[1]
-                dtype_float = x["query_embed"].dtype
-                attn_mask = self.flex_local_ca_mask(q_len, kv_len, device, dtype_float)
-                attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=device)
+                kv_len = int(x["key_embed"].shape[1])
+                attn_mask_lca = self.flex_local_ca_mask(q_len, kv_len, device)
+                if self.bidirectional_ca:
+                    attn_mask_transpose = transpose_blockmask(attn_mask_lca, q_tokens=q_len, kv_tokens=kv_len, dev=device)
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -209,22 +207,11 @@ class MaskFormerDecoder(nn.Module):
 
         return x, outputs
 
-    def flex_local_ca_mask(self, q_len: int, kv_len: int, device, dtype_float):
+    def flex_local_ca_mask(self, q_len: int, kv_len: int, device):
         # Calculate stride based on the ratio of key length to query length
-        stride = kv_len / q_len
-        if self.fast_local_ca:
-            return build_strided_sliding_window_blockmask(
-                window_size=self.window_size,
-                block_size=self.block_size,
-                stride=kv_len / q_len,
-                q_len=q_len,
-                kv_len=kv_len,
-                device=device,
-                wrap=self.window_wrap,
-                dtype_float=dtype_float,
-            )
-        window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
-        return window_mask_func(self.window_size, stride=stride, q_len=q_len, kv_len=kv_len, device=str(device))
+        if self.window_wrap:
+            return sliding_window_mask_strided_wrapped(self.window_size, q_len, kv_len, str(device))
+        return sliding_window_mask_strided(self.window_size, q_len, kv_len, str(device))
 
     def generate_positional_encodings(self, x: dict):
         idx = torch.arange(self.num_queries, device=x["query_embed"].device, dtype=x["query_embed"].dtype)

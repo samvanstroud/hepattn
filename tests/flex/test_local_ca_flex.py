@@ -41,10 +41,14 @@ def test_flex_local_ca_mask_equivalence():
 
     attn_mask_torch = auto_local_ca_mask(query_embed, key_embed, decoder.window_size, wrap=decoder.window_wrap)
     # Get mask from decoder's flex_local_ca_mask method using create_mask
-    decoder_mask_flex = create_mask(
-        decoder.flex_local_ca_mask(q_len, kv_len, device, dtype_float=query_embed.dtype).mask_mod, 1, 1, q_len, kv_len, device
-    )
-    assert torch.allclose(attn_mask_torch, decoder_mask_flex)
+    decoder_blockmask = decoder.flex_local_ca_mask(q_len, kv_len, device)
+    decoder_mask_flex = create_mask(decoder_blockmask.mask_mod, 1, 1, q_len, kv_len, device)
+    # auto_local_ca_mask returns (B, Q, KV); create_mask returns (B, H, Q, KV).
+    # Compare after squeezing the head dimension.
+    assert decoder_mask_flex.shape == (1, 1, q_len, kv_len)
+    assert attn_mask_torch.shape == (1, q_len, kv_len)
+    assert decoder_mask_flex.dtype == attn_mask_torch.dtype
+    assert torch.allclose(decoder_mask_flex[:, 0], attn_mask_torch)
 
     # Test wrapped version
     decoder = MaskFormerDecoder(
@@ -58,10 +62,12 @@ def test_flex_local_ca_mask_equivalence():
     )
     attn_mask_torch = auto_local_ca_mask(query_embed, key_embed, decoder.window_size, wrap=decoder.window_wrap)
     # Get mask from decoder's flex_local_ca_mask method using create_mask
-    decoder_mask_flex = create_mask(
-        decoder.flex_local_ca_mask(q_len, kv_len, device, dtype_float=query_embed.dtype).mask_mod, 1, 1, q_len, kv_len, device
-    )
-    assert torch.allclose(attn_mask_torch, decoder_mask_flex)
+    decoder_blockmask = decoder.flex_local_ca_mask(q_len, kv_len, device)
+    decoder_mask_flex = create_mask(decoder_blockmask.mask_mod, 1, 1, q_len, kv_len, device)
+    assert decoder_mask_flex.shape == (1, 1, q_len, kv_len)
+    assert attn_mask_torch.shape == (1, q_len, kv_len)
+    assert decoder_mask_flex.dtype == attn_mask_torch.dtype
+    assert torch.allclose(decoder_mask_flex[:, 0], attn_mask_torch)
 
 
 def test_flex_local_ca_mask_transpose_consistency():
@@ -92,9 +98,7 @@ def test_flex_local_ca_mask_transpose_consistency():
         window_wrap=True,
     )
 
-    query_embed = torch.randn(1, q_len)
-
-    block_mask = decoder.flex_local_ca_mask(q_len, kv_len, device, dtype_float=query_embed.dtype)
+    block_mask = decoder.flex_local_ca_mask(q_len, kv_len, device)
     forward_mask = create_mask(block_mask.mask_mod, 1, 1, q_len, kv_len, device)
 
     transpose_block_mask = transpose_blockmask(block_mask, q_tokens=q_len, kv_tokens=kv_len, dev=device)
