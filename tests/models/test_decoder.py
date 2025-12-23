@@ -345,7 +345,7 @@ class TestMaskFormerDecoder:
             mask_attention=True,
             unmask_all_false=False,
         )
-        decoder_no_unmask.tasks = [TaskSparse()]
+        decoder_no_unmask.tasks = [TaskSparse()]  # ty: ignore[unresolved-attribute]
 
         # Test with unmask_all_false=True (default)
         decoder_with_unmask = MaskFormerDecoder(
@@ -355,7 +355,7 @@ class TestMaskFormerDecoder:
             mask_attention=True,
             unmask_all_false=True,
         )
-        decoder_with_unmask.tasks = [TaskSparse()]
+        decoder_with_unmask.tasks = [TaskSparse()]  # ty: ignore[unresolved-attribute]
 
         _, outputs_no_unmask = decoder_no_unmask(x.copy(), input_names)
         _, outputs_with_unmask = decoder_with_unmask(x.copy(), input_names)
@@ -494,7 +494,7 @@ class TestMaskFormerDecoderFlexAndMasks(TestMaskFormerDecoder):
                 full_mask = outputs["logit"].sigmoid() > 0.5  # (B, Q, SEQ_LEN)
                 return {"input1": full_mask[:, :, :4]}
 
-        decoder.tasks = [TaskWithMask()]
+        decoder.tasks = [TaskWithMask()]  # ty: ignore[unresolved-attribute]
 
         # Store original embeddings before forward
         original_query_embed = x["query_embed"].clone()
@@ -538,7 +538,7 @@ class TestMaskFormerDecoderFlexAndMasks(TestMaskFormerDecoder):
                 # Return a query mask indicating which queries are valid
                 return outputs["logit"].sum(dim=-1) > 0
 
-        decoder.tasks = [TaskWithQueryMask()]
+        decoder.tasks = [TaskWithQueryMask()]  # ty: ignore[unresolved-attribute]
 
         updated_x, _ = decoder(x, input_names)
 
@@ -564,7 +564,7 @@ class TestMaskFormerDecoderFlexAndMasks(TestMaskFormerDecoder):
 
         x, input_names = sample_local_strided_decoder_data
         x = {k: v for k, v in x.items() if k != "key_valid"}
-        decoder.tasks = []
+        decoder.tasks = []  # ty: ignore[unresolved-attribute]
 
         # Forward pass should use fast_local_ca path
         updated_x, outputs = decoder(x, input_names)
@@ -610,7 +610,7 @@ class TestMaskFormerDecoderFlexAndMasks(TestMaskFormerDecoder):
                 full_mask = outputs["logit"].sigmoid() > 0.5
                 return {"input1": full_mask[:, :, :4]}
 
-        decoder.tasks = [TaskWithIntermediate(), TaskWithoutIntermediate()]
+        decoder.tasks = [TaskWithIntermediate(), TaskWithoutIntermediate()]  # ty: ignore[unresolved-attribute]
 
         _, outputs = decoder(x, input_names)
 
@@ -642,7 +642,7 @@ class TestMaskFormerDecoderFlexAndMasks(TestMaskFormerDecoder):
                 full_mask = outputs["logit"].sigmoid() > 0.5
                 return {"input1": full_mask[:, :, :4]}
 
-        decoder.tasks = [TaskSkipFirstLayer()]
+        decoder.tasks = [TaskSkipFirstLayer()]  # ty: ignore[unresolved-attribute]
 
         _, outputs = decoder(x, input_names)
 
@@ -674,8 +674,8 @@ class TestMaskFormerDecoderFlexAndMasks(TestMaskFormerDecoder):
             phi_shift=0.5,
         )
 
-        decoder_shift_0.tasks = []
-        decoder_shift_1.tasks = []
+        decoder_shift_0.tasks = []  # ty: ignore[unresolved-attribute]
+        decoder_shift_1.tasks = []  # ty: ignore[unresolved-attribute]
 
         # Generate positional encodings with different shifts
         pe0_q, pe0_k = decoder_shift_0.generate_positional_encodings(x.copy())
