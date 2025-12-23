@@ -67,5 +67,3 @@ def test_sliding_window_mask_strided_wrapped_and_transpose():
 
     assert transposed_mask.shape == full_mask_wrapped.transpose(-2, -1).shape
     assert torch.equal(transposed_mask, full_mask_wrapped.transpose(-2, -1))
-
-
