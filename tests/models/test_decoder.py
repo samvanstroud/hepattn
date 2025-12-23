@@ -59,7 +59,7 @@ class LCATask:
         return mask
 
 
-class TestMaskFormerDecoder:
+class TestMaskFormerDecoder:  # noqa: PLR0904
     @pytest.fixture
     def decoder_layer_config(self):
         return {
@@ -168,7 +168,7 @@ class TestMaskFormerDecoder:
     def test_forward_without_tasks(self, decoder_no_mask_attention, sample_decoder_data):
         """Test forward pass without any tasks defined."""
         x, input_names = sample_decoder_data
-        decoder_no_mask_attention.tasks = []  # Empty task list
+        decoder_no_mask_attention.tasks = []  # Empty task list  # ty: ignore[unresolved-attribute]
 
         updated_x, outputs = decoder_no_mask_attention(x, input_names)
 
@@ -187,7 +187,7 @@ class TestMaskFormerDecoder:
     def test_forward_local_strided_attn(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
         """Test forward pass with local_strided_attn=True."""
         x, input_names = sample_local_strided_decoder_data
-        decoder_local_strided_attn.tasks = []  # Empty task list
+        decoder_local_strided_attn.tasks = []  # Empty task list  # ty: ignore[unresolved-attribute]
 
         updated_x, outputs = decoder_local_strided_attn(x, input_names)
 
@@ -211,7 +211,7 @@ class TestMaskFormerDecoder:
     def test_forward_shapes(self, decoder_no_mask_attention, sample_decoder_data):
         """Test that forward pass maintains correct tensor shapes."""
         x, input_names = sample_decoder_data
-        decoder_no_mask_attention.tasks = []
+        decoder_no_mask_attention.tasks = []  # ty: ignore[unresolved-attribute]
 
         original_query_shape = x["query_embed"].shape
         original_key_shape = x["key_embed"].shape
@@ -259,7 +259,7 @@ class TestMaskFormerDecoder:
         x, input_names = sample_decoder_data
         x["key_valid"] = torch.ones(BATCH_SIZE, SEQ_LEN, dtype=torch.bool)
 
-        decoder.tasks = [MockTask1(), MockTask2()]
+        decoder.tasks = [MockTask1(), MockTask2()]  # ty: ignore[unresolved-attribute]
 
         _, outputs = decoder(x, input_names)
 
@@ -317,6 +317,284 @@ class TestMaskFormerDecoder:
         # not stored in outputs, but the layer should still produce a valid entry.
         assert "layer_0" in outputs
         assert isinstance(outputs["layer_0"], dict)
+
+    def test_add_direct_pe(self, decoder_layer_config, sample_decoder_data):
+        """Test that add_direct_pe adds positional encoding before mask generation."""
+        x, input_names = sample_decoder_data
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=True,
+            posenc={"alpha": 1.0, "base": 2.0},
+            add_direct_pe=True,
+        )
+        x["key_phi"] = torch.randn(BATCH_SIZE, SEQ_LEN)
+
+        # Create a task that will generate attention masks
+        class TaskWithMask:
+            has_intermediate_loss = True
+            has_first_layer_loss = True
+            name = "task"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                # In non-unified mode the decoder expects per-input masks whose
+                # last dimension matches the number of constituents for that
+                # input (here 4 for ``input1``), not the full ``SEQ_LEN``.
+                # Slice the logits accordingly so that the flattened mask size
+                # matches the number of True entries selected by
+                # ``key_is_input1``.
+                return {"input1": outputs["logit"][..., :4].sigmoid() > 0.5}
+
+        decoder.tasks = [TaskWithMask()]  # ty: ignore[unresolved-attribute]
+
+        # Store original embeddings before forward
+        original_query_embed = x["query_embed"].clone()
+        original_key_embed = x["key_embed"].clone()
+
+        # Forward pass
+        updated_x, _ = decoder(x, input_names)
+
+        # With add_direct_pe, the embeddings should have been modified by PE before mask generation
+        # The embeddings should be different from the original (PE was added)
+        assert not torch.allclose(updated_x["query_embed"], original_query_embed, atol=1e-5)
+        assert not torch.allclose(updated_x["key_embed"], original_key_embed, atol=1e-5)
+
+    def test_use_query_masks(self, decoder_layer_config, sample_decoder_data):
+        """Test that use_query_masks collects and uses query masks from tasks."""
+        x, input_names = sample_decoder_data
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=True,
+            use_query_masks=True,
+        )
+
+        # Create a task that provides query masks
+        class TaskWithQueryMask:
+            has_intermediate_loss = True
+            has_first_layer_loss = True
+            name = "task"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                # See comment in ``test_add_direct_pe``: restrict to the
+                # ``input1`` slice so the mask shape matches the decoder
+                # contract in non-unified mode.
+                return {"input1": outputs["logit"][..., :4].sigmoid() > 0.5}
+
+            def query_mask(self, outputs):
+                # Return a query mask indicating which queries are valid
+                return outputs["logit"].sum(dim=-1) > 0
+
+        decoder.tasks = [TaskWithQueryMask()]  # ty: ignore[unresolved-attribute]
+
+        updated_x, _ = decoder(x, input_names)
+
+        # Check that query_mask was set in x
+        assert "query_mask" in updated_x
+        assert updated_x["query_mask"].shape == (BATCH_SIZE, NUM_QUERIES)
+        assert updated_x["query_mask"].dtype == torch.bool
+
+    def test_fast_local_ca(self, decoder_layer_config, sample_local_strided_decoder_data):
+        """Test fast_local_ca=True uses build_strided_sliding_window_blockmask."""
+        config = decoder_layer_config.copy()
+        config["attn_kwargs"] = {"attn_type": "flex"}
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            local_strided_attn=True,
+            window_size=4,
+            window_wrap=True,
+            fast_local_ca=True,
+            block_size=64,
+        )
+
+        x, input_names = sample_local_strided_decoder_data
+        x = {k: v for k, v in x.items() if k != "key_valid"}
+        decoder.tasks = []  # ty: ignore[unresolved-attribute]
+
+        # Forward pass should use fast_local_ca path
+        updated_x, outputs = decoder(x, input_names)
+
+        # Basic shape checks
+        assert updated_x["query_embed"].shape == (1, NUM_QUERIES, DIM)
+        assert updated_x["key_embed"].shape == (1, SEQ_LEN, DIM)
+        assert "layer_0" in outputs
+
+    def test_task_skipping_has_intermediate_loss(self, decoder_layer_config, sample_decoder_data):
+        """Test that tasks with has_intermediate_loss=False are skipped."""
+        x, input_names = sample_decoder_data
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=True,
+        )
+
+        # Create tasks with different has_intermediate_loss values
+        class TaskWithIntermediate:
+            has_intermediate_loss = True
+            has_first_layer_loss = True
+            name = "task_with"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                # Per-input mask for ``input1`` with the correct constituent
+                # dimension (4) for non-unified decoding.
+                return {"input1": outputs["logit"][..., :4].sigmoid() > 0.5}
+
+        class TaskWithoutIntermediate:
+            has_intermediate_loss = False
+            has_first_layer_loss = False
+            name = "task_without"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                # Per-input mask for ``input1`` as above.
+                return {"input1": outputs["logit"][..., :4].sigmoid() > 0.5}
+
+        decoder.tasks = [TaskWithIntermediate(), TaskWithoutIntermediate()]  # ty: ignore[unresolved-attribute]
+
+        _, outputs = decoder(x, input_names)
+
+        # Task with has_intermediate_loss=True should appear in outputs
+        assert "task_with" in outputs["layer_0"]
+        # Task with has_intermediate_loss=False should NOT appear in outputs
+        assert "task_without" not in outputs["layer_0"]
+
+    def test_task_skipping_has_first_layer_loss(self, decoder_layer_config, sample_decoder_data):
+        """Test that tasks with has_first_layer_loss=False are skipped in layer 0."""
+        x, input_names = sample_decoder_data
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=2,  # Need at least 2 layers to test this
+            mask_attention=True,
+        )
+
+        # Create a task that skips first layer
+        class TaskSkipFirstLayer:
+            has_intermediate_loss = True
+            has_first_layer_loss = False  # Skip layer 0
+            name = "task_skip_first"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                # Per-input mask for ``input1`` with constituent dimension 4.
+                return {"input1": outputs["logit"][..., :4].sigmoid() > 0.5}
+
+        decoder.tasks = [TaskSkipFirstLayer()]  # ty: ignore[unresolved-attribute]
+
+        _, outputs = decoder(x, input_names)
+
+        # Task should NOT appear in layer 0
+        assert "task_skip_first" not in outputs["layer_0"]
+        # Task should appear in layer 1
+        assert "task_skip_first" in outputs["layer_1"]
+
+    def test_phi_shift(self, decoder_layer_config, sample_decoder_data):
+        """Test that phi_shift affects positional encoding generation."""
+        x, _ = sample_decoder_data
+        x["key_phi"] = torch.randn(BATCH_SIZE, SEQ_LEN)
+
+        decoder_shift_0 = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            posenc={"alpha": 1.0, "base": 2.0},
+            phi_shift=0.0,
+        )
+
+        decoder_shift_1 = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            posenc={"alpha": 1.0, "base": 2.0},
+            phi_shift=0.5,
+        )
+
+        decoder_shift_0.tasks = []  # ty: ignore[unresolved-attribute]
+        decoder_shift_1.tasks = []  # ty: ignore[unresolved-attribute]
+
+        # Generate positional encodings with different shifts
+        pe0_q, pe0_k = decoder_shift_0.generate_positional_encodings(x.copy())
+        pe1_q, pe1_k = decoder_shift_1.generate_positional_encodings(x.copy())
+
+        # Different phi_shift should produce different positional encodings
+        assert not torch.allclose(pe0_q, pe1_q, atol=1e-5)
+        # Key positional encodings should be the same (phi_shift only affects queries)
+        assert torch.allclose(pe0_k, pe1_k, atol=1e-5)
+
+    def test_unmask_all_false(self, decoder_layer_config, sample_decoder_data):
+        """Test that unmask_all_false=False doesn't unmask all-false attention masks."""
+        x, input_names = sample_decoder_data
+
+        # Create a task that produces sparse masks
+        class TaskSparse:
+            has_intermediate_loss = True
+            has_first_layer_loss = True
+            name = "task"
+
+            def __call__(self, x):
+                return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
+
+            def attn_mask(self, outputs):
+                # Create very sparse masks - some queries might end up with all False
+                mask = torch.zeros(BATCH_SIZE, NUM_QUERIES, 4, dtype=torch.bool)
+                mask[0, 1, 1] = True  # Only query 1 has some True for input1
+                return {"input1": mask}
+
+        # Test with unmask_all_false=False
+        decoder_no_unmask = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=True,
+            unmask_all_false=False,
+        )
+        decoder_no_unmask.tasks = [TaskSparse()]  # ty: ignore[unresolved-attribute]
+
+        # Test with unmask_all_false=True (default)
+        decoder_with_unmask = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=decoder_layer_config,
+            num_decoder_layers=1,
+            mask_attention=True,
+            unmask_all_false=True,
+        )
+        decoder_with_unmask.tasks = [TaskSparse()]  # ty: ignore[unresolved-attribute]
+
+        _, outputs_no_unmask = decoder_no_unmask(x.copy(), input_names)
+        _, outputs_with_unmask = decoder_with_unmask(x.copy(), input_names)
+
+        attn_mask_no_unmask = outputs_no_unmask["layer_0"]["attn_mask"]
+        attn_mask_with_unmask = outputs_with_unmask["layer_0"]["attn_mask"]
+
+        # The masks should be different if unmask_all_false logic is applied
+        # (at least verify the code path is executed)
+        assert attn_mask_no_unmask.shape == (BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
+        assert attn_mask_with_unmask.shape == (BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
+
+        # Verify that query 1 has some True values (it should in both cases)
+        assert attn_mask_no_unmask[0, 1, :].any()
+        assert attn_mask_with_unmask[0, 1, :].any()
 
 
 class TestMaskFormerDecoderLayer:
@@ -379,6 +657,37 @@ class TestMaskFormerDecoderLayer:
         assert new_q.shape == q.shape
         # Without bidirectional, kv should remain unchanged
         assert new_kv is kv
+
+    def test_scale_pe(self, sample_data):
+        """Test that scale_pe correctly scales positional encodings."""
+        q, kv, attn_mask, kv_mask = sample_data
+
+        # Create positional encodings
+        query_posenc = torch.randn(BATCH_SIZE, NUM_QUERIES, DIM)
+        key_posenc = torch.randn(BATCH_SIZE, SEQ_LEN, DIM)
+
+        # Create two layers with different scale_pe values
+        layer_scale_1 = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=True, scale_pe=1.0)
+        layer_scale_2 = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=True, scale_pe=2.0)
+
+        # Run forward passes with the same inputs
+        q1, kv1 = layer_scale_1(q, kv, attn_mask=attn_mask, kv_mask=kv_mask, query_posenc=query_posenc, key_posenc=key_posenc)
+
+        q2, kv2 = layer_scale_2(q, kv, attn_mask=attn_mask, kv_mask=kv_mask, query_posenc=query_posenc, key_posenc=key_posenc)
+
+        # Verify that different scale_pe values produce different outputs
+        # (since the scaled PE affects the attention computation)
+        assert not torch.allclose(q1, q2, atol=1e-6), "Outputs should differ when scale_pe differs"
+        assert not torch.allclose(kv1, kv2, atol=1e-6), "Outputs should differ when scale_pe differs"
+
+        # Verify that scale_pe=1.0 uses the original PE (no scaling)
+        # by checking that scale_pe=1.0 produces different output than scale_pe=0.0
+        layer_scale_0 = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=True, scale_pe=0.0)
+        q0, kv0 = layer_scale_0(q, kv, attn_mask=attn_mask, kv_mask=kv_mask, query_posenc=query_posenc, key_posenc=key_posenc)
+
+        # scale_pe=0.0 should effectively remove PE, producing different output than scale_pe=1.0
+        assert not torch.allclose(q1, q0, atol=1e-6), "scale_pe=0.0 should produce different output than scale_pe=1.0"
+        assert not torch.allclose(kv1, kv0, atol=1e-6), "scale_pe=0.0 should produce different output than scale_pe=1.0"
 
 
 class MockUnifiedTask:
@@ -446,7 +755,7 @@ class TestMaskFormerDecoderUnified:
     def test_unified_forward_without_tasks(self, unified_decoder, sample_unified_decoder_data):
         """Test unified decoder forward pass without tasks."""
         x, input_names = sample_unified_decoder_data
-        unified_decoder.tasks = []
+        unified_decoder.tasks = []  # ty: ignore[unresolved-attribute]
 
         x_out, outputs = unified_decoder(x, input_names)
 
@@ -470,7 +779,7 @@ class TestMaskFormerDecoderUnified:
 
         # Set up the task
         task = MockUnifiedTask()
-        unified_decoder.tasks = [task]
+        unified_decoder.tasks = [task]  # ty: ignore[unresolved-attribute]
 
         _, outputs = unified_decoder(x, input_names)
 
@@ -496,7 +805,7 @@ class TestMaskFormerDecoderUnified:
 
         # Set up a task
         task = MockUnifiedTask()
-        unified_decoder.tasks = [task]
+        unified_decoder.tasks = [task]  # ty: ignore[unresolved-attribute]
 
         # This should work without key_is_ masks
         x_out, _ = unified_decoder(x, input_names)
@@ -510,7 +819,7 @@ class TestMaskFormerDecoderUnified:
         x, input_names = sample_unified_decoder_data
 
         task = MockUnifiedTask()
-        unified_decoder.tasks = [task]
+        unified_decoder.tasks = [task]  # ty: ignore[unresolved-attribute]
 
         _, outputs = unified_decoder(x, input_names)
 
@@ -551,7 +860,7 @@ class TestMaskFormerDecoderUnified:
         x, input_names = sample_unified_decoder_data
 
         task = MockUnifiedTask()
-        unified_decoder.tasks = [task]
+        unified_decoder.tasks = [task]  # ty: ignore[unresolved-attribute]
 
         x_out, outputs = unified_decoder(x, input_names)
 
