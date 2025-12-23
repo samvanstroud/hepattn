@@ -341,7 +341,13 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
                 return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
 
             def attn_mask(self, outputs):
-                return {"input1": outputs["logit"].sigmoid() > 0.5}
+                # In non-unified mode the decoder expects per-input masks whose
+                # last dimension matches the number of constituents for that
+                # input (here 4 for ``input1``), not the full ``SEQ_LEN``.
+                # Slice the logits accordingly so that the flattened mask size
+                # matches the number of True entries selected by
+                # ``key_is_input1``.
+                return {"input1": outputs["logit"][..., :4].sigmoid() > 0.5}
 
         decoder.tasks = [TaskWithMask()]
 
@@ -378,7 +384,10 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
                 return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
 
             def attn_mask(self, outputs):
-                return {"input1": outputs["logit"].sigmoid() > 0.5}
+                # See comment in ``test_add_direct_pe``: restrict to the
+                # ``input1`` slice so the mask shape matches the decoder
+                # contract in non-unified mode.
+                return {"input1": outputs["logit"][..., :4].sigmoid() > 0.5}
 
             def query_mask(self, outputs):
                 # Return a query mask indicating which queries are valid
@@ -441,7 +450,9 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
                 return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
 
             def attn_mask(self, outputs):
-                return {"input1": outputs["logit"].sigmoid() > 0.5}
+                # Per-input mask for ``input1`` with the correct constituent
+                # dimension (4) for non-unified decoding.
+                return {"input1": outputs["logit"][..., :4].sigmoid() > 0.5}
 
         class TaskWithoutIntermediate:
             has_intermediate_loss = False
@@ -452,7 +463,8 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
                 return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
 
             def attn_mask(self, outputs):
-                return {"input1": outputs["logit"].sigmoid() > 0.5}
+                # Per-input mask for ``input1`` as above.
+                return {"input1": outputs["logit"][..., :4].sigmoid() > 0.5}
 
         decoder.tasks = [TaskWithIntermediate(), TaskWithoutIntermediate()]
 
@@ -483,7 +495,8 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
                 return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
 
             def attn_mask(self, outputs):
-                return {"input1": outputs["logit"].sigmoid() > 0.5}
+                # Per-input mask for ``input1`` with constituent dimension 4.
+                return {"input1": outputs["logit"][..., :4].sigmoid() > 0.5}
 
         decoder.tasks = [TaskSkipFirstLayer()]
 
