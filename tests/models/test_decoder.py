@@ -489,7 +489,10 @@ class TestMaskFormerDecoderFlexAndMasks(TestMaskFormerDecoder):
                 return {"logit": torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)}
 
             def attn_mask(self, outputs):
-                return {"input1": outputs["logit"].sigmoid() > 0.5}
+                # Decoder expects per-input masks whose last dimension matches
+                # the number of constituents for that input (4 for input1).
+                full_mask = outputs["logit"].sigmoid() > 0.5  # (B, Q, SEQ_LEN)
+                return {"input1": full_mask[:, :, :4]}
 
         decoder.tasks = [TaskWithMask()]
 
