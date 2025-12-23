@@ -168,7 +168,7 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
     def test_forward_without_tasks(self, decoder_no_mask_attention, sample_decoder_data):
         """Test forward pass without any tasks defined."""
         x, input_names = sample_decoder_data
-        decoder_no_mask_attention.tasks = []  # Empty task list
+        decoder_no_mask_attention.tasks = []  # Empty task list  # ty: ignore[unresolved-attribute]
 
         updated_x, outputs = decoder_no_mask_attention(x, input_names)
 
@@ -187,7 +187,7 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
     def test_forward_local_strided_attn(self, decoder_local_strided_attn, sample_local_strided_decoder_data):
         """Test forward pass with local_strided_attn=True."""
         x, input_names = sample_local_strided_decoder_data
-        decoder_local_strided_attn.tasks = []  # Empty task list
+        decoder_local_strided_attn.tasks = []  # Empty task list  # ty: ignore[unresolved-attribute]
 
         updated_x, outputs = decoder_local_strided_attn(x, input_names)
 
@@ -211,7 +211,7 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
     def test_forward_shapes(self, decoder_no_mask_attention, sample_decoder_data):
         """Test that forward pass maintains correct tensor shapes."""
         x, input_names = sample_decoder_data
-        decoder_no_mask_attention.tasks = []
+        decoder_no_mask_attention.tasks = []  # ty: ignore[unresolved-attribute]
 
         original_query_shape = x["query_embed"].shape
         original_key_shape = x["key_embed"].shape
@@ -259,7 +259,7 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
         x, input_names = sample_decoder_data
         x["key_valid"] = torch.ones(BATCH_SIZE, SEQ_LEN, dtype=torch.bool)
 
-        decoder.tasks = [MockTask1(), MockTask2()]
+        decoder.tasks = [MockTask1(), MockTask2()]  # ty: ignore[unresolved-attribute]
 
         _, outputs = decoder(x, input_names)
 
@@ -420,7 +420,7 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
 
         x, input_names = sample_local_strided_decoder_data
         x = {k: v for k, v in x.items() if k != "key_valid"}
-        decoder.tasks = []
+        decoder.tasks = []  # ty: ignore[unresolved-attribute]
 
         # Forward pass should use fast_local_ca path
         updated_x, outputs = decoder(x, input_names)
@@ -755,7 +755,7 @@ class TestMaskFormerDecoderUnified:
     def test_unified_forward_without_tasks(self, unified_decoder, sample_unified_decoder_data):
         """Test unified decoder forward pass without tasks."""
         x, input_names = sample_unified_decoder_data
-        unified_decoder.tasks = []
+        unified_decoder.tasks = []  # ty: ignore[unresolved-attribute]
 
         x_out, outputs = unified_decoder(x, input_names)
 
@@ -779,7 +779,7 @@ class TestMaskFormerDecoderUnified:
 
         # Set up the task
         task = MockUnifiedTask()
-        unified_decoder.tasks = [task]
+        unified_decoder.tasks = [task]  # ty: ignore[unresolved-attribute]
 
         _, outputs = unified_decoder(x, input_names)
 
@@ -805,7 +805,7 @@ class TestMaskFormerDecoderUnified:
 
         # Set up a task
         task = MockUnifiedTask()
-        unified_decoder.tasks = [task]
+        unified_decoder.tasks = [task]  # ty: ignore[unresolved-attribute]
 
         # This should work without key_is_ masks
         x_out, _ = unified_decoder(x, input_names)
@@ -819,7 +819,7 @@ class TestMaskFormerDecoderUnified:
         x, input_names = sample_unified_decoder_data
 
         task = MockUnifiedTask()
-        unified_decoder.tasks = [task]
+        unified_decoder.tasks = [task]  # ty: ignore[unresolved-attribute]
 
         _, outputs = unified_decoder(x, input_names)
 
@@ -860,7 +860,7 @@ class TestMaskFormerDecoderUnified:
         x, input_names = sample_unified_decoder_data
 
         task = MockUnifiedTask()
-        unified_decoder.tasks = [task]
+        unified_decoder.tasks = [task]  # ty: ignore[unresolved-attribute]
 
         x_out, outputs = unified_decoder(x, input_names)
 
