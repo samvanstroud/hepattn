@@ -63,6 +63,7 @@ class MaskFormerDecoder(nn.Module):
         self.decoder_layers = nn.ModuleList([MaskFormerDecoderLayer(depth=i, **decoder_layer_config) for i in range(num_decoder_layers)])
         self.dim = decoder_layer_config["dim"]
         self.tasks: list | None = None  # Will be set by MaskFormer
+        self.encoder_tasks: list | None = None  # Will be set by MaskFormer
         self._num_queries = num_queries
         self.mask_attention = mask_attention
         self.use_query_masks = use_query_masks
@@ -115,17 +116,18 @@ class MaskFormerDecoder(nn.Module):
         if not self.dynamic_queries:
             raise ValueError("initialize_dynamic_queries called but decoder.dynamic_queries is False")
 
-        if self.tasks is None:
-            raise ValueError("dynamic_queries=True requires decoder.tasks to be set")
+        if self.encoder_tasks is None:
+            raise ValueError("dynamic_queries=True requires decoder.encoder_tasks to be set")
 
+        # Find query_init task (must be in encoder_tasks)
         query_init_task = None
-        for task in self.tasks:
+        for task in self.encoder_tasks:
             if task.name == "query_init":
                 query_init_task = task
                 break
 
         if query_init_task is None:
-            raise ValueError("dynamic_queries=True requires a task named 'query_init'")
+            raise ValueError("dynamic_queries=True requires a task named 'query_init' in encoder_tasks.")
 
         if "hit_embed" not in x or "hit_valid" not in x:
             raise ValueError("dynamic_queries=True requires 'hit_embed' and 'hit_valid' in decoder input dict")

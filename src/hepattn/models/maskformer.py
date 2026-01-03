@@ -48,6 +48,7 @@ class MaskFormer(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
         self.decoder.tasks = tasks
+        self.decoder.encoder_tasks = encoder_tasks if encoder_tasks is not None else nn.ModuleList()
         self.pooling = pooling
         self.tasks = tasks
         self.encoder_tasks = encoder_tasks if encoder_tasks is not None else nn.ModuleList()
