@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v8-3l-noBiDirCA
+name: TRK-v8-3l-fast
 data:
   # hypatia
   #train_dir: data/trackml/prepped/
@@ -18,7 +18,7 @@ data:
   hit_eval_test: /lus/lfs1aip2/projects/u5du/svanstroud/logs/HF-600MeV-eta2.5_20251208-T205400/ckpts/epoch=079-val_loss=0.11373_test_eval.h5
   hit_filter_threshold: 0.2
   
-  num_workers: 10
+  num_workers: 15
   num_train: -1
   num_test: -1
   num_val: -1
@@ -75,7 +75,7 @@ data:
 
 trainer:
   # Training stuff here
-  max_epochs: 10
+  max_epochs: 20
   accelerator: gpu
   devices: 2
   precision: bf16-mixed
@@ -195,7 +195,7 @@ model:
           attn_kwargs: {bias: false}
       decoder:
         dynamic_queries: true
-        num_decoder_layers: 3
+        num_decoder_layers: &num_dec_layers 3
         num_queries: *num_objects
         mask_attention: true
         use_query_masks: false
@@ -276,3 +276,6 @@ model:
         init_args:
           default_solver: scipy
           adaptive_solver: true
+          n_jobs: *num_dec_layers
+          parallel_solver: true
+          parallel_backend: process
