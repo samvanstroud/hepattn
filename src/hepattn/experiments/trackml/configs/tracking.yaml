@@ -253,7 +253,6 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
-                predict_iou: true
                 dim: *dim
                 losses:
                   mask_dice: 2.0
@@ -262,6 +261,15 @@ model:
                   mask_dice: 2.0
                   mask_focal: 100.0
                 null_weight: 1.0
+
+            - class_path: hepattn.models.task.IoUPredictionTask
+              init_args:
+                name: track_iou
+                input_object: track
+                mask_logit_key: track_hit_logit
+                target_mask_key: particle_hit
+                dim: *dim
+                loss_weight: 1.0
 
       matcher:
         class_path: hepattn.models.matcher.Matcher

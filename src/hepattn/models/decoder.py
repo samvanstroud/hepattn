@@ -15,7 +15,6 @@ from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
 from hepattn.models.norm import get_hybrid_norm_config
 from hepattn.models.posenc import pos_enc_symmetric
-from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.local_ca import auto_local_ca_mask
 from hepattn.utils.model_utils import unmerge_inputs
 
@@ -223,13 +222,8 @@ class MaskFormerDecoder(nn.Module):
                     continue
 
                 # Get the outputs of the task given the current embeddings
-                task_outputs = task(x)
-
-                # Update x with task outputs for downstream use
-                if isinstance(task, IncidenceRegressionTask):
-                    x["incidence"] = task_outputs[task.incidence_key].detach()
-                if isinstance(task, ObjectClassificationTask):
-                    x["class_probs"] = task_outputs[task.probs_key].detach()
+                # Pass outputs dict so tasks can read from previously executed tasks
+                task_outputs = task(x, outputs=outputs.get(f"layer_{layer_index}"))
 
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 

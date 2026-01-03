@@ -4,7 +4,6 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoder
-from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
 from hepattn.utils.model_utils import unmerge_inputs
 
 
@@ -210,13 +209,8 @@ class MaskFormer(nn.Module):
         # Get the final outputs
         outputs["final"] = {}
         for task in self.tasks:
-            outputs["final"][task.name] = task(x)
-
-            # Need this for incidence-based regression task
-            if isinstance(task, IncidenceRegressionTask):
-                x["incidence"] = outputs["final"][task.name][task.incidence_key].detach()
-            if isinstance(task, ObjectClassificationTask):
-                x["class_probs"] = outputs["final"][task.name][task.probs_key].detach()
+            # Pass outputs dict so tasks can read from previously executed tasks
+            outputs["final"][task.name] = task(x, outputs=outputs["final"])
 
         # store info about the input sort field for each input type
         if self.sorter is not None:
@@ -348,7 +342,6 @@ class MaskFormer(nn.Module):
         # Compute the losses for decoder tasks
         for layer_name, layer_outputs in decoder_outputs.items():
             losses[layer_name] = {}
-            is_final_layer = layer_name == "final"
 
             # Create a modified targets dict with the aligned validity mask for this layer
             layer_targets = targets.copy()
@@ -360,10 +353,6 @@ class MaskFormer(nn.Module):
                     continue
 
                 task_losses = task.loss(layer_outputs[task.name], layer_targets)
-
-                # Remove IoU loss from intermediate layers (only keep it for final layer)
-                if not is_final_layer:
-                    task_losses.pop("iou_mse", None)
 
                 losses[layer_name][task.name] = task_losses
 

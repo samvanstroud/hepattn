@@ -1,12 +1,15 @@
 import torch
 
-from hepattn.models.task import ObjectHitMaskTask
+from hepattn.models.task import IoUPredictionTask, ObjectHitMaskTask
 
 
 def test_object_hit_mask_task_iou():
+    """Test IoUPredictionTask with ObjectHitMaskTask."""
     dim = 16
-    task = ObjectHitMaskTask(
-        name="test_task",
+
+    # Create mask task
+    mask_task = ObjectHitMaskTask(
+        name="test_mask_task",
         input_constituent="hit",
         input_object="track",
         output_object="track",
@@ -14,8 +17,16 @@ def test_object_hit_mask_task_iou():
         losses={"mask_bce": 1.0},
         costs={"mask_bce": 1.0},
         dim=dim,
-        predict_iou=True,
-        iou_loss_weight=0.5,
+    )
+
+    # Create IoU prediction task
+    iou_task = IoUPredictionTask(
+        name="test_iou_task",
+        input_object="track",
+        mask_logit_key="track_hit_logit",
+        target_mask_key="track_hit",
+        dim=dim,
+        loss_weight=0.5,
     )
 
     batch_size = 2
@@ -29,25 +40,31 @@ def test_object_hit_mask_task_iou():
         "hit_valid": torch.ones(batch_size, num_hits, dtype=torch.bool),
     }
 
-    # Forward pass
-    outputs = task(x)
+    # Forward pass for mask task
+    mask_outputs = mask_task(x)
 
-    assert "track_hit_logit" in outputs
-    assert "track_iou_logit" in outputs
-    assert outputs["track_iou_logit"].shape == (batch_size, num_objects)
+    assert "track_hit_logit" in mask_outputs
+    assert "track_iou_logit" not in mask_outputs  # IoU logit should not be in mask task outputs
 
-    # Predict
-    preds = task.predict(outputs)
+    # Forward pass for IoU task
+    iou_outputs = iou_task(x)
+    assert "track_iou_logit" in iou_outputs
+    assert iou_outputs["track_iou_logit"].shape == (batch_size, num_objects)
+
+    # Predict IoU
+    preds = iou_task.predict(iou_outputs)
     assert "track_iou" in preds
     assert preds["track_iou"].shape == (batch_size, num_objects)
 
-    # Loss
+    # Loss - inject mask logits into iou_outputs (simulating what maskformer does)
+    iou_outputs["track_hit_logit"] = mask_outputs["track_hit_logit"]
+
     targets = {
         "track_hit_valid": torch.randint(0, 2, (batch_size, num_objects, num_hits)).float(),
         "track_valid": torch.ones(batch_size, num_objects, dtype=torch.bool),
         "hit_valid": torch.ones(batch_size, num_hits, dtype=torch.bool),
     }
 
-    losses = task.loss(outputs, targets)
+    losses = iou_task.loss(iou_outputs, targets)
     assert "iou_mse" in losses
     assert losses["iou_mse"] > 0
