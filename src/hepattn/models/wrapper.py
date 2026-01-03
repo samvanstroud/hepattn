@@ -64,17 +64,14 @@ class ModelWrapper(LightningModule):
 
     def log_task_metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor], stage: str) -> None:
         # Log any task specific metrics
-        for task in self.model.tasks:
-            # Check that the task actually has some metrics to log
-            if not hasattr(task, "metrics"):
-                continue
+        for layer_name in preds:
+            for task in self.model.tasks:
+                if task.name not in preds[layer_name]:
+                    continue
 
-            # Just log the predictions from the final layer for now
-            task_metrics = task.metrics(preds["final"][task.name], targets)
-
-            # If the task returned a non-empty metrics dict, log it
-            if task_metrics:
-                self.log_dict({f"{stage}/final_{task.name}_{k}": v for k, v in task_metrics.items()}, sync_dist=True)
+                task_metrics = task.metrics(preds[layer_name][task.name], targets)
+                if task_metrics:
+                    self.log_dict({f"{stage}/{layer_name}_{task.name}_{k}": v for k, v in task_metrics.items()}, sync_dist=True)
 
     def log_metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor], stage: str) -> None:
         # First log any task metrics

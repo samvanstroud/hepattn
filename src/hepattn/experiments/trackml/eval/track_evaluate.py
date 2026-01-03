@@ -191,6 +191,12 @@ def get_masks(f, idx, tracks, parts, key_mode=None):
     key_mode: str
         specify if output file structure type
 
+    Raises:
+    -------
+    ValueError:
+        If the eval file contains inconsistent particle-axis shapes (e.g. particle-level scalars
+        and particle_hit_valid have different lengths).
+
     """
     # extract hit mask and its target
     if key_mode == "old":
@@ -201,6 +207,20 @@ def get_masks(f, idx, tracks, parts, key_mode=None):
         masks = np.array(f[idx]["preds"]["final"]["track_hit_valid"]["track_hit_valid"][:][0])
         # truth tracks and associated hits, shape = (n_max_particles, n_hits)
         targets = np.array(f[idx]["targets"]["particle_hit_valid"][:][0])
+
+        # Sanity check: particle-level scalars must match the particle axis of particle_hit_valid.
+        # If this fails, the eval file is internally inconsistent (often caused by dynamic-query
+        # code mutating only a subset of particle-shaped targets before writing).
+        n_targets = int(targets.shape[0])
+        n_parts = len(parts)
+        if n_parts != n_targets:
+            raise ValueError(
+                f"Inconsistent eval file for event {idx}: particle scalars have {n_parts} entries "
+                f"but targets/particle_hit_valid has {n_targets} rows. "
+                "Regenerate the eval file after ensuring dynamic-query target construction keeps "
+                "all particle_* targets (particle_pt/eta/phi, particle_valid, particle_id, particle_hit_valid, ...) "
+                "on the same particle/query axis."
+            )
 
     # number of predicted hits for each track (retained hits), shape = (n_max_particles, )
     tracks["n_pred_hits"] = np.sum(masks, axis=-1)

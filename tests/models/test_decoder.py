@@ -59,6 +59,20 @@ class LCATask:
         return mask
 
 
+class MockQueryInitTask:
+    name = "query_init"
+
+    def __init__(self, probs: torch.Tensor, threshold: float = 0.5):
+        self.probs = probs
+        self.threshold = threshold
+
+    def forward(self, x):
+        return {"hit_is_first_prob": self.probs}
+
+    def predict(self, outputs):
+        return {"hit_is_first_prob": outputs["hit_is_first_prob"]}
+
+
 class TestMaskFormerDecoder:
     @pytest.fixture
     def decoder_layer_config(self):
@@ -78,6 +92,17 @@ class TestMaskFormerDecoder:
             decoder_layer_config=decoder_layer_config,
             num_decoder_layers=NUM_LAYERS,
             mask_attention=True,
+        )
+
+    @pytest.fixture
+    def dynamic_decoder(self, decoder_layer_config):
+        config = decoder_layer_config.copy()
+        return MaskFormerDecoder(
+            num_queries=2,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            dynamic_queries=True,
         )
 
     @pytest.fixture
@@ -138,6 +163,48 @@ class TestMaskFormerDecoder:
 
         input_names = ["input1", "input2"]
         return x, input_names
+
+    def test_initialize_dynamic_queries_topk(self, dynamic_decoder):
+        # probs: select indices {0,2,3} above threshold, then keep top-2 -> [0,2]
+        probs = torch.tensor([[0.9, 0.1, 0.8, 0.7]], dtype=torch.float32)
+        dynamic_decoder.tasks = [MockQueryInitTask(probs=probs, threshold=0.5)]
+
+        hit_embed = torch.randn(1, 4, DIM)
+        hit_valid = torch.tensor([[True, True, True, True]])
+        x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
+
+        query_embed, query_valid, indices = dynamic_decoder.initialize_dynamic_queries(x)
+
+        assert indices.tolist() == [0, 2]
+        assert query_embed.shape == (1, 2, DIM)
+        assert torch.all(query_valid)
+        assert torch.allclose(query_embed[0, 0], hit_embed[0, 0])
+        assert torch.allclose(query_embed[0, 1], hit_embed[0, 2])
+
+    def test_forward_requires_preinitialized_queries_when_dynamic(self, dynamic_decoder):
+        # Decoder forward should fail loudly if dynamic queries are enabled but not provided.
+        dynamic_decoder.tasks = []
+        x = {
+            "key_embed": torch.randn(1, SEQ_LEN, DIM),
+            "key_valid": torch.ones(1, SEQ_LEN, dtype=torch.bool),
+            "key_is_input1": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
+            "key_is_input2": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
+        }
+        input_names = ["input1", "input2"]
+
+        with pytest.raises(ValueError, match="query_embed"):
+            dynamic_decoder(x, input_names)
+
+    def test_initialize_dynamic_queries_raises_if_none_selected(self, dynamic_decoder):
+        probs = torch.tensor([[0.1, 0.2, 0.3, 0.4]], dtype=torch.float32)
+        dynamic_decoder.tasks = [MockQueryInitTask(probs=probs, threshold=0.5)]
+
+        hit_embed = torch.randn(1, 4, DIM)
+        hit_valid = torch.tensor([[True, True, True, True]])
+        x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
+
+        with pytest.raises(ValueError, match="selected 0 hits"):
+            dynamic_decoder.initialize_dynamic_queries(x)
 
     def test_initialization(self, decoder, decoder_layer_config):
         """Test that the decoder initializes correctly."""

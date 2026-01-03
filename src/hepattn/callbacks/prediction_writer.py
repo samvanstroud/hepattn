@@ -28,6 +28,9 @@ class PredictionWriter(Callback):
         self.write_losses = write_losses
         self.write_layers = write_layers
 
+        self.file = None
+        self.num_queries: int | None = None
+
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         if stage != "test":
             return
@@ -37,8 +40,32 @@ class PredictionWriter(Callback):
         self.trainer = trainer
         self.dataset = trainer.datamodule.test_dataloader().dataset
 
+        # For writing fixed-size track outputs when using dynamic queries.
+        self.num_queries = self._resolve_num_queries(pl_module)
+
         # Open the handle for writing to the file
         self.file = h5py.File(self.output_path, "w")
+
+    def _resolve_num_queries(self, pl_module: LightningModule) -> int:
+        # User assumption: model.decoder._num_queries is always available.
+        return int(pl_module.model.decoder._num_queries)  # noqa: SLF001
+
+    def _pad_to_num_queries(self, value: Tensor) -> Tensor:
+        # TODO: consider instead padding in the decoder to support batching and avoid doing this here
+        if self.num_queries is None:
+            return value
+        if value.dim() < 2:
+            return value
+
+        n = value.shape[1]
+        if n >= self.num_queries:
+            return value
+
+        padded_shape = list(value.shape)
+        padded_shape[1] = self.num_queries
+        padded = value.new_zeros(padded_shape)
+        padded[:, :n, ...] = value
+        return padded
 
     @property
     def output_path(self) -> Path:
@@ -108,6 +135,10 @@ class PredictionWriter(Callback):
             for task_name, task_items in layer_items.items():
                 task_group = layer_group.create_group(task_name)
                 for name, value in task_items.items():
+                    # For dynamic queries, pad predictions along the query dimension to the configured
+                    # decoder query count so output H5 has consistent shapes.
+                    if item_name == "preds" and isinstance(value, Tensor):
+                        value = self._pad_to_num_queries(value)
                     self.create_dataset(task_group, name, value[idx][None, ...])
 
     def create_dataset(self, group, name, value):
@@ -120,7 +151,8 @@ class PredictionWriter(Callback):
     def teardown(self, trainer, module, stage):
         # Close the file handle now we are done
         if stage == "test":
-            self.file.close()
+            if self.file is not None:
+                self.file.close()
             print("-" * 80)
             print("Created output file", self.output_path)
             print("-" * 80)

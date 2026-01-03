@@ -34,6 +34,18 @@ class Task(nn.Module, ABC):
         self.has_first_layer_loss = has_first_layer_loss if has_first_layer_loss is not None else has_intermediate_loss
         self.permute_loss = permute_loss
 
+    def should_run_at_layer(self, layer_index: int) -> bool:
+        """Check if the task should run at the given decoder layer index."""
+        if not self.has_intermediate_loss:
+            return False
+        return not (layer_index == 0 and not self.has_first_layer_loss)
+
+    def should_permute_outputs(self, layer_name: str, layer_outputs: dict) -> bool:
+        """Check if the task outputs should be permuted for matching at this layer."""
+        if not self.permute_loss:
+            return False
+        return self.name in layer_outputs
+
     @abstractmethod
     def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
         """Compute the forward pass of the task."""
@@ -57,6 +69,9 @@ class Task(nn.Module, ABC):
 
     def query_mask(self, outputs: dict[str, Tensor], **kwargs) -> Tensor | None:
         return None
+
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        return {}
 
 
 class ObjectClassificationTask(Task):
@@ -242,6 +257,27 @@ class ObjectClassificationTask(Task):
 
         class_probs = outputs[self.output_object + "_class_prob"].detach()
         return class_probs[..., -1] <= (1 - threshold)
+
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        pred_valid = preds[f"{self.output_object}_valid"].bool()
+        true_valid = targets[f"{self.target_object}_valid"].bool()
+
+        tp = (pred_valid & true_valid).sum()
+        fp = (pred_valid & ~true_valid).sum()
+
+        true_pos = true_valid.sum()
+        true_neg = (~true_valid).sum()
+
+        eps = torch.tensor(1e-12, device=pred_valid.device)
+        tpr = tp / torch.maximum(true_pos, eps)  # recall
+        fpr = fp / torch.maximum(true_neg, eps)
+
+        return {
+            "num_queries": float(pred_valid.shape[1]),
+            "query_frac_pred_valid": pred_valid.float().mean(),
+            "query_tpr": tpr,
+            "query_fpr": fpr,
+        }
 
 
 class HitFilterTask(Task):
