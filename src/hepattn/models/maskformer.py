@@ -244,19 +244,15 @@ class MaskFormer(nn.Module):
 
         return preds
 
-    def loss(self, outputs: dict, targets: dict) -> tuple[dict, dict]:
-        """Computes the loss between the forward pass of the model and the data / targets.
-        It first computes the cost / loss between each of the predicted and true tracks in each ROI
-        and then uses the Hungarian algorihtm to perform an optimal bipartite matching. The model
-        predictions are then permuted to match this optimal matching, after which the final loss
-        between the model and target is computed.
+    def _prepare_targets_and_outputs(self, outputs: dict, targets: dict) -> tuple[dict, dict, dict]:
+        """Prepare targets and separate encoder/decoder outputs.
 
         Args:
             outputs: The outputs produced by the forward pass of the model.
             targets: The data containing the targets.
 
         Returns:
-            losses: A dictionary containing the computed losses for each task.
+            Tuple of (prepared_targets, encoder_outputs, decoder_outputs)
         """
         # Create a copy of targets to avoid mutating the input dict
         # This is especially important when using dynamic queries
@@ -281,7 +277,18 @@ class MaskFormer(nn.Module):
         if self.sorter is not None:
             targets = self.sorter.sort_targets(targets, decoder_outputs["final"][self.sorter.input_sort_field])
 
-        # Compute losses for encoder tasks (no matching required)
+        return targets, encoder_outputs, decoder_outputs
+
+    def _compute_encoder_losses(self, encoder_outputs: dict, targets: dict) -> dict[str, dict[str, Tensor]]:
+        """Compute losses for encoder tasks (no matching required).
+
+        Args:
+            encoder_outputs: Dictionary of encoder layer outputs.
+            targets: The data containing the targets.
+
+        Returns:
+            Dictionary of encoder losses keyed by layer name and task name.
+        """
         losses: dict[str, dict[str, Tensor]] = {}
         for layer_name, layer_outputs in encoder_outputs.items():
             losses[layer_name] = {}
@@ -289,8 +296,18 @@ class MaskFormer(nn.Module):
                 if task.name not in layer_outputs:
                     continue
                 losses[layer_name][task.name] = task.loss(layer_outputs[task.name], targets)
+        return losses
 
-        # Will hold the costs between all pairs of objects - cost axes are (batch, pred, true)
+    def _compute_decoder_costs(self, decoder_outputs: dict, targets: dict) -> dict[str, Tensor]:
+        """Compute costs for decoder layers by aggregating task costs.
+
+        Args:
+            decoder_outputs: Dictionary of decoder layer outputs.
+            targets: The data containing the targets.
+
+        Returns:
+            Dictionary of costs keyed by layer name. Cost axes are (batch, pred, true).
+        """
         costs = {}
 
         # Compute costs for decoder layers
@@ -320,52 +337,77 @@ class MaskFormer(nn.Module):
 
             costs[layer_name] = layer_costs
 
-        # Permute the decoder outputs for matching
+        return costs
+
+    def _match_and_permute_outputs(self, decoder_outputs: dict, costs: dict[str, Tensor], targets: dict) -> dict:
+        """Perform optimal matching and permute decoder outputs accordingly.
+
+        Args:
+            decoder_outputs: Dictionary of decoder layer outputs (will be modified in-place).
+            costs: Dictionary of costs keyed by layer name.
+            targets: The data containing the targets (will be modified to include aligned validity masks).
+
+        Returns:
+            Updated targets dictionary with aligned validity masks.
+        """
         # Stack all layer costs into a single 4D tensor for parallel matching
         layer_names = list(costs.keys())
         num_layers = len(layer_names)
-        
+
         if num_layers > 0:
             # Stack costs: [num_layers, batch, num_pred, num_target]
             stacked_costs = torch.stack([costs[name] for name in layer_names], dim=0)
             batch_size = stacked_costs.shape[1]
             num_pred = stacked_costs.shape[2]
             num_target = stacked_costs.shape[3]
-            
+
             # Reshape to [num_layers * batch, num_pred, num_target] to use layers as additional batch dim
             stacked_costs = stacked_costs.view(num_layers * batch_size, num_pred, num_target)
-            
+
             # Expand validity mask to match stacked batch dimension: [num_layers * batch, num_target]
             target_valid = targets[f"{self.target_object}_valid"]
             stacked_target_valid = target_valid.unsqueeze(0).expand(num_layers, -1, -1).reshape(num_layers * batch_size, -1)
-            
+
             # Get the indices that can permute the predictions to yield their optimal matching
             # Output shape: [num_layers * batch, num_pred]
             stacked_pred_idxs = self.matcher(stacked_costs, stacked_target_valid)
-            
+
             # Reshape back to [num_layers, batch, num_pred]
             stacked_pred_idxs = stacked_pred_idxs.view(num_layers, batch_size, num_pred)
-            
+
             # Create batch indices for indexing
             batch_idxs_expanded = torch.arange(batch_size, device=stacked_pred_idxs.device).unsqueeze(1)
-            
+
             # Apply layer-specific permutations
             for layer_idx, layer_name in enumerate(layer_names):
                 pred_idxs = stacked_pred_idxs[layer_idx]
-                
+
                 # Create a prediction-aligned validity mask for the targets
                 # This is needed when using dynamic queries where num_predictions != num_targets
                 targets[f"{layer_name}_{self.target_object}_valid_aligned"] = target_valid[batch_idxs_expanded, pred_idxs]
-                
+
                 for task in self.tasks:
                     if not task.should_permute_outputs(layer_name, decoder_outputs[layer_name]):
                         continue
-                    
+
                     for output_name in task.outputs:
                         output_tensor = decoder_outputs[layer_name][task.name][output_name]
                         decoder_outputs[layer_name][task.name][output_name] = output_tensor[batch_idxs_expanded, pred_idxs]
 
-        # Compute the losses for decoder tasks
+        return targets
+
+    def _compute_decoder_losses(self, decoder_outputs: dict, targets: dict) -> dict[str, dict[str, Tensor]]:
+        """Compute final losses for decoder tasks using permuted outputs.
+
+        Args:
+            decoder_outputs: Dictionary of decoder layer outputs (already permuted).
+            targets: The data containing the targets (includes aligned validity masks).
+
+        Returns:
+            Dictionary of decoder losses keyed by layer name and task name.
+        """
+        losses: dict[str, dict[str, Tensor]] = {}
+
         for layer_name, layer_outputs in decoder_outputs.items():
             losses[layer_name] = {}
 
@@ -379,7 +421,38 @@ class MaskFormer(nn.Module):
                     continue
 
                 task_losses = task.loss(layer_outputs[task.name], layer_targets)
-
                 losses[layer_name][task.name] = task_losses
+
+        return losses
+
+    def loss(self, outputs: dict, targets: dict) -> tuple[dict, dict]:
+        """Computes the loss between the forward pass of the model and the data / targets.
+        It first computes the cost / loss between each of the predicted and true object
+        and then uses the Hungarian algorithm to perform an optimal bipartite matching. The model
+        predictions are then permuted to match this optimal matching, after which the final loss
+        between the model and target is computed.
+
+        Args:
+            outputs: The outputs produced by the forward pass of the model.
+            targets: The data containing the targets.
+
+        Returns:
+            losses: A dictionary containing the computed losses for each task.
+        """
+        # Prepare targets and separate encoder/decoder outputs
+        targets, encoder_outputs, decoder_outputs = self._prepare_targets_and_outputs(outputs, targets)
+
+        # Compute encoder losses (no matching required)
+        losses = self._compute_encoder_losses(encoder_outputs, targets)
+
+        # Compute costs for decoder layers
+        costs = self._compute_decoder_costs(decoder_outputs, targets)
+
+        # Perform matching and permute decoder outputs
+        targets = self._match_and_permute_outputs(decoder_outputs, costs, targets)
+
+        # Compute final decoder losses
+        decoder_losses = self._compute_decoder_losses(decoder_outputs, targets)
+        losses.update(decoder_losses)
 
         return losses, targets
