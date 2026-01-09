@@ -245,6 +245,7 @@ class MaskFormerDecoderLayer(nn.Module):
         bidirectional_ca: bool = True,
         qkv_norm: bool = False,
         hybrid_norm: bool = False,
+        scale_pe: float = 1.0,
     ) -> None:
         """Initialize a MaskFormer decoder layer.
 
@@ -276,6 +277,7 @@ class MaskFormerDecoderLayer(nn.Module):
         if self.bidirectional_ca:
             self.kv_ca = residual(Attention(dim, qkv_norm=qkv_norm, norm=norm, **attn_kwargs), norm=attn_norm)
             self.kv_dense = residual(Dense(dim, **dense_kwargs), norm=norm, post_norm=dense_post_norm)
+        self.scale_pe = float(scale_pe)
 
     def forward(
         self,
@@ -305,8 +307,8 @@ class MaskFormerDecoderLayer(nn.Module):
                 - The updated query embeddings (Tensor).
                 - The updated key/value embeddings (Tensor).
         """
-        q_pe = q if query_posenc is None else q + query_posenc
-        kv_pe = kv if key_posenc is None else kv + key_posenc
+        q_pe = q if query_posenc is None else q + self.scale_pe * query_posenc
+        kv_pe = kv if key_posenc is None else kv + self.scale_pe * key_posenc
 
         q = self.q_ca(q_pe, k=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
         q = self.q_dense(q)
@@ -321,8 +323,8 @@ class MaskFormerDecoderLayer(nn.Module):
                 # Index from the back so we are batch shape agnostic
                 attn_mask = attn_mask_transpose if attn_mask_transpose is not None else attn_mask.transpose(-2, -1)
 
-            q_pe = q if query_posenc is None else q + query_posenc
-            kv_pe = kv if key_posenc is None else kv + key_posenc
+            q_pe = q if query_posenc is None else q + self.scale_pe * query_posenc
+            kv_pe = kv if key_posenc is None else kv + self.scale_pe * key_posenc
 
             kv = self.kv_ca(kv_pe, k=q_pe, v=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
             kv = self.kv_dense(kv)
