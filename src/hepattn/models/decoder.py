@@ -15,7 +15,7 @@ from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
 from hepattn.models.norm import get_hybrid_norm_config
 from hepattn.models.posenc import pos_enc_symmetric
-from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask
+from hepattn.models.task import IncidenceRegressionTask, ObjectClassificationTask, ObjectHitMaskTask
 from hepattn.utils.local_ca import auto_local_ca_mask
 from hepattn.utils.model_utils import unmerge_inputs
 
@@ -37,6 +37,10 @@ class MaskFormerDecoder(nn.Module):
         unified_decoding: bool = False,
         phi_shift: float = 0.0,
         unmask_all_false: bool = True,
+        log_lca_masks: bool = False,
+        log_object_hit_masks: bool = False,
+        log_lca_masks: bool = False,
+        log_object_hit_masks: bool = False,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -56,6 +60,8 @@ class MaskFormerDecoder(nn.Module):
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
             phi_shift: The shift in the phi angle for positional encoding.
             unmask_all_false: If True, queries with all-false attention masks will be unmasked to attend everywhere.
+            log_lca_masks: If True, store local CA masks (and transposes) for logging.
+            log_object_hit_masks: If True, store ObjectHitMaskTask predicted masks for logging.
         """
         super().__init__()
 
@@ -76,6 +82,8 @@ class MaskFormerDecoder(nn.Module):
         self.block_size = block_size
         self.phi_shift = phi_shift
         self.unmask_all_false = unmask_all_false
+        self.log_lca_masks = log_lca_masks
+        self.log_object_hit_masks = log_object_hit_masks
 
         if self.local_strided_attn:
             assert self.attn_type in {"torch", "flex"}, (
@@ -108,6 +116,8 @@ class MaskFormerDecoder(nn.Module):
 
         attn_mask = None
         attn_mask_transpose = None
+        lca_mask_for_logging = None
+        lca_mask_transpose_for_logging = None
         if self.local_strided_attn:
             assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
             if self.attn_type == "torch":
@@ -119,6 +129,14 @@ class MaskFormerDecoder(nn.Module):
                 dtype_float = x["query_embed"].dtype
                 attn_mask = self.flex_local_ca_mask(q_len, kv_len, device, dtype_float)
                 attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=device)
+            if self.log_lca_masks:
+                if self.attn_type == "flex":
+                    with torch.no_grad():
+                        lca_mask_for_logging = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
+                else:
+                    lca_mask_for_logging = attn_mask
+                if lca_mask_for_logging is not None:
+                    lca_mask_transpose_for_logging = lca_mask_for_logging.transpose(-2, -1)
 
         outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
@@ -134,36 +152,48 @@ class MaskFormerDecoder(nn.Module):
 
             assert self.tasks is not None
             for task in self.tasks:
-                if not task.has_intermediate_loss:
-                    continue
-                if layer_index == 0 and not task.has_first_layer_loss:
+                run_for_logging = self.log_object_hit_masks and isinstance(task, ObjectHitMaskTask)
+                run_for_loss = task.has_intermediate_loss and (layer_index > 0 or task.has_first_layer_loss)
+                if not run_for_loss and not run_for_logging:
                     continue
 
                 # Get the outputs of the task given the current embeddings
-                task_outputs = task(x)
+                if run_for_loss:
+                    task_outputs = task(x)
+                else:
+                    with torch.no_grad():
+                        task_outputs = task(x)
 
-                # Update x with task outputs for downstream use
-                if isinstance(task, IncidenceRegressionTask):
-                    x["incidence"] = task_outputs[task.incidence_key].detach()
-                if isinstance(task, ObjectClassificationTask):
-                    x["class_probs"] = task_outputs[task.probs_key].detach()
+                if run_for_loss:
+                    # Update x with task outputs for downstream use
+                    if isinstance(task, IncidenceRegressionTask):
+                        x["incidence"] = task_outputs[task.incidence_key].detach()
+                    if isinstance(task, ObjectClassificationTask):
+                        x["class_probs"] = task_outputs[task.probs_key].detach()
 
-                outputs[f"layer_{layer_index}"][task.name] = task_outputs
+                    outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
-                # Collect attention masks from different tasks
-                task_attn_masks = task.attn_mask(task_outputs)
-                for input_name, task_attn_mask in task_attn_masks.items():
-                    if input_name in attn_masks:
-                        attn_masks[input_name] |= task_attn_mask
-                    else:
-                        attn_masks[input_name] = task_attn_mask
+                    # Collect attention masks from different tasks
+                    task_attn_masks = task.attn_mask(task_outputs)
+                    for input_name, task_attn_mask in task_attn_masks.items():
+                        if input_name in attn_masks:
+                            attn_masks[input_name] |= task_attn_mask
+                        else:
+                            attn_masks[input_name] = task_attn_mask
 
-                # Collect query masks
-                if self.use_query_masks:
-                    task_query_mask = task.query_mask(task_outputs)
-                    if task_query_mask is not None:
-                        query_mask = task_query_mask if query_mask is None else query_mask | task_query_mask
-                        x["query_mask"] = query_mask
+                    # Collect query masks
+                    if self.use_query_masks:
+                        task_query_mask = task.query_mask(task_outputs)
+                        if task_query_mask is not None:
+                            query_mask = task_query_mask if query_mask is None else query_mask | task_query_mask
+                            x["query_mask"] = query_mask
+
+                if run_for_logging and isinstance(task, ObjectHitMaskTask):
+                    pred_key = task.output_object_hit + "_valid"
+                    with torch.no_grad():
+                        pred_mask = task.predict(task_outputs)[pred_key]
+                    layer_preds = outputs[f"layer_{layer_index}"].setdefault("object_hit_mask_pred", {})
+                    layer_preds[task.name] = pred_mask
 
             # Construct the full attention mask for MaskAttention decoder
             if attn_masks and self.mask_attention:
@@ -188,6 +218,11 @@ class MaskFormerDecoder(nn.Module):
                 # TODO: check and see see if this is really necessary
                 if self.unmask_all_false:
                     attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
+
+            if self.log_lca_masks and lca_mask_for_logging is not None:
+                outputs[f"layer_{layer_index}"]["lca_mask"] = lca_mask_for_logging
+                if decoder_layer.bidirectional_ca and lca_mask_transpose_for_logging is not None:
+                    outputs[f"layer_{layer_index}"]["lca_mask_transpose"] = lca_mask_transpose_for_logging
 
             if (attn_mask is not None) and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask

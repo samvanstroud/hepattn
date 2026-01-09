@@ -20,6 +20,8 @@ class AttnMaskLogger(Callback):
         log_every_n_batches: int = 1000,
         lca_window_sizes: list[int] | None = None,
         log_diagonal_metrics: bool = True,
+        log_lca_masks: bool = False,
+        log_object_hit_masks: bool = False,
     ):
         super().__init__()
         self.log_train = log_train
@@ -28,6 +30,8 @@ class AttnMaskLogger(Callback):
         self.log_every_n_batches = log_every_n_batches
         self.lca_window_sizes = lca_window_sizes if lca_window_sizes is not None else [32, 64, 128, 512, 1024, 2048]
         self.log_diagonal_metrics = log_diagonal_metrics
+        self.log_lca_masks = log_lca_masks
+        self.log_object_hit_masks = log_object_hit_masks
 
     def _log_attention_mask(self, pl_module, mask, step, layer, prefix="local_ca_mask"):
         """Helper method to create and log attention mask figures."""
@@ -232,30 +236,51 @@ class AttnMaskLogger(Callback):
 
         # Get only entries that contain "attn_mask"
         layer_outputs = {k: v for k, v in outputs.items() if k != "loss" and "attn_mask" in v}
-        if not layer_outputs:
-            return
+        if layer_outputs:
+            layer_indices = sorted(int(k.split("_")[1]) for k in layer_outputs)
+            if layer_indices:
+                for layer_name, l_out in layer_outputs.items():
+                    layer_index = int(layer_name.split("_")[1])
 
-        layer_indices = sorted(int(k.split("_")[1]) for k in layer_outputs)
-        if not layer_indices:
-            return
+                    # log only last layer
+                    if layer_index == max(layer_indices):
+                        attn_mask = l_out["attn_mask"]
+                        attn_mask_im = attn_mask[0].detach().cpu().clone().int()
+                        self._log_attention_mask(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+                        if step > 10000:
+                            self._log_mask_points_for_kde(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+                        if self.log_stats:
+                            self._log_attention_stats(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
 
-        for layer_name, l_out in outputs.items():
-            if layer_name != "loss" and "attn_mask" in l_out:
+                        # Log diagonal metrics if enabled
+                        if self.log_diagonal_metrics:
+                            self._log_diagonal_metrics(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+
+        if self.log_lca_masks or self.log_object_hit_masks:
+            for layer_name, l_out in outputs.items():
+                if not layer_name.startswith("layer_"):
+                    continue
                 layer_index = int(layer_name.split("_")[1])
 
-                # log only last layer
-                if layer_index == max(layer_indices):
-                    attn_mask = l_out["attn_mask"]
-                    attn_mask_im = attn_mask[0].detach().cpu().clone().int()
-                    self._log_attention_mask(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
-                    if step > 10000:
-                        self._log_mask_points_for_kde(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
-                    if self.log_stats:
-                        self._log_attention_stats(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+                if self.log_lca_masks:
+                    if "lca_mask" in l_out:
+                        lca_mask_im = l_out["lca_mask"][0].detach().cpu().clone().int()
+                        self._log_attention_mask(pl_module, lca_mask_im, step, layer_index, f"lca_mask_{prefix_suffix}")
+                        if self.log_stats:
+                            self._log_attention_stats(pl_module, lca_mask_im, step, layer_index, f"lca_mask_{prefix_suffix}")
+                    if "lca_mask_transpose" in l_out:
+                        lca_t_mask_im = l_out["lca_mask_transpose"][0].detach().cpu().clone().int()
+                        self._log_attention_mask(pl_module, lca_t_mask_im, step, layer_index, f"lca_mask_transpose_{prefix_suffix}")
+                        if self.log_stats:
+                            self._log_attention_stats(pl_module, lca_t_mask_im, step, layer_index, f"lca_mask_transpose_{prefix_suffix}")
 
-                    # Log diagonal metrics if enabled
-                    if self.log_diagonal_metrics:
-                        self._log_diagonal_metrics(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+                if self.log_object_hit_masks and "object_hit_mask_pred" in l_out:
+                    for task_name, mask in l_out["object_hit_mask_pred"].items():
+                        mask_im = mask[0].detach().cpu().clone().int()
+                        prefix = f"object_hit_mask_{task_name}_{prefix_suffix}"
+                        self._log_attention_mask(pl_module, mask_im, step, layer_index, prefix)
+                        if self.log_stats:
+                            self._log_attention_stats(pl_module, mask_im, step, layer_index, prefix)
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.log_val:
