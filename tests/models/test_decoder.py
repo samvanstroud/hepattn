@@ -206,6 +206,69 @@ class TestMaskFormerDecoder:
         with pytest.raises(ValueError, match="selected 0 hits"):
             dynamic_decoder.initialize_dynamic_queries(x)
 
+    def test_initialize_dynamic_queries_ordering_consistency(self, decoder_layer_config):
+        """Test that dynamically selected queries preserve original hit ordering.
+
+        In HEP applications, input hits are frequently ordered by detector layer or other
+        spatial coordinates. Downstream components (like windowed attention or specific
+        positional encodings) may rely on this ordering. Even if top-k selection is used
+        based on probability, the resulting queries should maintain their relative
+        spatial/temporal order (i.e., selected_hit_indices should be monotonically increasing).
+        """
+        # Create a decoder with num_queries=4 to select 4 hits
+        config = decoder_layer_config.copy()
+        decoder = MaskFormerDecoder(
+            num_queries=4,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            dynamic_queries=True,
+        )
+
+        # Set up probabilities where higher indices have higher probabilities
+        # This tests that even when sorting by probability descending would give
+        # indices [7, 5, 3, 1], we should get [1, 3, 5, 7] to preserve ordering
+        # Hits: 0    1    2    3    4    5    6    7
+        probs = torch.tensor([[0.1, 0.6, 0.2, 0.7, 0.3, 0.8, 0.4, 0.9]], dtype=torch.float32)
+        decoder.encoder_tasks = [MockQueryInitTask(probs=probs, threshold=0.5)]
+
+        # Create distinct embeddings for each hit so we can verify correct selection
+        num_hits = 8
+        hit_embed = torch.zeros(1, num_hits, DIM)
+        for i in range(num_hits):
+            hit_embed[0, i, 0] = float(i)  # Use first feature as identifier
+
+        hit_valid = torch.ones(1, num_hits, dtype=torch.bool)
+        x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
+
+        query_embed, query_valid, indices = decoder.initialize_dynamic_queries(x)
+
+        # Key assertion: indices should be monotonically increasing
+        sorted_indices = indices.sort().values
+        assert torch.equal(indices, sorted_indices), (
+            f"Selected indices {indices.tolist()} are not monotonically increasing. "
+            f"Expected {sorted_indices.tolist()} to preserve original hit ordering."
+        )
+
+        # Also verify that the correct hits were selected (those above threshold)
+        # Hits above threshold (0.5): indices 1, 3, 5, 7 with probs 0.6, 0.7, 0.8, 0.9
+        expected_indices = [1, 3, 5, 7]
+        assert indices.tolist() == expected_indices, (
+            f"Expected indices {expected_indices}, got {indices.tolist()}"
+        )
+
+        # Verify that query_embed corresponds to hits at selected_hit_indices in order
+        for i, hit_idx in enumerate(indices.tolist()):
+            assert torch.allclose(query_embed[0, i], hit_embed[0, hit_idx].detach()), (
+                f"query_embed[0, {i}] should match hit_embed[0, {hit_idx}]"
+            )
+
+        # Verify the identifier values are in the correct order
+        identifiers = query_embed[0, :, 0].tolist()
+        assert identifiers == [1.0, 3.0, 5.0, 7.0], (
+            f"Query embeddings are not in the expected order. Got identifiers {identifiers}"
+        )
+
     def test_initialization(self, decoder, decoder_layer_config):
         """Test that the decoder initializes correctly."""
         assert decoder.num_queries == NUM_QUERIES

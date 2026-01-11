@@ -158,7 +158,9 @@ class MaskFormerDecoder(nn.Module):
         k = min(int(self._num_queries), int(sorted_idx.numel()))
         sorted_idx = sorted_idx[:k]
 
-        final_indices = selected_indices[sorted_idx]
+        # Re-sort selected indices to preserve original spatial ordering
+        # (important for downstream LCA)
+        final_indices = selected_indices[sorted_idx].sort().values
         query_embed = x["hit_embed"][0, final_indices].detach().unsqueeze(0)  # (1, N_queries, dim)
         query_valid = torch.ones(1, final_indices.numel(), dtype=torch.bool, device=query_embed.device)
 
