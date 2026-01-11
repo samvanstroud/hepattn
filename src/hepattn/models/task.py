@@ -506,22 +506,6 @@ class ObjectHitMaskTask(Task):
             costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target, input_pad_mask=hit_pad)
         return costs
 
-    def calculate_iou(self, pred_probs: Tensor, target: Tensor) -> Tensor:
-        """Calculate IoU between predicted probabilities and target mask.
-
-        Args:
-            pred_probs: Predicted probabilities (B, N, M)
-            target: Target mask (B, N, M)
-
-        Returns:
-            IoU values (B, N)
-        """
-        intersection = (pred_probs * target).sum(dim=-1)
-        union = pred_probs.sum(dim=-1) + target.sum(dim=-1) - intersection
-
-        # Avoid division by zero
-        return intersection / (union + 1e-6)
-
     def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         output = outputs[self.output_object_hit + "_logit"]
         target = targets[self.target_object_hit + "_" + self.target_field].type_as(output)

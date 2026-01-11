@@ -75,7 +75,13 @@ class PredictionWriter(Callback):
 
     def on_test_batch_end(self, trainer, pl_module, test_step_outputs, batch, batch_idx):
         inputs, targets = batch
-        outputs, preds, losses = test_step_outputs
+        outputs, preds, losses, targets_updated = test_step_outputs
+
+        # Check if dynamic queries are active and align predictions if needed
+        if "query_particle_idx" in targets_updated and "particle_valid_full" in targets_updated:
+            # Align predictions to full particle dimension before writing
+            num_full_particles = targets_updated["particle_valid_full"].shape[1]
+            preds = pl_module._align_predictions_to_full_targets(preds, targets_updated["query_particle_idx"], num_full_particles)
 
         # handle batched case
         if "sample_id" in targets:
@@ -135,10 +141,6 @@ class PredictionWriter(Callback):
             for task_name, task_items in layer_items.items():
                 task_group = layer_group.create_group(task_name)
                 for name, value in task_items.items():
-                    # For dynamic queries, pad predictions along the query dimension to the configured
-                    # decoder query count so output H5 has consistent shapes.
-                    if item_name == "preds" and isinstance(value, Tensor):
-                        value = self._pad_to_num_queries(value)
                     self.create_dataset(task_group, name, value[idx][None, ...])
 
     def create_dataset(self, group, name, value):

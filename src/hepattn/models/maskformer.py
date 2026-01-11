@@ -73,7 +73,7 @@ class MaskFormer(nn.Module):
         return [input_net.input_name for input_net in self.input_nets]
 
     @staticmethod
-    def build_dynamic_targets(selected_hit_indices: Tensor, targets: dict[str, Tensor]) -> tuple[Tensor, Tensor, Tensor]:
+    def build_dynamic_targets(selected_hit_indices: Tensor, targets: dict[str, Tensor]) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Build dynamic targets for selected query hits.
 
         Args:
@@ -85,11 +85,21 @@ class MaskFormer(nn.Module):
                 - query_hit_valid: (1, N_queries, N_hits) mask indicating which hits belong to each query's particle
                 - first_occurrence: (1, N_queries) mask indicating which queries are the first hit of their particle
                 - query_particle_valid: (1, N_queries) mask indicating which query slots are valid
+                - query_particle_idx: (1, N_queries) mapping from query index to source particle index
         """
         hit_particle_id = targets["hit_particle_id"][0]  # (N_hits,)
+        particle_id = targets["particle_id"][0]  # (N_particles,)
 
         # Get the particle ID for each selected hit/query
         query_particle_id = hit_particle_id[selected_hit_indices]  # (N_queries,)
+
+        # Create mapping from query index to particle index (vectorized)
+        # Find which particle index corresponds to each query's particle_id
+        # Shape: (N_queries, N_particles) where each row has True at matching particle indices
+        # Detach to avoid gradient retention on large comparison tensor
+        matches_mask = (query_particle_id.unsqueeze(1) == particle_id.unsqueeze(0)).detach()
+        # Get first matching particle index for each query (argmax returns 0 if no match, which is ok)
+        query_particle_idx = matches_mask.long().argmax(dim=1)
 
         # Handle duplicates: only keep FIRST occurrence of each particle
         # This ensures multiple hits from same particle don't create duplicate targets
@@ -117,8 +127,9 @@ class MaskFormer(nn.Module):
         query_hit_valid = query_hit_valid.unsqueeze(0)  # (1, N_queries, N_hits)
         first_occurrence = first_occurrence.unsqueeze(0)  # (1, N_queries)
         query_particle_valid = query_particle_valid.unsqueeze(0)  # (1, N_queries)
+        query_particle_idx = query_particle_idx.unsqueeze(0)  # (1, N_queries)
 
-        return query_hit_valid, first_occurrence, query_particle_valid
+        return query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx
 
     def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
         batch_size = inputs[self.input_names[0] + "_valid"].shape[0]
@@ -237,10 +248,19 @@ class MaskFormer(nn.Module):
         for layer_name, layer_outputs in outputs.items():
             preds[layer_name] = {}
 
-            for task in self.tasks:
-                if task.name not in layer_outputs:
-                    continue
-                preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
+            # Handle encoder tasks
+            if layer_name == "encoder":
+                for task in self.encoder_tasks:
+                    if task.name not in layer_outputs:
+                        continue
+                    preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
+
+            # Handle decoder tasks
+            else:
+                for task in self.tasks:
+                    if task.name not in layer_outputs:
+                        continue
+                    preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
 
         return preds
 
@@ -258,20 +278,26 @@ class MaskFormer(nn.Module):
         # This is especially important when using dynamic queries
         targets = targets.copy()
 
-        # Separate encoder and decoder outputs for cleaner logic
-        encoder_outputs = {"encoder": outputs.pop("encoder")} if "encoder" in outputs else {}
-        decoder_outputs = outputs  # All remaining outputs are decoder layers
+        # Separate encoder and decoder outputs for cleaner logic (copy instead of pop to avoid mutation)
+        encoder_outputs = {"encoder": outputs["encoder"]} if "encoder" in outputs else {}
+        decoder_outputs = {k: v for k, v in outputs.items() if k != "encoder"}  # All non-encoder outputs are decoder layers
 
         # Build dynamic targets if using dynamic queries
         # Extract selected_query_indices from layer_0 outputs (stored by decoder)
         if self.decoder.dynamic_queries and "layer_0" in decoder_outputs and "_selected_query_indices" in decoder_outputs["layer_0"]:
-            selected_indices = decoder_outputs["layer_0"]["_selected_query_indices"]
-            query_hit_valid, first_occurrence, query_particle_valid = self.build_dynamic_targets(selected_indices, targets)
+            # Preserve full targets before overwriting them for metrics computation
+            targets["particle_valid_full"] = targets[f"{self.target_object}_valid"].clone().detach()
+            targets["particle_hit_valid_full"] = targets["particle_hit_valid"].clone().detach()
+
+            selected_indices = decoder_outputs["layer_0"]["_selected_query_indices"].detach()
+            query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = self.build_dynamic_targets(selected_indices, targets)
             # Override the static particle_hit_valid with dynamic query-based mask
             targets["particle_hit_valid"] = query_hit_valid
             targets["query_first_occurrence"] = first_occurrence
             # Override particle_valid to match the number of dynamic queries
             targets[f"{self.target_object}_valid"] = query_particle_valid
+            # Store query-to-particle mapping for metrics alignment
+            targets["query_particle_idx"] = query_particle_idx
 
         # Sort targets if using a sorter (both encoder and decoder need sorted targets)
         if self.sorter is not None:

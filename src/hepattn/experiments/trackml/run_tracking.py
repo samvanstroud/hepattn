@@ -22,6 +22,9 @@ class TrackMLTracker(ModelWrapper):
     def log_custom_metrics(self, preds, targets, stage):
         # log intermediate layer mask predictions
         for layer_name, layer_preds in preds.items():
+            # Skip layers that don't have track_hit_valid task (e.g., encoder layer)
+            if "track_hit_valid" not in layer_preds:
+                continue
             mask = layer_preds["track_hit_valid"]["track_hit_valid"]
             if mask is not None:
                 num_valid = mask.sum(-1).float()

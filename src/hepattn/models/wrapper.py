@@ -62,6 +62,70 @@ class ModelWrapper(LightningModule):
         self.log(f"{stage}/loss", total_loss, sync_dist=True)
         return total_loss
 
+    def _align_predictions_to_full_targets(
+        self,
+        preds: dict[str, dict[str, dict[str, Tensor]]],
+        query_particle_idx: Tensor,
+        num_full_particles: int,
+    ) -> dict[str, dict[str, dict[str, Tensor]]]:
+        """Align query-sized predictions to full particle dimension using query-to-particle mapping.
+
+        Args:
+            preds: Predictions dict with structure {layer: {task: {field: tensor}}}
+            query_particle_idx: (B, N_queries) mapping from query index to particle index
+            num_full_particles: Number of particles in full targets
+
+        Returns:
+            Aligned predictions dict with particle dimension expanded to full size
+        """
+        aligned_preds = {}
+        batch_size = query_particle_idx.shape[0]
+        device = query_particle_idx.device
+        # Detach to prevent gradient retention for metrics
+        query_particle_idx = query_particle_idx.detach()
+
+        for layer_name, layer_preds in preds.items():
+            aligned_preds[layer_name] = {}
+
+            for task_name, task_preds in layer_preds.items():
+                aligned_preds[layer_name][task_name] = {}
+
+                for field_name, field_value in task_preds.items():
+                    if not isinstance(field_value, Tensor):
+                        # Keep non-tensor values as-is
+                        aligned_preds[layer_name][task_name][field_name] = field_value
+                        continue
+
+                    # Check if this is a particle-level prediction (has query dimension)
+                    if field_value.shape[1] == query_particle_idx.shape[1]:
+                        # Detach values since metrics don't need gradients
+                        field_value = field_value.detach()
+                        # Scalar predictions (e.g., track_valid): (B, N_queries)
+                        if field_value.dim() == 2:
+                            # Create full-sized tensor with False/0 as default
+                            aligned = torch.zeros(batch_size, num_full_particles, dtype=field_value.dtype, device=device)
+                            # Scatter predictions to their corresponding particle indices
+                            for b in range(batch_size):
+                                aligned[b, query_particle_idx[b]] = field_value[b]
+                            aligned_preds[layer_name][task_name][field_name] = aligned
+
+                        # 2D predictions with hit dimension (e.g., track_hit_valid): (B, N_queries, N_hits)
+                        elif field_value.dim() == 3:
+                            num_hits = field_value.shape[2]
+                            aligned = torch.zeros(batch_size, num_full_particles, num_hits, dtype=field_value.dtype, device=device)
+                            for b in range(batch_size):
+                                aligned[b, query_particle_idx[b], :] = field_value[b]
+                            aligned_preds[layer_name][task_name][field_name] = aligned
+
+                        else:
+                            # For other dimensions, keep as-is (may need extension for other cases)
+                            aligned_preds[layer_name][task_name][field_name] = field_value
+                    else:
+                        # Not a query-sized prediction, keep as-is
+                        aligned_preds[layer_name][task_name][field_name] = field_value
+
+        return aligned_preds
+
     def log_task_metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor], stage: str) -> None:
         # Log any task specific metrics
         for layer_name in preds:
@@ -74,12 +138,29 @@ class ModelWrapper(LightningModule):
                     self.log_dict({f"{stage}/{layer_name}_{task.name}_{k}": v for k, v in task_metrics.items()}, sync_dist=True)
 
     def log_metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor], stage: str) -> None:
-        # First log any task metrics
-        self.log_task_metrics(preds, targets, stage)
+        # Check if dynamic queries are active and we need to align predictions
+        if "query_particle_idx" in targets and "particle_valid_full" in targets:
+            # Align predictions to full particle dimension for metrics computation
+            num_full_particles = targets["particle_valid_full"].shape[1]
+            aligned_preds = self._align_predictions_to_full_targets(preds, targets["query_particle_idx"], num_full_particles)
 
-        # Log any custom metrics implemented by subclass
-        if hasattr(self, "log_custom_metrics"):
-            self.log_custom_metrics(preds, targets, stage)
+            # Create aligned targets dict with full validity masks
+            aligned_targets = targets.copy()
+            aligned_targets["particle_valid"] = targets["particle_valid_full"]
+            aligned_targets["particle_hit_valid"] = targets["particle_hit_valid_full"]
+
+            # Log task metrics with aligned predictions and full targets
+            self.log_task_metrics(aligned_preds, aligned_targets, stage)
+
+            # Log custom metrics with aligned predictions and full targets
+            if hasattr(self, "log_custom_metrics"):
+                self.log_custom_metrics(aligned_preds, aligned_targets, stage)
+        else:
+            # No dynamic queries, use standard metrics computation
+            self.log_task_metrics(preds, targets, stage)
+
+            if hasattr(self, "log_custom_metrics"):
+                self.log_custom_metrics(preds, targets, stage)
 
     def training_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]], batch_idx: int) -> dict[str, Tensor] | None:
         inputs, targets = batch
@@ -99,7 +180,8 @@ class ModelWrapper(LightningModule):
             self.mlt_opt(losses, outputs)
             return None
         total_loss = self.aggregate_losses(losses, stage="train")
-        return {"loss": total_loss, **outputs}
+
+        return {"loss": total_loss}
 
     def validation_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> dict[str, Tensor]:
         inputs, targets = batch
@@ -115,9 +197,11 @@ class ModelWrapper(LightningModule):
         preds = self.model.predict(outputs)
         self.log_metrics(preds, targets, "val")
 
-        return {"loss": total_loss, **outputs}
+        return {"loss": total_loss}
 
-    def test_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
+    def test_step(
+        self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]
+    ) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
         inputs, targets = batch
         outputs = self.model(inputs)
 
@@ -127,7 +211,7 @@ class ModelWrapper(LightningModule):
         # Get the predictions from the model
         preds = self.model.predict(outputs)
 
-        return outputs, preds, losses
+        return outputs, preds, losses, targets
 
     def on_train_start(self) -> None:
         # Manually overwride the learning rate in case we are starting

@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v8-3l-fast
+name: TRK-v8-3l-fast-fix
 data:
   # hypatia
   #train_dir: data/trackml/prepped/
@@ -75,7 +75,7 @@ data:
 
 trainer:
   # Training stuff here
-  max_epochs: 20
+  max_epochs: 10
   accelerator: gpu
   devices: 2
   precision: bf16-mixed
@@ -125,9 +125,9 @@ model:
   # Learning rate scheduler config
   lrs_config:
     initial: 1e-5
-    max: 6e-5
-    end: 2e-5
-    pct_start: 0.05
+    max: 5e-5
+    end: 1e-5
+    pct_start: 0.02
     skip_scheduler: false
     weight_decay: 1e-5
 
