@@ -62,13 +62,17 @@ class ModelWrapper(LightningModule):
         self.log(f"{stage}/loss", total_loss, sync_dist=True)
         return total_loss
 
+    @staticmethod
     def _align_predictions_to_full_targets(
-        self,
         preds: dict[str, dict[str, dict[str, Tensor]]],
         query_particle_idx: Tensor,
         num_full_particles: int,
     ) -> dict[str, dict[str, dict[str, Tensor]]]:
         """Align query-sized predictions to full particle dimension using query-to-particle mapping.
+
+        Uses scatter_reduce with 'amax' to handle duplicate queries mapping to the same particle.
+        This ensures that valid (non-zero) predictions are not overwritten by zeroed-out
+        duplicate query values.
 
         Args:
             preds: Predictions dict with structure {layer: {task: {field: tensor}}}
@@ -78,50 +82,41 @@ class ModelWrapper(LightningModule):
         Returns:
             Aligned predictions dict with particle dimension expanded to full size
         """
-        aligned_preds = {}
         batch_size = query_particle_idx.shape[0]
+        num_queries = query_particle_idx.shape[1]
         device = query_particle_idx.device
-        # Detach to prevent gradient retention for metrics
-        query_particle_idx = query_particle_idx.detach()
+        idx = query_particle_idx.detach().long()
 
+        def scatter_align(value: Tensor) -> Tensor:
+            """Scatter query-sized tensor to full particle dimension using amax reduction."""
+            original_dtype = value.dtype
+            value = value.detach().float()
+
+            # Build output shape: replace query dim with num_full_particles
+            out_shape = list(value.shape)
+            out_shape[1] = num_full_particles
+            aligned = torch.zeros(out_shape, dtype=torch.float32, device=device)
+
+            # Expand index to match value shape for scatter_reduce
+            idx_expanded = idx.view(batch_size, num_queries, *([1] * (value.dim() - 2))).expand_as(value)
+
+            aligned.scatter_reduce_(dim=1, index=idx_expanded, src=value, reduce="amax", include_self=True)
+
+            # Convert back to original dtype
+            if original_dtype == torch.bool:
+                return aligned > 0.5
+            return aligned.to(original_dtype)
+
+        aligned_preds = {}
         for layer_name, layer_preds in preds.items():
             aligned_preds[layer_name] = {}
-
             for task_name, task_preds in layer_preds.items():
                 aligned_preds[layer_name][task_name] = {}
-
                 for field_name, field_value in task_preds.items():
-                    if not isinstance(field_value, Tensor):
-                        # Keep non-tensor values as-is
-                        aligned_preds[layer_name][task_name][field_name] = field_value
-                        continue
-
-                    # Check if this is a particle-level prediction (has query dimension)
-                    if field_value.shape[1] == query_particle_idx.shape[1]:
-                        # Detach values since metrics don't need gradients
-                        field_value = field_value.detach()
-                        # Scalar predictions (e.g., track_valid): (B, N_queries)
-                        if field_value.dim() == 2:
-                            # Create full-sized tensor with False/0 as default
-                            aligned = torch.zeros(batch_size, num_full_particles, dtype=field_value.dtype, device=device)
-                            # Scatter predictions to their corresponding particle indices
-                            for b in range(batch_size):
-                                aligned[b, query_particle_idx[b]] = field_value[b]
-                            aligned_preds[layer_name][task_name][field_name] = aligned
-
-                        # 2D predictions with hit dimension (e.g., track_hit_valid): (B, N_queries, N_hits)
-                        elif field_value.dim() == 3:
-                            num_hits = field_value.shape[2]
-                            aligned = torch.zeros(batch_size, num_full_particles, num_hits, dtype=field_value.dtype, device=device)
-                            for b in range(batch_size):
-                                aligned[b, query_particle_idx[b], :] = field_value[b]
-                            aligned_preds[layer_name][task_name][field_name] = aligned
-
-                        else:
-                            # For other dimensions, keep as-is (may need extension for other cases)
-                            aligned_preds[layer_name][task_name][field_name] = field_value
+                    # Only align tensors with query dimension
+                    if isinstance(field_value, Tensor) and field_value.shape[1] == num_queries:
+                        aligned_preds[layer_name][task_name][field_name] = scatter_align(field_value)
                     else:
-                        # Not a query-sized prediction, keep as-is
                         aligned_preds[layer_name][task_name][field_name] = field_value
 
         return aligned_preds

@@ -253,21 +253,15 @@ class TestMaskFormerDecoder:
         # Also verify that the correct hits were selected (those above threshold)
         # Hits above threshold (0.5): indices 1, 3, 5, 7 with probs 0.6, 0.7, 0.8, 0.9
         expected_indices = [1, 3, 5, 7]
-        assert indices.tolist() == expected_indices, (
-            f"Expected indices {expected_indices}, got {indices.tolist()}"
-        )
+        assert indices.tolist() == expected_indices, f"Expected indices {expected_indices}, got {indices.tolist()}"
 
         # Verify that query_embed corresponds to hits at selected_hit_indices in order
         for i, hit_idx in enumerate(indices.tolist()):
-            assert torch.allclose(query_embed[0, i], hit_embed[0, hit_idx].detach()), (
-                f"query_embed[0, {i}] should match hit_embed[0, {hit_idx}]"
-            )
+            assert torch.allclose(query_embed[0, i], hit_embed[0, hit_idx].detach()), f"query_embed[0, {i}] should match hit_embed[0, {hit_idx}]"
 
         # Verify the identifier values are in the correct order
         identifiers = query_embed[0, :, 0].tolist()
-        assert identifiers == [1.0, 3.0, 5.0, 7.0], (
-            f"Query embeddings are not in the expected order. Got identifiers {identifiers}"
-        )
+        assert identifiers == [1.0, 3.0, 5.0, 7.0], f"Query embeddings are not in the expected order. Got identifiers {identifiers}"
 
     def test_initialization(self, decoder, decoder_layer_config):
         """Test that the decoder initializes correctly."""
