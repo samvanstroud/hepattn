@@ -1,5 +1,6 @@
 import pytest
 import torch
+from torch import nn
 
 from hepattn.models.decoder import MaskFormerDecoder, MaskFormerDecoderLayer
 
@@ -239,7 +240,7 @@ class TestMaskFormerDecoder:
         # indices [7, 5, 3, 1], we should get [1, 3, 5, 7] to preserve ordering
         # Hits: 0    1    2    3    4    5    6    7
         probs = torch.tensor([[0.1, 0.6, 0.2, 0.7, 0.3, 0.8, 0.4, 0.9]], dtype=torch.float32)
-        decoder.encoder_tasks = [MockQueryInitTask(probs=probs, threshold=0.5)]
+        decoder.encoder_tasks = nn.ModuleList([MockQueryInitTask(probs=probs, threshold=0.5)])
 
         # Create distinct embeddings for each hit so we can verify correct selection
         num_hits = 8
