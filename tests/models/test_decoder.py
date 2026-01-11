@@ -17,8 +17,11 @@ class MockTask1:
     has_first_layer_loss = True
     name = "task1"
 
-    def __call__(self, x):
+    def __call__(self, x, outputs=None):
         return None
+
+    def should_run_at_layer(self, layer_index):
+        return True
 
     def attn_mask(self, x):
         mask = {"input1": torch.zeros(BATCH_SIZE, NUM_QUERIES, 4, dtype=torch.bool)}
@@ -32,8 +35,11 @@ class MockTask2:
     has_first_layer_loss = True
     name = "task2"
 
-    def __call__(self, x):
+    def __call__(self, x, outputs=None):
         return None
+
+    def should_run_at_layer(self, layer_index):
+        return True
 
     def attn_mask(self, x):
         mask = {"input2": torch.zeros(BATCH_SIZE, NUM_QUERIES, 6, dtype=torch.bool)}
@@ -48,8 +54,11 @@ class LCATask:
     has_first_layer_loss = True
     name = "task2"
 
-    def __call__(self, x):
+    def __call__(self, x, outputs=None):
         return None
+
+    def should_run_at_layer(self, layer_index):
+        return True
 
     def attn_mask(self, x):
         mask = {"input2": torch.zeros(1, NUM_QUERIES, 6, dtype=torch.bool)}
@@ -167,7 +176,7 @@ class TestMaskFormerDecoder:
     def test_initialize_dynamic_queries_topk(self, dynamic_decoder):
         # probs: select indices {0,2,3} above threshold, then keep top-2 -> [0,2]
         probs = torch.tensor([[0.9, 0.1, 0.8, 0.7]], dtype=torch.float32)
-        dynamic_decoder.tasks = [MockQueryInitTask(probs=probs, threshold=0.5)]
+        dynamic_decoder.encoder_tasks = [MockQueryInitTask(probs=probs, threshold=0.5)]
 
         hit_embed = torch.randn(1, 4, DIM)
         hit_valid = torch.tensor([[True, True, True, True]])
@@ -192,12 +201,12 @@ class TestMaskFormerDecoder:
         }
         input_names = ["input1", "input2"]
 
-        with pytest.raises(ValueError, match="query_embed"):
+        with pytest.raises(ValueError, match="encoder_tasks"):
             dynamic_decoder(x, input_names)
 
     def test_initialize_dynamic_queries_raises_if_none_selected(self, dynamic_decoder):
         probs = torch.tensor([[0.1, 0.2, 0.3, 0.4]], dtype=torch.float32)
-        dynamic_decoder.tasks = [MockQueryInitTask(probs=probs, threshold=0.5)]
+        dynamic_decoder.encoder_tasks = [MockQueryInitTask(probs=probs, threshold=0.5)]
 
         hit_embed = torch.randn(1, 4, DIM)
         hit_valid = torch.tensor([[True, True, True, True]])
@@ -265,7 +274,7 @@ class TestMaskFormerDecoder:
 
     def test_initialization(self, decoder, decoder_layer_config):
         """Test that the decoder initializes correctly."""
-        assert decoder.num_queries == NUM_QUERIES
+        assert decoder._num_queries == NUM_QUERIES
         assert decoder.mask_attention is True
         assert decoder.use_query_masks is False
         assert len(decoder.decoder_layers) == NUM_LAYERS
@@ -512,11 +521,14 @@ class MockUnifiedTask:
     has_first_layer_loss = True
     name = "unified_task"
 
-    def __call__(self, x):
+    def __call__(self, x, outputs=None):
         # Return mock outputs with the expected shape
         batch_size, num_queries = x["query_embed"].shape[:2]
         num_constituents = x["key_embed"].shape[1]
         return {"track_hit_logit": torch.randn(batch_size, num_queries, num_constituents)}
+
+    def should_run_at_layer(self, layer_index):
+        return True
 
     def attn_mask(self, outputs):
         # Return attention mask for the full merged tensor
@@ -562,7 +574,7 @@ class TestMaskFormerDecoderUnified:
 
     def test_unified_initialization(self, unified_decoder):
         """Test that unified decoder initializes correctly."""
-        assert unified_decoder.num_queries == NUM_QUERIES
+        assert unified_decoder._num_queries == NUM_QUERIES
         assert unified_decoder.mask_attention is True
         assert unified_decoder.unified_decoding is True
         assert len(unified_decoder.decoder_layers) == NUM_LAYERS

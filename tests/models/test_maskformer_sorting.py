@@ -31,8 +31,17 @@ class MockTask(nn.Module):
         self.has_intermediate_loss = False
         self.permute_loss = True
 
-    def forward(self, x):
+    def forward(self, x, outputs=None):
         return {"output": torch.randn(2, 5, 10)}
+
+    def should_run_at_layer(self, layer_index):
+        return True
+
+    def should_permute_outputs(self, layer_name, layer_outputs):
+        return self.permute_loss and self.name in layer_outputs
+
+    def attn_mask(self, outputs):
+        return {}
 
     def predict(self, outputs):
         return {"prediction": outputs["output"] > 0}
@@ -144,8 +153,8 @@ class TestMaskFormerSorting:
 
         # Test loss computation without sorting
         targets = {
-            "particle_hit_valid": torch.ones(1, 10, 5, dtype=torch.bool),  # Match the default target_object
-            "particle_valid": torch.ones(1, 10, 5, dtype=torch.bool),
+            "particle_hit_valid": torch.ones(2, 5, 10, dtype=torch.bool),  # Match the batch size from sample_inputs
+            "particle_valid": torch.ones(2, 5, dtype=torch.bool),
         }
 
         # Should not raise any errors

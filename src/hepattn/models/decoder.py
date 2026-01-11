@@ -120,12 +120,7 @@ class MaskFormerDecoder(nn.Module):
             raise ValueError("dynamic_queries=True requires decoder.encoder_tasks to be set")
 
         # Find query_init task (must be in encoder_tasks)
-        query_init_task = None
-        for task in self.encoder_tasks:
-            if task.name == "query_init":
-                query_init_task = task
-                break
-
+        query_init_task = next((t for t in self.encoder_tasks if t.name == "query_init"), None)
         if query_init_task is None:
             raise ValueError("dynamic_queries=True requires a task named 'query_init' in encoder_tasks.")
 
@@ -137,14 +132,11 @@ class MaskFormerDecoder(nn.Module):
         preds = query_init_task.predict(outputs)
 
         hit_is_first_prob = preds["hit_is_first_prob"]  # (B, N_hits)
-        hit_valid = x["hit_valid"]  # (B, N_hits)
+        if hit_is_first_prob.shape[0] != 1:
+            raise ValueError(f"dynamic_queries only supports batch_size=1, got {hit_is_first_prob.shape[0]}")
 
-        batch_size = hit_is_first_prob.shape[0]
-        if batch_size != 1:
-            raise ValueError(f"dynamic_queries only supports batch_size=1, got {batch_size}")
-
-        # Filter: probability >= threshold AND valid
-        valid_mask = (hit_is_first_prob[0] >= query_init_task.threshold) & hit_valid[0]
+        # Filter: probability >= threshold AND valid, then select top-k by probability
+        valid_mask = (hit_is_first_prob[0] >= query_init_task.threshold) & x["hit_valid"][0]
         selected_indices = torch.where(valid_mask)[0]
 
         if selected_indices.numel() == 0:
@@ -152,15 +144,14 @@ class MaskFormerDecoder(nn.Module):
                 "dynamic query initialization selected 0 hits. Lower the query_init threshold, check hit_valid, or disable dynamic_queries."
             )
 
-        # Sort by probability descending and keep top-k, where k is the configured num_queries
-        probs = hit_is_first_prob[0, selected_indices]
-        sorted_idx = torch.argsort(probs, descending=True)
-        k = min(int(self._num_queries), int(sorted_idx.numel()))
-        sorted_idx = sorted_idx[:k]
+        # If more candidates than needed, keep top-k by probability
+        if selected_indices.numel() > self._num_queries:
+            probs = hit_is_first_prob[0, selected_indices]
+            top_k_idx = probs.topk(self._num_queries).indices
+            selected_indices = selected_indices[top_k_idx]
 
-        # Re-sort selected indices to preserve original spatial ordering
-        # (important for downstream LCA)
-        final_indices = selected_indices[sorted_idx].sort().values
+        # Sort to preserve original spatial ordering
+        final_indices = selected_indices.sort().values
         query_embed = x["hit_embed"][0, final_indices].detach().unsqueeze(0)  # (1, N_queries, dim)
         query_valid = torch.ones(1, final_indices.numel(), dtype=torch.bool, device=query_embed.device)
 
