@@ -81,7 +81,7 @@ class PredictionWriter(Callback):
         if "query_particle_idx" in targets_updated and "particle_valid_full" in targets_updated:
             # Align predictions to full particle dimension before writing
             num_full_particles = targets_updated["particle_valid_full"].shape[1]
-            preds = pl_module._align_predictions_to_full_targets(preds, targets_updated["query_particle_idx"], num_full_particles)
+            preds = pl_module.align_predictions_to_full_targets(preds, targets_updated["query_particle_idx"], num_full_particles)
 
         # handle batched case
         if "sample_id" in targets:

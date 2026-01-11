@@ -45,7 +45,7 @@ def _close_pools() -> None:
     for pool in list(_THREAD_POOLS.values()):
         try:
             pool.close()
-            pool.join(timeout=1.0)
+            pool.join()
         except Exception:  # noqa: BLE001, S110
             pass
 

@@ -2,7 +2,6 @@
 
 import pytest
 import torch
-from torch import Tensor
 
 from hepattn.models.maskformer import MaskFormer
 from hepattn.models.wrapper import ModelWrapper
@@ -160,12 +159,11 @@ class TestDynamicTargets:
         """
         # Select one hit per particle
         selected_hit_indices = torch.tensor([0, 2, 5, 6])
-        num_queries = len(selected_hit_indices)
         num_full_particles = synthetic_targets["num_particles"]
         num_hits = synthetic_targets["num_hits"]
 
         # Build dynamic targets
-        query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
+        query_hit_valid, _first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
             selected_hit_indices, synthetic_targets
         )
 
@@ -212,9 +210,7 @@ class TestDynamicTargets:
         # Select hits with duplicates: hits 0, 1 (both P0), hits 6, 8 (both P3)
         # Also select hit 2 (P1) to have a non-duplicate particle
         selected_hit_indices = torch.tensor([0, 1, 2, 6, 8])
-        num_queries = len(selected_hit_indices)
         num_full_particles = synthetic_targets["num_particles"]
-        num_hits = synthetic_targets["num_hits"]
 
         # Build dynamic targets
         query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
@@ -241,7 +237,6 @@ class TestDynamicTargets:
         aligned_preds = self._align_predictions(mock_preds, query_particle_idx, num_full_particles)
 
         aligned_track_hit_valid = aligned_preds["final"]["track"]["track_hit_valid"]
-        aligned_track_valid = aligned_preds["final"]["track"]["track_valid"]
         original_particle_hit_valid = synthetic_targets["particle_hit_valid"].float()
 
         # Check that particles with at least one selected hit have correct masks
@@ -283,9 +278,7 @@ class TestDynamicTargets:
         # Select hits in reverse order for some particles
         # Hit 1 before hit 0 (both P0), hit 8 before hit 6 (both P3)
         selected_hit_indices = torch.tensor([1, 0, 8, 6, 5])  # 5 is P2 (only one hit)
-        num_queries = len(selected_hit_indices)
         num_full_particles = synthetic_targets["num_particles"]
-        num_hits = synthetic_targets["num_hits"]
 
         # Build dynamic targets
         query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
@@ -314,7 +307,6 @@ class TestDynamicTargets:
         # Align predictions
         aligned_preds = self._align_predictions(mock_preds, query_particle_idx, num_full_particles)
         aligned_track_hit_valid = aligned_preds["final"]["track"]["track_hit_valid"]
-        original_particle_hit_valid = synthetic_targets["particle_hit_valid"].float()
 
         # Particle 0: query 0 (hit 1) is first occurrence, should have hits 0, 1 valid
         assert aligned_track_hit_valid[0, 0, 0:2].sum() == 2.0, (
@@ -357,7 +349,7 @@ class TestDynamicTargets:
 
         # Query 1 (particle 1, ID 200) should have hits 1, 4 valid
         assert query_hit_valid[0, 1, [1, 4]].all(), "Query 1 should have hits 1, 4 valid"
-        assert query_hit_valid[0, 1].sum() == 2, f"Query 1 should have exactly 2 valid hits"
+        assert query_hit_valid[0, 1].sum() == 2, "Query 1 should have exactly 2 valid hits"
 
     def test_build_dynamic_targets_interleaved_duplicates(self, interleaved_targets):
         """Test duplicate handling with interleaved hits.
@@ -367,7 +359,7 @@ class TestDynamicTargets:
         # Select hits 0 and 7 (both P100, but separated), and hit 6 (P400)
         selected_hit_indices = torch.tensor([0, 7, 6])
 
-        query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
+        query_hit_valid, first_occurrence, _query_particle_valid, _query_particle_idx = MaskFormer.build_dynamic_targets(
             selected_hit_indices, interleaved_targets
         )
 
@@ -386,9 +378,8 @@ class TestDynamicTargets:
         # Select one hit per particle
         selected_hit_indices = torch.tensor([0, 1, 3, 6])
         num_full_particles = interleaved_targets["num_particles"]
-        num_hits = interleaved_targets["num_hits"]
 
-        query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
+        query_hit_valid, _first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
             selected_hit_indices, interleaved_targets
         )
 
@@ -422,7 +413,6 @@ class TestDynamicTargets:
         # Select: hit 0 (P100), hit 7 (P100 - duplicate), hit 1 (P200), hit 8 (P400)
         selected_hit_indices = torch.tensor([0, 7, 1, 8])
         num_full_particles = interleaved_targets["num_particles"]
-        num_hits = interleaved_targets["num_hits"]
 
         query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
             selected_hit_indices, interleaved_targets
@@ -503,4 +493,4 @@ class TestDynamicTargets:
         assert aligned_track_hit_valid[0, 1:].sum() == 0.0, "Other particles should have no valid hits"
 
     # Use the production code directly - it's a static method
-    _align_predictions = staticmethod(ModelWrapper._align_predictions_to_full_targets)
+    _align_predictions = staticmethod(ModelWrapper.align_predictions_to_full_targets)

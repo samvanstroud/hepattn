@@ -63,7 +63,7 @@ class ModelWrapper(LightningModule):
         return total_loss
 
     @staticmethod
-    def _align_predictions_to_full_targets(
+    def align_predictions_to_full_targets(
         preds: dict[str, dict[str, dict[str, Tensor]]],
         query_particle_idx: Tensor,
         num_full_particles: int,
@@ -137,7 +137,7 @@ class ModelWrapper(LightningModule):
         if "query_particle_idx" in targets and "particle_valid_full" in targets:
             # Align predictions to full particle dimension for metrics computation
             num_full_particles = targets["particle_valid_full"].shape[1]
-            aligned_preds = self._align_predictions_to_full_targets(preds, targets["query_particle_idx"], num_full_particles)
+            aligned_preds = self.align_predictions_to_full_targets(preds, targets["query_particle_idx"], num_full_particles)
 
             # Create aligned targets dict with full validity masks
             aligned_targets = targets.copy()

@@ -70,7 +70,6 @@ class TrackMLTracker(ModelWrapper):
             self.log(f"{stage}/p{wp}_eff", mean_eff, sync_dist=True)
             self.log(f"{stage}/p{wp}_pur", mean_pur, sync_dist=True)
 
-        true_num = true_valid.sum(-1)
         pred_num = pred_valid.sum(-1)
 
         nh_per_true = true_hit_masks.sum(-1).float()[true_valid].mean()

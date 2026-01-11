@@ -43,7 +43,7 @@ class Compile(Callback):
             print("-" * 80)
             print("compiling model...")
         for name, submodule in model.named_children():
-            if name in ("encoder", "decoder") and isinstance(submodule, torch.nn.Module):
+            if name in {"encoder", "decoder"} and isinstance(submodule, torch.nn.Module):
                 if self.trainer.is_global_zero:
                     print(f" -> compiling model.{name}...")
                 submodule.compile(dynamic=self.dynamic, mode=self.mode)

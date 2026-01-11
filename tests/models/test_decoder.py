@@ -250,7 +250,7 @@ class TestMaskFormerDecoder:
         hit_valid = torch.ones(1, num_hits, dtype=torch.bool)
         x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
 
-        query_embed, query_valid, indices = decoder.initialize_dynamic_queries(x)
+        query_embed, _query_valid, indices = decoder.initialize_dynamic_queries(x)
 
         # Key assertion: indices should be monotonically increasing
         sorted_indices = indices.sort().values
@@ -274,7 +274,7 @@ class TestMaskFormerDecoder:
 
     def test_initialization(self, decoder, decoder_layer_config):
         """Test that the decoder initializes correctly."""
-        assert decoder._num_queries == NUM_QUERIES
+        assert decoder.num_queries == NUM_QUERIES
         assert decoder.mask_attention is True
         assert decoder.use_query_masks is False
         assert len(decoder.decoder_layers) == NUM_LAYERS
@@ -574,7 +574,7 @@ class TestMaskFormerDecoderUnified:
 
     def test_unified_initialization(self, unified_decoder):
         """Test that unified decoder initializes correctly."""
-        assert unified_decoder._num_queries == NUM_QUERIES
+        assert unified_decoder.num_queries == NUM_QUERIES
         assert unified_decoder.mask_attention is True
         assert unified_decoder.unified_decoding is True
         assert len(unified_decoder.decoder_layers) == NUM_LAYERS

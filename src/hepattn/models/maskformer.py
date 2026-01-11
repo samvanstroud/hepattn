@@ -131,7 +131,7 @@ class MaskFormer(nn.Module):
 
         return query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx
 
-    def forward(self, inputs: dict[str, Tensor]) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
+    def forward(self, inputs: dict[str, Tensor]) -> dict[str, dict[str, dict[str, Tensor]]]:
         batch_size = inputs[self.input_names[0] + "_valid"].shape[0]
         x = {"inputs": inputs}
 

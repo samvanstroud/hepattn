@@ -1321,16 +1321,31 @@ class IncidenceBasedRegressionTask(RegressionTask):
             if outputs is not None:
                 for task_outputs in outputs.values():
                     if "incidence" in task_outputs or self.input_object + "_incidence" in task_outputs:
-                        inc = task_outputs.get("incidence", task_outputs.get(self.input_object + "_incidence")).detach()
+                        inc_value = task_outputs.get("incidence", task_outputs.get(self.input_object + "_incidence"))
+                        if inc_value is not None:
+                            inc = inc_value.detach()
                     if "class_probs" in task_outputs or self.output_object + "_class_prob" in task_outputs:
-                        class_probs = task_outputs.get("class_probs", task_outputs.get(self.output_object + "_class_prob")).detach()
+                        class_probs_value = task_outputs.get("class_probs", task_outputs.get(self.output_object + "_class_prob"))
+                        if class_probs_value is not None:
+                            class_probs = class_probs_value.detach()
                     if inc is not None and class_probs is not None:
                         break
             # Fallback to x dict for backward compatibility
             if inc is None:
-                inc = x.get("incidence", x.get(self.input_object + "_incidence")).detach()
+                inc_value = x.get("incidence", x.get(self.input_object + "_incidence"))
+                if inc_value is not None:
+                    inc = inc_value.detach()
             if class_probs is None:
-                class_probs = x.get("class_probs", x.get(self.output_object + "_class_prob")).detach()
+                class_probs_value = x.get("class_probs", x.get(self.output_object + "_class_prob"))
+                if class_probs_value is not None:
+                    class_probs = class_probs_value.detach()
+
+            # Ensure inc and class_probs are available when use_incidence is True
+            if inc is None or class_probs is None:
+                raise RuntimeError(
+                    f"When use_incidence=True, both incidence and class_probs must be provided. "
+                    f"Got inc={inc is not None}, class_probs={class_probs is not None}"
+                )
 
             proxy_feats, is_charged = self.get_proxy_feats(inc, x["inputs"], class_probs=class_probs)
             input_data = torch.cat(
