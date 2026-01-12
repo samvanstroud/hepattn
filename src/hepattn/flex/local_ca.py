@@ -11,6 +11,7 @@ def sliding_window_mask_strided(
     q_len: int,
     kv_len: int,
     device: str,
+    flip: bool = False,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
@@ -19,7 +20,8 @@ def sliding_window_mask_strided(
 
     def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
         # b = 0, h = 0 here
-        q_center = torch.round(q_idx * stride_val)
+        q_idx_eff = (q_len - 1 - q_idx) if flip else q_idx
+        q_center = torch.round(q_idx_eff * stride_val)
         return (kv_idx - q_center).abs() <= window_size // 2
 
     return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
@@ -31,6 +33,7 @@ def sliding_window_mask_strided_wrapped(
     q_len: int,
     kv_len: int,
     device: str,
+    flip: bool = False,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
@@ -40,13 +43,32 @@ def sliding_window_mask_strided_wrapped(
 
     def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
         # b = 0, h = 0 here
-        q_center = torch.round(q_idx * stride_val)
+        q_idx_eff = (q_len - 1 - q_idx) if flip else q_idx
+        q_center = torch.round(q_idx_eff * stride_val)
 
         diagonal = (kv_idx - q_center).abs() <= window_size // 2
         wrap_left = (kv_idx - q_center + kv_len_t).abs() <= window_size // 2
         wrap_right = (kv_idx - q_center - kv_len_t).abs() <= window_size // 2
 
         return diagonal | wrap_left | wrap_right
+
+    return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
+
+
+def blockmask_from_dense(attn_mask: torch.Tensor, device: str) -> BlockMask:
+    """Build a BlockMask from a dense boolean attention mask."""
+    if attn_mask.dim() == 3:
+        if attn_mask.shape[0] != 1:
+            raise ValueError(f"BlockMask conversion requires batch_size=1, got {attn_mask.shape[0]}")
+        attn_mask = attn_mask[0]
+    if attn_mask.dim() != 2:
+        raise ValueError(f"Expected attn_mask with shape (Q, K) or (1, Q, K), got {tuple(attn_mask.shape)}")
+
+    mask = attn_mask.detach().bool()
+    q_len, kv_len = mask.shape
+
+    def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
+        return mask[q_idx, kv_idx]
 
     return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
 

@@ -9,7 +9,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.flex.fast_local_ca import build_strided_sliding_window_blockmask
-from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped, transpose_blockmask
+from hepattn.flex.local_ca import blockmask_from_dense, sliding_window_mask_strided, sliding_window_mask_strided_wrapped, transpose_blockmask
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
@@ -34,6 +34,7 @@ class MaskFormerDecoder(nn.Module):
         fast_local_ca: bool = False,
         block_size: int = 128,
         local_strided_attn_flip: bool = False,
+        flex_mask_attention: bool = False,
         unified_decoding: bool = False,
         phi_shift: float = 0.0,
         unmask_all_false: bool = True,
@@ -55,6 +56,7 @@ class MaskFormerDecoder(nn.Module):
             fast_local_ca: If True, uses fast local CA.
             block_size: The size of the block for fast local CA.
             local_strided_attn_flip: If True, flips the local strided attention window direction.
+            flex_mask_attention: If True, converts dense mask_attention masks into Flex block masks.
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
             phi_shift: The shift in the phi angle for positional encoding.
             unmask_all_false: If True, queries with all-false attention masks will be unmasked to attend everywhere.
@@ -75,6 +77,7 @@ class MaskFormerDecoder(nn.Module):
         self.window_size = window_size
         self.window_wrap = window_wrap
         self.local_strided_attn_flip = local_strided_attn_flip
+        self.flex_mask_attention = flex_mask_attention
         self.unified_decoding = unified_decoding
         self.dynamic_queries = dynamic_queries
 
@@ -273,6 +276,17 @@ class MaskFormerDecoder(nn.Module):
                 # TODO: check and see see if this is really necessary
                 if self.unmask_all_false:
                     attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
+
+            if attn_mask is not None and self.attn_type == "flex":
+                if isinstance(attn_mask, torch.Tensor):
+                    if not self.flex_mask_attention:
+                        raise ValueError("flex attn_type requires BlockMask; set flex_mask_attention=True to convert dense masks.")
+                    if attn_mask.shape[0] != 1:
+                        raise ValueError("flex_mask_attention only supports batch_size=1.")
+                    attn_mask = blockmask_from_dense(attn_mask, device=str(x["query_embed"].device))
+                q_len = x["query_embed"].shape[1]
+                kv_len = x["key_embed"].shape[1]
+                attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=x["query_embed"].device)
 
             if (attn_mask is not None) and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
