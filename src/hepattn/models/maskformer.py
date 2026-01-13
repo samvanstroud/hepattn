@@ -73,12 +73,19 @@ class MaskFormer(nn.Module):
         return [input_net.input_name for input_net in self.input_nets]
 
     @staticmethod
-    def build_dynamic_targets(selected_hit_indices: Tensor, targets: dict[str, Tensor]) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    def build_dynamic_targets(
+        selected_hit_indices: Tensor,
+        targets: dict[str, Tensor],
+        query_probs: Tensor | None = None,
+        hit_r: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Build dynamic targets for selected query hits.
 
         Args:
             selected_hit_indices: (N_queries,) indices of hits selected as queries
             targets: dict with hit_particle_id (1, N_hits), particle_id (1, N_particles), etc.
+            query_probs: Optional (N_queries,) probabilities for each query. If provided, selects query with highest prob for duplicates.
+            hit_r: Optional (N_queries,) radial distances for selected queries. If provided, selects query with lowest r for duplicates.
 
         Returns:
             Tuple of:
@@ -103,14 +110,45 @@ class MaskFormer(nn.Module):
 
         # Handle duplicates: only keep FIRST occurrence of each particle
         # This ensures multiple hits from same particle don't create duplicate targets
-        # Vectorized approach: sort by inverse_indices and find boundaries
         _, inverse_indices = torch.unique(query_particle_id, return_inverse=True, sorted=False)
-        sorted_inverse, sorted_idx = torch.sort(inverse_indices, stable=True)
-        # Identify positions where inverse_index changes (first occurrences in sorted order)
+
+        # Determine tiebreaker for duplicate selection (vectorized)
+        # Priority: query_probs > hit_r > selected_hit_indices (original behavior)
+        if query_probs is not None:
+            # Higher probability is better, so use negative for argmin
+            tiebreaker = -query_probs
+        elif hit_r is not None:
+            # Lower r is better (innermost hit)
+            tiebreaker = hit_r
+        else:
+            # Original behavior: use sorted index
+            tiebreaker = selected_hit_indices.float()
+
+        # Vectorized approach: create composite sort key
+        # Sort by (particle_group, tiebreaker, original_index)
+        # This groups by particle, sorts by tiebreaker within group, uses index as final tiebreaker
+        num_queries = len(query_particle_id)
+        original_indices = torch.arange(num_queries, device=query_particle_id.device)
+
+        # Normalize tiebreaker to [0, 1] range to avoid overflow in composite key
+        tiebreaker_min, tiebreaker_max = tiebreaker.min(), tiebreaker.max()
+        tiebreaker_range = tiebreaker_max - tiebreaker_min
+        tiebreaker_norm = (tiebreaker - tiebreaker_min) / tiebreaker_range if tiebreaker_range > 0 else tiebreaker * 0
+
+        # Composite key: particle_group dominates, then tiebreaker, then original index
+        # Multiply by large factors to ensure proper ordering
+        sort_key = inverse_indices.float() * (num_queries + 1) * (num_queries + 1) + tiebreaker_norm * (num_queries + 1) + original_indices.float()
+
+        # Sort to group by particle and order by tiebreaker within each group
+        _, sort_idx = torch.sort(sort_key, stable=True)
+
+        # Find first occurrence of each particle group in sorted order
+        sorted_inverse = inverse_indices[sort_idx]
         is_first_sorted = torch.cat([torch.tensor([True], device=inverse_indices.device), sorted_inverse[1:] != sorted_inverse[:-1]])
+
         # Map back to original positions
         first_occurrence = torch.zeros_like(query_particle_id, dtype=torch.bool)
-        first_occurrence[sorted_idx[is_first_sorted]] = True
+        first_occurrence[sort_idx[is_first_sorted]] = True
 
         # Build the mask: query attends to all hits belonging to same particle
         # query_particle_id: (N_queries,), hit_particle_id: (N_hits,)
@@ -290,7 +328,16 @@ class MaskFormer(nn.Module):
             targets["particle_hit_valid_full"] = targets["particle_hit_valid"].clone().detach()
 
             selected_indices = decoder_outputs["layer_0"]["_selected_query_indices"].detach()
-            query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = self.build_dynamic_targets(selected_indices, targets)
+            query_probs = decoder_outputs["layer_0"].get("_query_probs")
+            if query_probs is not None:
+                query_probs = query_probs.detach()
+            query_r = decoder_outputs["layer_0"].get("_query_r")
+            if query_r is not None:
+                query_r = query_r.detach()
+
+            query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = self.build_dynamic_targets(
+                selected_indices, targets, query_probs=query_probs, hit_r=query_r
+            )
             # Override the static particle_hit_valid with dynamic query-based mask
             targets["particle_hit_valid"] = query_hit_valid
             targets["query_first_occurrence"] = first_occurrence

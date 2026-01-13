@@ -224,7 +224,6 @@ class TrackMLDataset(Dataset):
                 hit_filter_pred = hit_filter_probs >= self.hit_filter_threshold
                 hits = hits[hit_filter_pred]
 
-        hits = hits.sort_values("phi")
         # TODO: Add back truth based hit filtering
 
         # Apply particle cut based on hit content

@@ -101,7 +101,7 @@ class MaskFormerDecoder(nn.Module):
             return x["query_embed"].shape[1]
         return self._num_queries
 
-    def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor, Tensor]:
+    def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor | None]:
         """Initialize queries dynamically using the `query_init` task.
 
         This selects hit embeddings whose predicted first-hit probability passes the task threshold,
@@ -113,7 +113,7 @@ class MaskFormerDecoder(nn.Module):
               already reflect post-encoder features).
 
         Returns:
-            (query_embed, query_valid, selected_hit_indices)
+            (query_embed, query_valid, selected_hit_indices, query_probs, query_r)
 
         Raises:
             ValueError: If `decoder.dynamic_queries` is False, decoder tasks are unset, the `query_init` task
@@ -161,7 +161,15 @@ class MaskFormerDecoder(nn.Module):
         query_embed = x["hit_embed"][0, final_indices].detach().unsqueeze(0)  # (1, N_queries, dim)
         query_valid = torch.ones(1, final_indices.numel(), dtype=torch.bool, device=query_embed.device)
 
-        return query_embed, query_valid, final_indices
+        # Store probabilities for duplicate resolution (if available)
+        query_probs = hit_is_first_prob[0, final_indices].detach()
+
+        # Store hit_r if available (for duplicate selection by r)
+        query_r = None
+        if "hit_r" in x:
+            query_r = x["hit_r"][0, final_indices].detach()
+
+        return query_embed, query_valid, final_indices, query_probs, query_r
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -186,7 +194,7 @@ class MaskFormerDecoder(nn.Module):
             x["query_valid"] = torch.full((batch_size, self.num_queries(x)), True, device=x["query_embed"].device)
         else:
             # Initialize dynamic queries (will raise if required inputs are missing)
-            x["query_embed"], x["query_valid"], x["selected_query_indices"] = self.initialize_dynamic_queries(x)
+            x["query_embed"], x["query_valid"], x["selected_query_indices"], x["query_probs"], x["query_r"] = self.initialize_dynamic_queries(x)
 
         if self.posenc:
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
@@ -242,9 +250,13 @@ class MaskFormerDecoder(nn.Module):
                     else:
                         attn_masks[input_name] = task_attn_mask
 
-            # Store selected_query_indices in layer_0 if using dynamic queries
+            # Store selected_query_indices, query_probs, and query_r in layer_0 if using dynamic queries
             if layer_index == 0 and "selected_query_indices" in x:
                 outputs["layer_0"]["_selected_query_indices"] = x["selected_query_indices"]
+                if "query_probs" in x:
+                    outputs["layer_0"]["_query_probs"] = x["query_probs"]
+                if "query_r" in x and x["query_r"] is not None:
+                    outputs["layer_0"]["_query_r"] = x["query_r"]
 
                 # Collect query masks
                 if self.use_query_masks:
