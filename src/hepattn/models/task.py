@@ -1258,6 +1258,8 @@ class IncidenceBasedRegressionTask(RegressionTask):
         has_intermediate_loss: bool = True,
         mode: str = "offset",
         cost: str = "old",
+        incidence_task_name: str = "incidence",
+        class_prob_task_name: str = "classification",
     ):
         """Construct proxy particles from predicted incidence matrix, and then correct the proxies using a regression.
 
@@ -1278,6 +1280,8 @@ class IncidenceBasedRegressionTask(RegressionTask):
             has_intermediate_loss: Whether the task has intermediate loss.
             mode: Regression mode ('offset' or 'scale').
             cost: Cost mode ('old' or 'new').
+            incidence_task_name: Name of the task that produces incidence matrix (default: 'incidence').
+            class_prob_task_name: Name of the task that produces class probabilities (default: 'classification').
 
         Raises:
             ValueError: If the mode is not 'offset' or 'scale'.
@@ -1312,30 +1316,38 @@ class IncidenceBasedRegressionTask(RegressionTask):
         else:
             raise ValueError(f"Invalid cost mode {cost}")
 
+        # Store task and output key names for direct access
+        self.incidence_task_name = incidence_task_name
+        self.incidence_output_key = f"{output_object}_incidence"
+        self.class_prob_task_name = class_prob_task_name
+        self.class_prob_output_key = f"{output_object}_class_prob"
+
     def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
         # get the predictions
         if self.use_incidence:
-            # Read incidence and class_probs from outputs (current layer's task outputs)
+            # Directly access incidence and class_probs from the specified tasks
             inc = None
             class_probs = None
             if outputs is not None:
-                for task_outputs in outputs.values():
-                    if inc is None:
-                        inc = task_outputs.get("incidence") or task_outputs.get(self.output_object + "_incidence")
-                        if inc is not None:
-                            inc = inc.detach()
-                    if class_probs is None:
-                        class_probs = task_outputs.get("class_probs") or task_outputs.get(self.output_object + "_class_prob")
-                        if class_probs is not None:
-                            class_probs = class_probs.detach()
-                    if inc is not None and class_probs is not None:
-                        break
+                # Access incidence from the specified task
+                if self.incidence_task_name in outputs:
+                    inc = outputs[self.incidence_task_name].get(self.incidence_output_key)
+                    if inc is not None:
+                        inc = inc.detach()
+
+                # Access class_probs from the specified task
+                if self.class_prob_task_name in outputs:
+                    class_probs = outputs[self.class_prob_task_name].get(self.class_prob_output_key)
+                    if class_probs is not None:
+                        class_probs = class_probs.detach()
 
             # Ensure inc and class_probs are available when use_incidence is True
             if inc is None or class_probs is None:
                 raise RuntimeError(
                     f"When use_incidence=True, both incidence and class_probs must be provided. "
-                    f"Got inc={inc is not None}, class_probs={class_probs is not None}"
+                    f"Got inc={inc is not None}, class_probs={class_probs is not None}. "
+                    f"Looking for incidence in task '{self.incidence_task_name}' with key '{self.incidence_output_key}' "
+                    f"and class_probs in task '{self.class_prob_task_name}' with key '{self.class_prob_output_key}'"
                 )
 
             proxy_feats, is_charged = self.get_proxy_feats(inc, x["inputs"], class_probs=class_probs)
