@@ -69,10 +69,11 @@ class LCATask:
         return mask
 
 
-class MockQueryInitTask:
+class MockQueryInitTask(nn.Module):
     name = "query_init"
 
     def __init__(self, probs: torch.Tensor, threshold: float = 0.5):
+        super().__init__()
         self.probs = probs
         self.threshold = threshold
 
@@ -275,7 +276,7 @@ class TestMaskFormerDecoder:
 
     def test_initialization(self, decoder, decoder_layer_config):
         """Test that the decoder initializes correctly."""
-        assert decoder.num_queries == NUM_QUERIES
+        assert decoder._num_queries == NUM_QUERIES  # noqa: SLF001
         assert decoder.mask_attention is True
         assert decoder.use_query_masks is False
         assert len(decoder.decoder_layers) == NUM_LAYERS
@@ -575,7 +576,7 @@ class TestMaskFormerDecoderUnified:
 
     def test_unified_initialization(self, unified_decoder):
         """Test that unified decoder initializes correctly."""
-        assert unified_decoder.num_queries == NUM_QUERIES
+        assert unified_decoder._num_queries == NUM_QUERIES  # noqa: SLF001
         assert unified_decoder.mask_attention is True
         assert unified_decoder.unified_decoding is True
         assert len(unified_decoder.decoder_layers) == NUM_LAYERS

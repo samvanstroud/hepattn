@@ -217,8 +217,8 @@ class MaskFormerDecoder(nn.Module):
                     continue
 
                 # Get the outputs of the task given the current embeddings
-                # Pass outputs dict so tasks can read from previously executed tasks
-                task_outputs = task(x, outputs=outputs.get(f"layer_{layer_index}"))
+                # Pass current layer's outputs so tasks can read from previously executed tasks
+                task_outputs = task(x, outputs=outputs[f"layer_{layer_index}"])
 
                 outputs[f"layer_{layer_index}"][task.name] = task_outputs
 

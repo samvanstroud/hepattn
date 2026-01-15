@@ -1315,30 +1315,21 @@ class IncidenceBasedRegressionTask(RegressionTask):
     def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
         # get the predictions
         if self.use_incidence:
-            # Try to read incidence and class_probs from outputs first, fallback to x
+            # Read incidence and class_probs from outputs (current layer's task outputs)
             inc = None
             class_probs = None
             if outputs is not None:
                 for task_outputs in outputs.values():
-                    if "incidence" in task_outputs or self.input_object + "_incidence" in task_outputs:
-                        inc_value = task_outputs.get("incidence", task_outputs.get(self.input_object + "_incidence"))
-                        if inc_value is not None:
-                            inc = inc_value.detach()
-                    if "class_probs" in task_outputs or self.output_object + "_class_prob" in task_outputs:
-                        class_probs_value = task_outputs.get("class_probs", task_outputs.get(self.output_object + "_class_prob"))
-                        if class_probs_value is not None:
-                            class_probs = class_probs_value.detach()
+                    if inc is None:
+                        inc = task_outputs.get("incidence") or task_outputs.get(self.output_object + "_incidence")
+                        if inc is not None:
+                            inc = inc.detach()
+                    if class_probs is None:
+                        class_probs = task_outputs.get("class_probs") or task_outputs.get(self.output_object + "_class_prob")
+                        if class_probs is not None:
+                            class_probs = class_probs.detach()
                     if inc is not None and class_probs is not None:
                         break
-            # Fallback to x dict for backward compatibility
-            if inc is None:
-                inc_value = x.get("incidence", x.get(self.input_object + "_incidence"))
-                if inc_value is not None:
-                    inc = inc_value.detach()
-            if class_probs is None:
-                class_probs_value = x.get("class_probs", x.get(self.output_object + "_class_prob"))
-                if class_probs_value is not None:
-                    class_probs = class_probs_value.detach()
 
             # Ensure inc and class_probs are available when use_incidence is True
             if inc is None or class_probs is None:
