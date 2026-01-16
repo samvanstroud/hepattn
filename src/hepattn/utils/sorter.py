@@ -13,7 +13,7 @@ class Sorter(nn.Module):
         sort_idxs = {}
 
         for input_name in input_names:
-            sort_idx = torch.argsort(inputs[f"{input_name}_{self.input_sort_field}"], dim=-1)
+            _, sort_idx = torch.sort(inputs[f"{input_name}_{self.input_sort_field}"], stable=True, dim=-1)
             sort_idxs[input_name] = sort_idx
 
             for key, x in inputs.items():
@@ -48,7 +48,7 @@ class Sorter(nn.Module):
 
     def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
         for input_name in self.input_names:
-            sort_idx = torch.argsort(sort_fields[f"{input_name}_{self.input_sort_field}"], dim=-1)
+            _, sort_idx = torch.sort(sort_fields[f"{input_name}_{self.input_sort_field}"], stable=True, dim=-1)
 
             for key, x in targets.items():
                 if x is None or input_name not in key:

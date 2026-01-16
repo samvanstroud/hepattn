@@ -73,12 +73,17 @@ class MaskFormer(nn.Module):
         return [input_net.input_name for input_net in self.input_nets]
 
     @staticmethod
-    def build_dynamic_targets(selected_hit_indices: Tensor, targets: dict[str, Tensor]) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    def build_dynamic_targets(
+        selected_hit_indices: Tensor,
+        targets: dict[str, Tensor],
+        hit_r: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         """Build dynamic targets for selected query hits.
 
         Args:
             selected_hit_indices: (N_queries,) indices of hits selected as queries
             targets: dict with hit_particle_id (1, N_hits), particle_id (1, N_particles), etc.
+            hit_r: Optional (1, N_hits) radii for each hit. Providing hit_r selects which query to keep when multiple queries belong to the same particle. keep the query with smallest hit radius (requires hit_r).
 
         Returns:
             Tuple of:
@@ -101,16 +106,37 @@ class MaskFormer(nn.Module):
         # Get first matching particle index for each query (argmax returns 0 if no match, which is ok)
         query_particle_idx = matches_mask.long().argmax(dim=1)
 
-        # Handle duplicates: only keep FIRST occurrence of each particle
-        # This ensures multiple hits from same particle don't create duplicate targets
-        # Vectorized approach: sort by inverse_indices and find boundaries
+        # Handle duplicates: only keep one query per particle
         _, inverse_indices = torch.unique(query_particle_id, return_inverse=True, sorted=False)
-        sorted_inverse, sorted_idx = torch.sort(inverse_indices, stable=True)
-        # Identify positions where inverse_index changes (first occurrences in sorted order)
+
+        if hit_r is None:
+            tiebreaker = selected_hit_indices.float()
+        else:
+            tiebreaker = hit_r[0, selected_hit_indices].float()
+
+        # Vectorized approach: create composite sort key
+        # Sort by (particle_group, tiebreaker, original_index)
+        num_queries = len(query_particle_id)
+        original_indices = torch.arange(num_queries, device=query_particle_id.device)
+
+        # Normalize tiebreaker to [0, 1] range to avoid overflow in composite key
+        tiebreaker_min, tiebreaker_max = tiebreaker.min(), tiebreaker.max()
+        tiebreaker_range = tiebreaker_max - tiebreaker_min
+        tiebreaker_norm = (tiebreaker - tiebreaker_min) / tiebreaker_range if tiebreaker_range > 0 else tiebreaker * 0
+
+        # Composite key: particle_group dominates, then tiebreaker, then original index
+        sort_key = inverse_indices.float() * (num_queries + 1) * (num_queries + 1) + tiebreaker_norm * (num_queries + 1) + original_indices.float()
+
+        # Sort to group by particle and order by tiebreaker within each group
+        _, sort_idx = torch.sort(sort_key, stable=True)
+
+        # Find first occurrence of each particle group in sorted order
+        sorted_inverse = inverse_indices[sort_idx]
         is_first_sorted = torch.cat([torch.tensor([True], device=inverse_indices.device), sorted_inverse[1:] != sorted_inverse[:-1]])
+
         # Map back to original positions
         first_occurrence = torch.zeros_like(query_particle_id, dtype=torch.bool)
-        first_occurrence[sorted_idx[is_first_sorted]] = True
+        first_occurrence[sort_idx[is_first_sorted]] = True
 
         # Build the mask: query attends to all hits belonging to same particle
         # query_particle_id: (N_queries,), hit_particle_id: (N_hits,)
@@ -145,6 +171,7 @@ class MaskFormer(nn.Module):
             input_name = input_net.input_name
             x[input_name + "_embed"] = input_net(inputs)
             x[input_name + "_valid"] = inputs[input_name + "_valid"]
+            x[input_name + "_r"] = inputs[input_name + "_r"]
 
             n_objects = x[input_name + "_embed"].shape[-2]
             key_slices[input_name] = slice(key_start, key_start + n_objects)
@@ -223,6 +250,9 @@ class MaskFormer(nn.Module):
         for task in self.tasks:
             # Pass outputs dict so tasks can read from previously executed tasks
             outputs["final"][task.name] = task(x, outputs=outputs["final"])
+        
+        for input_name in self.input_names:
+            outputs["final"][f"{input_name}_r"] = x[f"{input_name}_r"]
 
         # store info about the input sort field for each input type
         if self.sorter is not None:
@@ -278,6 +308,10 @@ class MaskFormer(nn.Module):
         # This is especially important when using dynamic queries
         targets = targets.copy()
 
+        # Sort targets if using a sorter (both encoder and decoder need sorted targets)
+        if self.sorter is not None:
+            targets = self.sorter.sort_targets(targets, outputs["final"][self.sorter.input_sort_field])
+
         # Separate encoder and decoder outputs for cleaner logic (copy instead of pop to avoid mutation)
         encoder_outputs = {"encoder": outputs["encoder"]} if "encoder" in outputs else {}
         decoder_outputs = {k: v for k, v in outputs.items() if k != "encoder"}  # All non-encoder outputs are decoder layers
@@ -290,18 +324,21 @@ class MaskFormer(nn.Module):
             targets["particle_hit_valid_full"] = targets["particle_hit_valid"].clone().detach()
 
             selected_indices = decoder_outputs["layer_0"]["_selected_query_indices"].detach()
-            query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = self.build_dynamic_targets(selected_indices, targets)
+
+            query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = self.build_dynamic_targets(
+                selected_indices,
+                targets,
+                hit_r=outputs["final"].get("hit_r") if "final" in outputs else None
+                )
             # Override the static particle_hit_valid with dynamic query-based mask
             targets["particle_hit_valid"] = query_hit_valid
             targets["query_first_occurrence"] = first_occurrence
+            # Store in outputs for callbacks/loggers to access
+            decoder_outputs["layer_0"]["_query_first_occurrence"] = first_occurrence
             # Override particle_valid to match the number of dynamic queries
             targets[f"{self.target_object}_valid"] = query_particle_valid
             # Store query-to-particle mapping for metrics alignment
             targets["query_particle_idx"] = query_particle_idx
-
-        # Sort targets if using a sorter (both encoder and decoder need sorted targets)
-        if self.sorter is not None:
-            targets = self.sorter.sort_targets(targets, decoder_outputs["final"][self.sorter.input_sort_field])
 
         return targets, encoder_outputs, decoder_outputs
 
