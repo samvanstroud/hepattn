@@ -62,65 +62,6 @@ class ModelWrapper(LightningModule):
         self.log(f"{stage}/loss", total_loss, sync_dist=True)
         return total_loss
 
-    @staticmethod
-    def align_predictions_to_full_targets(
-        preds: dict[str, dict[str, dict[str, Tensor]]],
-        query_particle_idx: Tensor,
-        num_full_particles: int,
-    ) -> dict[str, dict[str, dict[str, Tensor]]]:
-        """Align query-sized predictions to full particle dimension using query-to-particle mapping.
-
-        Uses scatter_reduce with 'amax' to handle duplicate queries mapping to the same particle.
-        This ensures that valid (non-zero) predictions are not overwritten by zeroed-out
-        duplicate query values.
-
-        Args:
-            preds: Predictions dict with structure {layer: {task: {field: tensor}}}
-            query_particle_idx: (B, N_queries) mapping from query index to particle index
-            num_full_particles: Number of particles in full targets
-
-        Returns:
-            Aligned predictions dict with particle dimension expanded to full size
-        """
-        batch_size = query_particle_idx.shape[0]
-        num_queries = query_particle_idx.shape[1]
-        device = query_particle_idx.device
-        idx = query_particle_idx.detach().long()
-
-        def scatter_align(value: Tensor) -> Tensor:
-            """Scatter query-sized tensor to full particle dimension using amax reduction."""
-            original_dtype = value.dtype
-            value = value.detach().float()
-
-            # Build output shape: replace query dim with num_full_particles
-            out_shape = list(value.shape)
-            out_shape[1] = num_full_particles
-            aligned = torch.zeros(out_shape, dtype=torch.float32, device=device)
-
-            # Expand index to match value shape for scatter_reduce
-            idx_expanded = idx.view(batch_size, num_queries, *([1] * (value.dim() - 2))).expand_as(value)
-
-            aligned.scatter_reduce_(dim=1, index=idx_expanded, src=value, reduce="amax", include_self=True)
-
-            # Convert back to original dtype
-            if original_dtype == torch.bool:
-                return aligned > 0.5
-            return aligned.to(original_dtype)
-
-        aligned_preds = {}
-        for layer_name, layer_preds in preds.items():
-            aligned_preds[layer_name] = {}
-            for task_name, task_preds in layer_preds.items():
-                aligned_preds[layer_name][task_name] = {}
-                for field_name, field_value in task_preds.items():
-                    # Only align tensors with query dimension
-                    if isinstance(field_value, Tensor) and field_value.shape[1] == num_queries:
-                        aligned_preds[layer_name][task_name][field_name] = scatter_align(field_value)
-                    else:
-                        aligned_preds[layer_name][task_name][field_name] = field_value
-
-        return aligned_preds
-
     def log_task_metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor], stage: str) -> None:
         # Log any task specific metrics
         for layer_name in preds:
@@ -133,29 +74,12 @@ class ModelWrapper(LightningModule):
                     self.log_dict({f"{stage}/{layer_name}_{task.name}_{k}": v for k, v in task_metrics.items()}, sync_dist=True)
 
     def log_metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor], stage: str) -> None:
-        # Check if dynamic queries are active and we need to align predictions
-        if "query_particle_idx" in targets and "particle_valid_full" in targets:
-            # Align predictions to full particle dimension for metrics computation
-            num_full_particles = targets["particle_valid_full"].shape[1]
-            aligned_preds = self.align_predictions_to_full_targets(preds, targets["query_particle_idx"], num_full_particles)
+        # Predictions are already aligned to original target dimension by MaskFormer.predict()
+        # for dynamic queries, so no alignment needed here.
+        self.log_task_metrics(preds, targets, stage)
 
-            # Create aligned targets dict with full validity masks
-            aligned_targets = targets.copy()
-            aligned_targets["particle_valid"] = targets["particle_valid_full"]
-            aligned_targets["particle_hit_valid"] = targets["particle_hit_valid_full"]
-
-            # Log task metrics with aligned predictions and full targets
-            self.log_task_metrics(aligned_preds, aligned_targets, stage)
-
-            # Log custom metrics with aligned predictions and full targets
-            if hasattr(self, "log_custom_metrics"):
-                self.log_custom_metrics(aligned_preds, aligned_targets, stage)
-        else:
-            # No dynamic queries, use standard metrics computation
-            self.log_task_metrics(preds, targets, stage)
-
-            if hasattr(self, "log_custom_metrics"):
-                self.log_custom_metrics(preds, targets, stage)
+        if hasattr(self, "log_custom_metrics"):
+            self.log_custom_metrics(preds, targets, stage)
 
     def training_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]], batch_idx: int) -> dict[str, Tensor] | None:
         inputs, targets = batch
@@ -164,7 +88,7 @@ class ModelWrapper(LightningModule):
         outputs = self.model(inputs)
 
         # Compute and log losses
-        losses, targets = self.model.loss(outputs, targets)
+        outputs, targets, losses = self.model.loss(outputs, targets)
 
         # Get the predictions from the model, avoid calling predict if possible
         if batch_idx % self.trainer.log_every_n_steps == 0:
@@ -185,7 +109,7 @@ class ModelWrapper(LightningModule):
         outputs = self.model(inputs)
 
         # Compute losses then aggregate and log them
-        losses, targets = self.model.loss(outputs, targets)
+        outputs, targets, losses = self.model.loss(outputs, targets)
         total_loss = self.aggregate_losses(losses, stage="val")
 
         # Get the predictions from the model
@@ -201,7 +125,7 @@ class ModelWrapper(LightningModule):
         outputs = self.model(inputs)
 
         # Calculate loss to also run matching
-        losses, targets = self.model.loss(outputs, targets)
+        outputs, targets, losses = self.model.loss(outputs, targets)
 
         # Get the predictions from the model
         preds = self.model.predict(outputs)

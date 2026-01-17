@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v8-3l-fast-fix
+name: TRK-v8-3l-fast-fix-vec
 data:
   # hypatia
   #train_dir: data/trackml/prepped/
@@ -195,6 +195,7 @@ model:
           attn_kwargs: {bias: false}
       decoder:
         dynamic_queries: true
+        dynamic_query_source: hit
         num_decoder_layers: &num_dec_layers 3
         num_queries: *num_objects
         mask_attention: true

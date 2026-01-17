@@ -37,6 +37,7 @@ class MaskFormerDecoder(nn.Module):
         phi_shift: float = 0.0,
         unmask_all_false: bool = True,
         dynamic_queries: bool = False,
+        dynamic_query_source: str | None = None,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -57,6 +58,7 @@ class MaskFormerDecoder(nn.Module):
             phi_shift: The shift in the phi angle for positional encoding.
             unmask_all_false: If True, queries with all-false attention masks will be unmasked to attend everywhere.
             dynamic_queries: If True, queries are initialized dynamically.
+            dynamic_query_source: Name of the input type to use as the source for dynamic query initialization.
         """
         super().__init__()
 
@@ -74,6 +76,7 @@ class MaskFormerDecoder(nn.Module):
         self.window_wrap = window_wrap
         self.unified_decoding = unified_decoding
         self.dynamic_queries = dynamic_queries
+        self.dynamic_query_source = dynamic_query_source
 
         # Only initialize learned queries if not using dynamic queries
         if not dynamic_queries:
@@ -103,15 +106,14 @@ class MaskFormerDecoder(nn.Module):
 
         Notes:
             - Only supports batch_size == 1.
-            - Expects `x` to contain `hit_embed` and `hit_valid` (and typically `hit_embed` should
-              already reflect post-encoder features).
+            - Expects `x` to contain `source_embed` and `source_valid`.
 
         Returns:
-            (query_embed, query_valid, selected_hit_indices)
+            (query_embed, query_valid, selected_indices)
 
         Raises:
             ValueError: If `decoder.dynamic_queries` is False, decoder tasks are unset, the `query_init` task
-                is missing, required hit tensors are missing, or batch size is not 1.
+                is missing, required source tensors are missing, or batch size is not 1.
         """
         if not self.dynamic_queries:
             raise ValueError("initialize_dynamic_queries called but decoder.dynamic_queries is False")
@@ -124,35 +126,42 @@ class MaskFormerDecoder(nn.Module):
         if query_init_task is None:
             raise ValueError("dynamic_queries=True requires a task named 'query_init' in encoder_tasks.")
 
-        if "hit_embed" not in x or "hit_valid" not in x:
-            raise ValueError("dynamic_queries=True requires 'hit_embed' and 'hit_valid' in decoder input dict")
+        source_embed_key = f"{self.dynamic_query_source}_embed"
+        source_valid_key = f"{self.dynamic_query_source}_valid"
+        if source_embed_key not in x or source_valid_key not in x:
+            raise ValueError(f"dynamic_queries=True requires '{source_embed_key}' and '{source_valid_key}' in decoder input dict")
 
         # Get predictions
         outputs = query_init_task.forward(x)
         preds = query_init_task.predict(outputs)
 
-        hit_is_first_prob = preds["hit_is_first_prob"]  # (B, N_hits)
-        if hit_is_first_prob.shape[0] != 1:
-            raise ValueError(f"dynamic_queries only supports batch_size=1, got {hit_is_first_prob.shape[0]}")
+        # For the source field, tasks typically return predictions with keys matching task.predict_outputs
+        # We look for the "prob" prediction for the query source.
+        # TODO: This still makes some assumptions about the task output structure.
+        prob_key = next((k for k in preds if k.endswith("_prob")), None)
+        if prob_key is None:
+            raise ValueError(f"query_init task '{query_init_task.name}' did not return a probability prediction.")
+
+        source_prob = preds[prob_key]  # (B, N_source)
+        if source_prob.shape[0] != 1:
+            raise ValueError(f"dynamic_queries only supports batch_size=1, got {source_prob.shape[0]}")
 
         # Filter: probability >= threshold AND valid, then select top-k by probability
-        valid_mask = (hit_is_first_prob[0] >= query_init_task.threshold) & x["hit_valid"][0]
+        valid_mask = (source_prob[0] >= query_init_task.threshold) & x[source_valid_key][0]
         selected_indices = torch.where(valid_mask)[0]
 
         if selected_indices.numel() == 0:
-            raise ValueError(
-                "dynamic query initialization selected 0 hits. Lower the query_init threshold, check hit_valid, or disable dynamic_queries."
-            )
+            raise ValueError("dynamic query initialization selected 0 constituents. Lower the query_init threshold or disable dynamic_queries.")
 
         # If more candidates than needed, keep top-k by probability
         if selected_indices.numel() > self._num_queries:
-            probs = hit_is_first_prob[0, selected_indices]
+            probs = source_prob[0, selected_indices]
             top_k_idx = probs.topk(self._num_queries).indices
             selected_indices = selected_indices[top_k_idx]
 
         # Sort to preserve original spatial ordering
         final_indices = selected_indices.sort().values
-        query_embed = x["hit_embed"][0, final_indices].detach().unsqueeze(0)  # (1, N_queries, dim)
+        query_embed = x[source_embed_key][0, final_indices].detach().unsqueeze(0)  # (1, N_queries, dim)
         query_valid = torch.ones(1, final_indices.numel(), dtype=torch.bool, device=query_embed.device)
 
         return query_embed, query_valid, final_indices
@@ -165,7 +174,10 @@ class MaskFormerDecoder(nn.Module):
             input_names: List of input names for constructing attention masks.
 
         Returns:
-            Tuple containing updated embeddings and outputs from each decoder layer and final outputs.
+            Tuple containing:
+                - x: Updated embedding dictionary.
+                - outputs: Layer-wise task outputs.
+                - metadata: Dictionary containing additional runtime information (e.g., selected_query_indices).
 
         Raises:
             ValueError: If in merged input mode and multiple attention masks are provided.
@@ -174,13 +186,15 @@ class MaskFormerDecoder(nn.Module):
         num_constituents = x["key_embed"].shape[-2]
 
         # Generate or use pre-initialized queries
+        metadata = {}
         if not self.dynamic_queries:
             # Static learned queries (backward compatible)
             x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
             x["query_valid"] = torch.full((batch_size, self.num_queries(x)), True, device=x["query_embed"].device)
         else:
             # Initialize dynamic queries (will raise if required inputs are missing)
-            x["query_embed"], x["query_valid"], x["selected_query_indices"] = self.initialize_dynamic_queries(x)
+            x["query_embed"], x["query_valid"], selected_indices = self.initialize_dynamic_queries(x)
+            metadata["selected_query_indices"] = selected_indices
 
         if self.posenc:
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
@@ -283,7 +297,7 @@ class MaskFormerDecoder(nn.Module):
             if not self.unified_decoding:
                 x = unmerge_inputs(x, input_names)
 
-        return x, outputs
+        return x, outputs, metadata
 
     def flex_local_ca_mask(self, q_len: int, kv_len: int, device, dtype_float):
         # Calculate stride based on the ratio of key length to query length
