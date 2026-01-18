@@ -24,7 +24,7 @@ dependencies = [
     "lightning==2.5.2",
     "comet-ml==3.50.0",
     "pandas>=2.3.2,<3",
-    "pyarrow>=21.0.0,<22",
+    "pyarrow>=23,<24",
     "jsonargparse[signatures]==4.40.1",
     "torchjd>=0.7.0,<0.8",
     "lion-pytorch>=0.2.3,<0.3",
