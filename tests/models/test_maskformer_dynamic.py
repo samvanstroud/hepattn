@@ -4,7 +4,6 @@ import pytest
 import torch
 
 from hepattn.models.maskformer import MaskFormer
-from hepattn.models.wrapper import ModelWrapper
 
 
 class TestDynamicTargets:
@@ -100,7 +99,7 @@ class TestDynamicTargets:
         selected_hit_indices = torch.tensor([0, 2, 5, 6])
 
         query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
-            selected_hit_indices, synthetic_targets
+            selected_hit_indices, synthetic_targets, source_name="hit", target_name="particle"
         )
 
         # All queries should be first occurrence since each is from a different particle
@@ -129,7 +128,7 @@ class TestDynamicTargets:
         selected_hit_indices = torch.tensor([0, 1, 6, 8])
 
         query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
-            selected_hit_indices, synthetic_targets
+            selected_hit_indices, synthetic_targets, source_name="hit", target_name="particle"
         )
 
         # First occurrence should be True for queries 0 and 2 only
@@ -164,7 +163,7 @@ class TestDynamicTargets:
 
         # Build dynamic targets
         query_hit_valid, _first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
-            selected_hit_indices, synthetic_targets
+            selected_hit_indices, synthetic_targets, source_name="hit", target_name="particle"
         )
 
         # Create mock predictions that match the query targets
@@ -214,7 +213,7 @@ class TestDynamicTargets:
 
         # Build dynamic targets
         query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
-            selected_hit_indices, synthetic_targets
+            selected_hit_indices, synthetic_targets, source_name="hit", target_name="particle"
         )
 
         # Verify build_dynamic_targets correctly identified first occurrences
@@ -282,7 +281,7 @@ class TestDynamicTargets:
 
         # Build dynamic targets
         query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
-            selected_hit_indices, synthetic_targets
+            selected_hit_indices, synthetic_targets, source_name="hit", target_name="particle"
         )
 
         # With hits [1, 0, 8, 6, 5] -> Particles [0, 0, 3, 3, 2]
@@ -329,7 +328,7 @@ class TestDynamicTargets:
         selected_hit_indices = torch.tensor([0, 1, 3, 6])
 
         query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
-            selected_hit_indices, interleaved_targets
+            selected_hit_indices, interleaved_targets, source_name="hit", target_name="particle"
         )
 
         # All queries should be first occurrence
@@ -360,7 +359,7 @@ class TestDynamicTargets:
         selected_hit_indices = torch.tensor([0, 7, 6])
 
         query_hit_valid, first_occurrence, _query_particle_valid, _query_particle_idx = MaskFormer.build_dynamic_targets(
-            selected_hit_indices, interleaved_targets
+            selected_hit_indices, interleaved_targets, source_name="hit", target_name="particle"
         )
 
         # First occurrence: query 0 (hit 0, P100) is first, query 1 (hit 7, P100) is NOT first
@@ -380,7 +379,7 @@ class TestDynamicTargets:
         num_full_particles = interleaved_targets["num_particles"]
 
         query_hit_valid, _first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
-            selected_hit_indices, interleaved_targets
+            selected_hit_indices, interleaved_targets, source_name="hit", target_name="particle"
         )
 
         mock_preds = {
@@ -415,7 +414,7 @@ class TestDynamicTargets:
         num_full_particles = interleaved_targets["num_particles"]
 
         query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
-            selected_hit_indices, interleaved_targets
+            selected_hit_indices, interleaved_targets, source_name="hit", target_name="particle"
         )
 
         # Queries: hit 0 (P0), hit 7 (P0), hit 1 (P1), hit 8 (P3)
@@ -465,7 +464,7 @@ class TestDynamicTargets:
         num_full_particles = interleaved_targets["num_particles"]
 
         query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
-            selected_hit_indices, interleaved_targets
+            selected_hit_indices, interleaved_targets, source_name="hit", target_name="particle"
         )
 
         # Only first query should be valid
@@ -492,5 +491,108 @@ class TestDynamicTargets:
         assert aligned_track_hit_valid[0, 0, [0, 2, 7]].sum() == 3.0
         assert aligned_track_hit_valid[0, 1:].sum() == 0.0, "Other particles should have no valid hits"
 
+    def test_align_outputs_nested_structure(self, synthetic_targets):
+        """Test that _align_outputs_to_original_targets handles nested layers and tasks."""
+        num_queries = 3
+        num_original_targets = 5
+        query_target_idx = torch.tensor([[0, 2, 4]])  # Queries map to targets 0, 2, 4
+
+        mock_outputs = {
+            "layer_0": {
+                "task_a": {
+                    "field_1": torch.randn(1, num_queries, 8),
+                },
+            },
+            "layer_1": {
+                "task_a": {
+                    "field_1": torch.randn(1, num_queries, 8),
+                },
+                "task_b": {
+                    "field_2": torch.randn(1, num_queries),
+                },
+            },
+            "final": {
+                "task_c": {
+                    "field_3": torch.randn(1, num_queries, 10, 10),
+                }
+            },
+            "encoder": {"some_metadata": True},  # Should be preserved as is
+        }
+
+        aligned = MaskFormer._align_outputs_to_original_targets(mock_outputs, query_target_idx, num_original_targets)
+
+        # Check structure preservation
+        assert set(aligned.keys()) == {"layer_0", "layer_1", "final", "encoder"}
+        assert aligned["encoder"]["some_metadata"] is True
+
+        # Check alignment and shapes
+        assert aligned["layer_0"]["task_a"]["field_1"].shape == (1, num_original_targets, 8)
+        assert aligned["layer_1"]["task_b"]["field_2"].shape == (1, num_original_targets)
+        assert aligned["final"]["task_c"]["field_3"].shape == (1, num_original_targets, 10, 10)
+
+        # Check specific values (e.g., target 2 should have data from query 1)
+        torch.testing.assert_close(aligned["layer_1"]["task_b"]["field_2"][0, 2], mock_outputs["layer_1"]["task_b"]["field_2"][0, 1])
+        # Target 1 was not mapped to, should be zero
+        assert aligned["layer_1"]["task_b"]["field_2"][0, 1] == 0.0
+
+    def test_build_dynamic_targets_missing_particles(self, synthetic_targets):
+        """Test build_dynamic_targets when some particles are not selected."""
+        # Select hits from particles 0 and 2 only. Particle 1 and 3 are missing.
+        selected_hit_indices = torch.tensor([0, 5])  # Hit 0 (P0), Hit 5 (P2)
+
+        query_hit_valid, first_occurrence, query_particle_valid, query_particle_idx = MaskFormer.build_dynamic_targets(
+            selected_hit_indices, synthetic_targets, source_name="hit", target_name="particle"
+        )
+
+        assert query_particle_idx.tolist() == [[0, 2]]
+        assert query_particle_valid.all()
+
+        # Original particles 1 and 3 are not in query_particle_idx
+        assert 1 not in query_particle_idx
+        assert 3 not in query_particle_idx
+
+    def test_build_dynamic_targets_unmatched_hits(self, synthetic_targets):
+        """Test build_dynamic_targets behavior with hits that don't match any target particle ID."""
+        # Add a noise hit that doesn't match any particle_id
+        targets = synthetic_targets.copy()
+        targets["hit_particle_id"] = torch.cat([targets["hit_particle_id"], torch.tensor([[999]])], dim=1)
+
+        # Select hits [0, 10] where 10 is the noise hit
+        selected_hit_indices = torch.tensor([0, 10])
+
+        _, first_occurrence, _, query_particle_idx = MaskFormer.build_dynamic_targets(
+            selected_hit_indices, targets, source_name="hit", target_name="particle"
+        )
+
+        # The noise hit (999) doesn't match any ID in [100, 200, 300, 400]
+        # Matches mask will be all False for that row.
+        # Long().argmax(dim=1) returns 0 if all are False.
+        # So query 1 (the noise) will map to target index 0 if not handled.
+        assert query_particle_idx[0, 1] == 0
+
+        # However, it SHOULD still be marked as a first occurrence if it's the first time 999 is seen
+        assert first_occurrence[0, 1]
+
+    def test_align_outputs_different_shapes(self):
+        """Test alignment of outputs that don't have a query dimension."""
+        num_queries = 2
+        num_original_targets = 4
+        query_target_idx = torch.tensor([[1, 3]])
+
+        mock_outputs = {
+            "final": {
+                "global_task": {"scalar": torch.tensor([1.23]), "batch_only": torch.randn(1, 10), "query_field": torch.randn(1, num_queries, 5)}
+            }
+        }
+
+        aligned = MaskFormer._align_outputs_to_original_targets(mock_outputs, query_target_idx, num_original_targets)
+
+        # Scalars and batch-only tensors should be preserved exactly
+        torch.testing.assert_close(aligned["final"]["global_task"]["scalar"], mock_outputs["final"]["global_task"]["scalar"])
+        torch.testing.assert_close(aligned["final"]["global_task"]["batch_only"], mock_outputs["final"]["global_task"]["batch_only"])
+
+        # Query field should be expanded
+        assert aligned["final"]["global_task"]["query_field"].shape == (1, num_original_targets, 5)
+
     # Use the production code directly - it's a static method
-    _align_predictions = staticmethod(ModelWrapper.align_predictions_to_full_targets)
+    _align_predictions = staticmethod(MaskFormer._align_outputs_to_original_targets)

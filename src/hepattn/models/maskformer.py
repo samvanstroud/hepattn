@@ -283,11 +283,9 @@ class MaskFormer(nn.Module):
             outputs["encoder"][task.name] = task(x)
 
         # Pass through decoder layers
-        x, decoder_outputs, metadata = self.decoder(x, self.input_names)
+        x, decoder_outputs = self.decoder(x, self.input_names)
+        outputs["encoder"].update(decoder_outputs.pop("encoder", {}))
         outputs.update(decoder_outputs)
-
-        # Store initialization metadata for loss() access
-        outputs["encoder"].update(metadata)
 
         # Do any pooling if desired
         if self.pooling is not None:

@@ -176,8 +176,7 @@ class MaskFormerDecoder(nn.Module):
         Returns:
             Tuple containing:
                 - x: Updated embedding dictionary.
-                - outputs: Layer-wise task outputs.
-                - metadata: Dictionary containing additional runtime information (e.g., selected_query_indices).
+                - outputs: Layer-wise task outputs, including an "encoder" key with metadata.
 
         Raises:
             ValueError: If in merged input mode and multiple attention masks are provided.
@@ -186,7 +185,7 @@ class MaskFormerDecoder(nn.Module):
         num_constituents = x["key_embed"].shape[-2]
 
         # Generate or use pre-initialized queries
-        metadata = {}
+        outputs: dict[str, dict] = {"encoder": {}}
         if not self.dynamic_queries:
             # Static learned queries (backward compatible)
             x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
@@ -194,7 +193,7 @@ class MaskFormerDecoder(nn.Module):
         else:
             # Initialize dynamic queries (will raise if required inputs are missing)
             x["query_embed"], x["query_valid"], selected_indices = self.initialize_dynamic_queries(x)
-            metadata["selected_query_indices"] = selected_indices
+            outputs["encoder"]["selected_query_indices"] = selected_indices
 
         if self.posenc:
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
@@ -213,7 +212,6 @@ class MaskFormerDecoder(nn.Module):
                 attn_mask = self.flex_local_ca_mask(q_len, kv_len, device, dtype_float)
                 attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=device)
 
-        outputs: dict[str, dict] = {}
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
             outputs[f"layer_{layer_index}"] = {}
 
@@ -297,7 +295,7 @@ class MaskFormerDecoder(nn.Module):
             if not self.unified_decoding:
                 x = unmerge_inputs(x, input_names)
 
-        return x, outputs, metadata
+        return x, outputs
 
     def flex_local_ca_mask(self, q_len: int, kv_len: int, device, dtype_float):
         # Calculate stride based on the ratio of key length to query length
