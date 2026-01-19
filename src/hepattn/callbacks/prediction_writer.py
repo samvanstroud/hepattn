@@ -77,6 +77,11 @@ class PredictionWriter(Callback):
         inputs, targets = batch
         outputs, preds, losses, targets_updated = test_step_outputs
         targets_to_write = targets_updated if isinstance(targets_updated, dict) else targets
+        if "particle_valid_full" in targets_to_write and "particle_hit_valid_full" in targets_to_write:
+            # Write full particle targets to keep scalar targets and hit masks on the same axis.
+            targets_to_write = targets_to_write.copy()
+            targets_to_write["particle_valid"] = targets_to_write["particle_valid_full"]
+            targets_to_write["particle_hit_valid"] = targets_to_write["particle_hit_valid_full"]
 
         # Check if dynamic queries are active and align predictions if needed
         if "query_particle_idx" in targets_to_write and "particle_valid_full" in targets_to_write:
