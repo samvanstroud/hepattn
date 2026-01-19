@@ -76,25 +76,26 @@ class PredictionWriter(Callback):
     def on_test_batch_end(self, trainer, pl_module, test_step_outputs, batch, batch_idx):
         inputs, targets = batch
         outputs, preds, losses, targets_updated = test_step_outputs
+        targets_to_write = targets_updated if isinstance(targets_updated, dict) else targets
 
         # Check if dynamic queries are active and align predictions if needed
-        if "query_particle_idx" in targets_updated and "particle_valid_full" in targets_updated:
+        if "query_particle_idx" in targets_to_write and "particle_valid_full" in targets_to_write:
             # Align predictions to full particle dimension before writing
-            num_full_particles = targets_updated["particle_valid_full"].shape[1]
-            preds = pl_module.align_predictions_to_full_targets(preds, targets_updated["query_particle_idx"], num_full_particles)
+            num_full_particles = targets_to_write["particle_valid_full"].shape[1]
+            preds = pl_module.align_predictions_to_full_targets(preds, targets_to_write["query_particle_idx"], num_full_particles)
 
         # handle batched case
-        if "sample_id" in targets:
+        if "sample_id" in targets_to_write:
             # Get all of the sample IDs in the batch, this is what will be used to retrieve the samples
-            sample_ids = targets["sample_id"]
+            sample_ids = targets_to_write["sample_id"]
 
             # Iterate through all of the samples in the batch
             for idx, sample_id in enumerate(sample_ids):
-                self.write_sample(sample_id, inputs, targets, outputs, preds, losses, idx)
+                self.write_sample(sample_id, inputs, targets_to_write, outputs, preds, losses, idx)
 
         # handle unbatched case
         else:
-            self.write_sample(batch_idx, inputs, targets, outputs, preds, losses, 0)
+            self.write_sample(batch_idx, inputs, targets_to_write, outputs, preds, losses, 0)
 
     def write_sample(self, sample_id, inputs, targets, outputs, preds, losses, idx):
         """Write a single sample to the output file."""
@@ -139,6 +140,9 @@ class PredictionWriter(Callback):
                 continue
             layer_group = items_group.create_group(layer_name)
             for task_name, task_items in layer_items.items():
+                if isinstance(task_items, Tensor):
+                    self.create_dataset(layer_group, task_name, task_items[idx][None, ...])
+                    continue
                 task_group = layer_group.create_group(task_name)
                 for name, value in task_items.items():
                     self.create_dataset(task_group, name, value[idx][None, ...])
