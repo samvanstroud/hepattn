@@ -23,7 +23,7 @@ dependencies = [
     "matplotlib>=3.10.6,<4",
     "lightning==2.5.2",
     "comet-ml==3.50.0",
-    "pandas>=2.3.2,<3",
+    "pandas>=3,<4",
     "pyarrow>=21.0.0,<22",
     "jsonargparse[signatures]==4.40.1",
     "torchjd>=0.7.0,<0.8",
