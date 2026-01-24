@@ -76,7 +76,7 @@ class MaskFormer(nn.Module):
     @staticmethod
     def build_dynamic_targets(
         selected_indices: Tensor, targets: dict[str, Tensor], source_name: str, target_name: str
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Filter out target objects which do not have any constituents selected as queries.
 
         The idea is that if we don't select a constituent from a given target object to 
@@ -95,24 +95,13 @@ class MaskFormer(nn.Module):
                 - filtered_constituent_mask: (1, N_queries, N_constituents) mask indicating which constituents belong to each query's target
                 - first_occurrence: (1, N_queries) mask indicating which queries are the first of their target
                 - filtered_target_valid: (1, N_queries) mask indicating which query slots are valid
-                - filtered_target_idx: (1, N_queries) mapping from query index to original target index
         """
         # extract info and remove batch dimension
         source_target_id_key = f"{source_name}_{target_name}_id"
-        target_id_key = f"{target_name}_id"
         constituent_target_id = targets[source_target_id_key][0]  # (N_constituents,)
-        target_id = targets[target_id_key][0]  # (N_targets,)
 
         # Get the target ID for each selected constituent/query
         filtered_target_id = constituent_target_id[selected_indices]  # (N_queries,)
-
-        # Create mapping from query index to target index
-        # Find which target index corresponds to each query's target_id
-        # Shape: (N_queries, N_targets) where each row has True at matching target indices
-        # Detach necessary to avoid gradient retention on large comparison tensor
-        matches_mask = (filtered_target_id.unsqueeze(1) == target_id.unsqueeze(0)).detach()
-        # Get first matching target index for each query (argmax returns 0 if no match, which is ok)
-        filtered_target_idx = matches_mask.long().argmax(dim=1)
 
         # Handle duplicates: only keep FIRST occurrence of each target
         # This ensures multiple selected constituents from same target don't create duplicate targets
@@ -140,78 +129,8 @@ class MaskFormer(nn.Module):
         filtered_constituent_mask = filtered_constituent_mask.unsqueeze(0)  # (1, N_queries, N_constituents)
         first_occurrence = first_occurrence.unsqueeze(0)  # (1, N_queries)
         filtered_target_valid = filtered_target_valid.unsqueeze(0)  # (1, N_queries)
-        filtered_target_idx = filtered_target_idx.unsqueeze(0)  # (1, N_queries)
 
-        return filtered_constituent_mask, first_occurrence, filtered_target_valid, filtered_target_idx
-
-    @staticmethod
-    def _align_outputs_to_original_targets(outputs: dict, query_target_idx: Tensor, num_original_targets: int) -> dict:
-        """Align query-sized outputs from dynamic queries to original target dimension.
-
-        Uses scatter_reduce with 'amax' to handle duplicate queries mapping to the same target.
-        This ensures that valid (non-zero) predictions are not overwritten by zeroed-out
-        duplicate query values.
-
-        Node: this realignment uses truth info which needs to be fixed. Because during inference
-        it's not possible to deduplicate targets in the way that is done here
-
-        Args:
-            outputs: Outputs dict with structure {layer: {task: {field: tensor}}}
-            query_target_idx: (B, N_queries) mapping from query index to target index
-            num_original_targets: Number of targets in original input
-
-        Returns:
-            New outputs dict with tensors expanded to original target dimension
-        """
-        batch_size = query_target_idx.shape[0]
-        num_queries = query_target_idx.shape[1]
-        device = query_target_idx.device
-        idx = query_target_idx.detach().long() # this is truth info!
-
-        def scatter_align(value: Tensor) -> Tensor:
-            """Scatter query-sized tensor to original target dimension using amax reduction."""
-            original_dtype = value.dtype
-            value = value.detach().float()
-
-            # Build output shape: replace query dim with num_original_targets
-            out_shape = list(value.shape)
-            out_shape[1] = num_original_targets
-            aligned = torch.zeros(out_shape, dtype=torch.float32, device=device)
-
-            # Expand index to match value shape for scatter_reduce
-            idx_expanded = idx.view(batch_size, num_queries, *([1] * (value.dim() - 2))).expand_as(value)
-            # This op is problematic as it uses truth indices to deduplcate queries if they are selected
-            # from the same original target. This cannot be done during inference time as we do not have access to truth.
-            aligned.scatter_reduce_(dim=1, index=idx_expanded, src=value, reduce="amax", include_self=True)
-
-            # Convert back to original dtype
-            if original_dtype == torch.bool:
-                return aligned > 0.5
-            return aligned.to(original_dtype)
-
-        aligned_outputs = {}
-        for layer_name, layer_outputs in outputs.items():
-            if layer_name == "encoder":
-                aligned_outputs[layer_name] = layer_outputs
-                continue
-
-            aligned_layer = layer_outputs.copy()
-            for key, val in layer_outputs.items():
-                if key.startswith("_"):
-                    continue
-
-                if isinstance(val, Tensor) and val.shape[1] == num_queries:
-                    aligned_layer[key] = scatter_align(val)
-                elif isinstance(val, dict):
-                    aligned_task = val.copy()
-                    for field, field_val in val.items():
-                        if isinstance(field_val, Tensor) and field_val.shape[1] == num_queries:
-                            aligned_task[field] = scatter_align(field_val)
-                    aligned_layer[key] = aligned_task
-
-            aligned_outputs[layer_name] = aligned_layer
-
-        return aligned_outputs
+        return filtered_constituent_mask, first_occurrence, filtered_target_valid
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, dict[str, dict[str, Tensor]]]:
         batch_size = inputs[self.input_names[0] + "_valid"].shape[0]
@@ -348,12 +267,6 @@ class MaskFormer(nn.Module):
                         continue
                     preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
 
-        # If realignment information is available, align predictions to original target dimension.
-        # This occurs when dynamic queries are active and targets were available during loss().
-        if "encoder" in outputs and "query_target_idx" in outputs["encoder"]:
-            enc_meta = outputs["encoder"]
-            preds = self._align_outputs_to_original_targets(preds, enc_meta["query_target_idx"], enc_meta["num_original_targets"])
-
         return preds
 
     def _prepare_targets_and_outputs(self, outputs: dict, targets: dict) -> tuple[dict, dict, dict, dict]:
@@ -369,7 +282,7 @@ class MaskFormer(nn.Module):
 
         Returns:
             Tuple of (targets, loss_targets, encoder_outputs, decoder_outputs) where:
-            - targets: Original targets dict, enriched with query_target_idx for metrics
+            - targets: Original targets dict (unmodified)
             - loss_targets: Targets dict to use for loss computation. For dynamic queries,
               this is a subset of the original targets corresponding to the selected queries.
             - encoder_outputs: Separated encoder outputs
@@ -385,7 +298,7 @@ class MaskFormer(nn.Module):
         # Build dynamic targets if using dynamic queries
         if self.decoder.dynamic_queries and "encoder" in outputs and "selected_query_indices" in outputs["encoder"]:
             selected_indices = outputs["encoder"]["selected_query_indices"].detach()
-            query_constituent_mask, first_occurrence, query_target_valid, query_target_idx = self.build_dynamic_targets(
+            query_constituent_mask, first_occurrence, query_target_valid = self.build_dynamic_targets(
                 selected_indices, targets, self.dynamic_query_source, self.target_object
             )
 
@@ -394,9 +307,6 @@ class MaskFormer(nn.Module):
             loss_targets[f"{self.target_object}_{self.dynamic_query_source}_valid"] = query_constituent_mask
             loss_targets["query_first_occurrence"] = first_occurrence
             loss_targets[f"{self.target_object}_valid"] = query_target_valid
-
-            # Add mapping needed for post-hoc alignment of predictions to full targets
-            targets["query_target_idx"] = query_target_idx
 
         # Sort targets if using a sorter
         if self.sorter is not None:
@@ -559,8 +469,6 @@ class MaskFormer(nn.Module):
 
         For dynamic queries, a separate `loss_targets` dict is used for loss computation,
         containing a subset of the original targets that correspond to the dynamically initialised queries.
-        Outputs are stored with realignment info and later aligned to the original target
-        dimension by `predict()`.
 
         Args:
             outputs: The outputs produced by the forward pass of the model.
@@ -568,8 +476,8 @@ class MaskFormer(nn.Module):
 
         Returns:
             Tuple of (outputs, targets, losses) where:
-            - outputs: The outputs dict (realigned for dynamic queries).
-            - targets: The targets dict, enriched with query_target_idx for dynamic queries.
+            - outputs: The outputs dict.
+            - targets: The targets dict.
             - losses: A dictionary containing the computed losses for each task.
         """
         # Prepare targets and separate encoder/decoder outputs
@@ -589,13 +497,5 @@ class MaskFormer(nn.Module):
         # Compute final decoder losses using permuted outputs
         decoder_losses = self._compute_decoder_losses(decoder_outputs, loss_targets)
         losses.update(decoder_losses)
-
-        # For dynamic queries, store realignment information for use by predict().
-        # This ensures predict() can produce outputs with consistent shape regardless of query type.
-        if "query_target_idx" in targets:
-            if "encoder" not in outputs:
-                outputs["encoder"] = {}
-            outputs["encoder"]["query_target_idx"] = targets["query_target_idx"]
-            outputs["encoder"]["num_original_targets"] = targets[f"{self.target_object}_valid"].shape[1]
 
         return outputs, targets, losses
