@@ -77,7 +77,12 @@ class MaskFormer(nn.Module):
     def build_dynamic_targets(
         selected_indices: Tensor, targets: dict[str, Tensor], source_name: str, target_name: str
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        """Build dynamic targets for selected query constituent seats.
+        """Filter out target objects which do not have any constituents selected as queries.
+
+        The idea is that if we don't select a constituent from a given target object to 
+        be an initial query, we should not try to predict that target object at all.
+
+        Note: Only batch size 1 is supported for dynamic queries.
 
         Args:
             selected_indices: (N_queries,) indices of constituents selected as queries
@@ -87,57 +92,57 @@ class MaskFormer(nn.Module):
 
         Returns:
             Tuple of:
-                - query_constituent_mask: (1, N_queries, N_constituents) mask indicating which constituents belong to each query's target
+                - filtered_constituent_mask: (1, N_queries, N_constituents) mask indicating which constituents belong to each query's target
                 - first_occurrence: (1, N_queries) mask indicating which queries are the first of their target
-                - query_target_valid: (1, N_queries) mask indicating which query slots are valid
-                - query_target_idx: (1, N_queries) mapping from query index to original target index
+                - filtered_target_valid: (1, N_queries) mask indicating which query slots are valid
+                - filtered_target_idx: (1, N_queries) mapping from query index to original target index
         """
+        # extract info and remove batch dimension
         source_target_id_key = f"{source_name}_{target_name}_id"
         target_id_key = f"{target_name}_id"
-
         constituent_target_id = targets[source_target_id_key][0]  # (N_constituents,)
         target_id = targets[target_id_key][0]  # (N_targets,)
 
         # Get the target ID for each selected constituent/query
-        query_target_id = constituent_target_id[selected_indices]  # (N_queries,)
+        filtered_target_id = constituent_target_id[selected_indices]  # (N_queries,)
 
-        # Create mapping from query index to target index (vectorized)
+        # Create mapping from query index to target index
         # Find which target index corresponds to each query's target_id
         # Shape: (N_queries, N_targets) where each row has True at matching target indices
-        # Detach to avoid gradient retention on large comparison tensor
-        matches_mask = (query_target_id.unsqueeze(1) == target_id.unsqueeze(0)).detach()
+        # Detach necessary to avoid gradient retention on large comparison tensor
+        matches_mask = (filtered_target_id.unsqueeze(1) == target_id.unsqueeze(0)).detach()
         # Get first matching target index for each query (argmax returns 0 if no match, which is ok)
-        query_target_idx = matches_mask.long().argmax(dim=1)
+        filtered_target_idx = matches_mask.long().argmax(dim=1)
 
         # Handle duplicates: only keep FIRST occurrence of each target
-        # This ensures multiple constituents from same target don't create duplicate targets
+        # This ensures multiple selected constituents from same target don't create duplicate targets
         # Vectorized approach: sort by inverse_indices and find boundaries
-        _, inverse_indices = torch.unique(query_target_id, return_inverse=True, sorted=False)
+        _, inverse_indices = torch.unique(filtered_target_id, return_inverse=True, sorted=False)
         sorted_inverse, sorted_idx = torch.sort(inverse_indices, stable=True)
         # Identify positions where inverse_index changes (first occurrences in sorted order)
         is_first_sorted = torch.cat([torch.tensor([True], device=inverse_indices.device), sorted_inverse[1:] != sorted_inverse[:-1]])
         # Map back to original positions
-        first_occurrence = torch.zeros_like(query_target_id, dtype=torch.bool)
+        first_occurrence = torch.zeros_like(filtered_target_id, dtype=torch.bool)
         first_occurrence[sorted_idx[is_first_sorted]] = True
 
-        # Build the mask: query attends to all constituents belonging to same target
-        # query_target_id: (N_queries,), constituent_target_id: (N_constituents,)
-        query_constituent_mask = query_target_id.unsqueeze(-1) == constituent_target_id.unsqueeze(0)
+        # Build the filtered target mask using only filtered particles
+        # filtered_target_id: (N_queries,), constituent_target_id: (N_constituents,)
         # Shape: (N_queries, N_constituents)
+        filtered_constituent_mask = filtered_target_id.unsqueeze(-1) == constituent_target_id.unsqueeze(0)
 
         # Zero out duplicate query rows (only first constituent per target gets targets)
-        query_constituent_mask[~first_occurrence] = False
+        filtered_constituent_mask[~first_occurrence] = False
 
         # Create validity mask: only first occurrence queries are valid
-        query_target_valid = first_occurrence
+        filtered_target_valid = first_occurrence
 
-        # Add batch dimension
-        query_constituent_mask = query_constituent_mask.unsqueeze(0)  # (1, N_queries, N_constituents)
+        # Add back the batch dimension
+        filtered_constituent_mask = filtered_constituent_mask.unsqueeze(0)  # (1, N_queries, N_constituents)
         first_occurrence = first_occurrence.unsqueeze(0)  # (1, N_queries)
-        query_target_valid = query_target_valid.unsqueeze(0)  # (1, N_queries)
-        query_target_idx = query_target_idx.unsqueeze(0)  # (1, N_queries)
+        filtered_target_valid = filtered_target_valid.unsqueeze(0)  # (1, N_queries)
+        filtered_target_idx = filtered_target_idx.unsqueeze(0)  # (1, N_queries)
 
-        return query_constituent_mask, first_occurrence, query_target_valid, query_target_idx
+        return filtered_constituent_mask, first_occurrence, filtered_target_valid, filtered_target_idx
 
     @staticmethod
     def _align_outputs_to_original_targets(outputs: dict, query_target_idx: Tensor, num_original_targets: int) -> dict:
@@ -146,6 +151,9 @@ class MaskFormer(nn.Module):
         Uses scatter_reduce with 'amax' to handle duplicate queries mapping to the same target.
         This ensures that valid (non-zero) predictions are not overwritten by zeroed-out
         duplicate query values.
+
+        Node: this realignment uses truth info which needs to be fixed. Because during inference
+        it's not possible to deduplicate targets in the way that is done here
 
         Args:
             outputs: Outputs dict with structure {layer: {task: {field: tensor}}}
@@ -158,7 +166,7 @@ class MaskFormer(nn.Module):
         batch_size = query_target_idx.shape[0]
         num_queries = query_target_idx.shape[1]
         device = query_target_idx.device
-        idx = query_target_idx.detach().long()
+        idx = query_target_idx.detach().long() # this is truth info!
 
         def scatter_align(value: Tensor) -> Tensor:
             """Scatter query-sized tensor to original target dimension using amax reduction."""
@@ -172,7 +180,8 @@ class MaskFormer(nn.Module):
 
             # Expand index to match value shape for scatter_reduce
             idx_expanded = idx.view(batch_size, num_queries, *([1] * (value.dim() - 2))).expand_as(value)
-
+            # This op is problematic as it uses truth indices to deduplcate queries if they are selected
+            # from the same original target. This cannot be done during inference time as we do not have access to truth.
             aligned.scatter_reduce_(dim=1, index=idx_expanded, src=value, reduce="amax", include_self=True)
 
             # Convert back to original dtype
@@ -350,8 +359,8 @@ class MaskFormer(nn.Module):
     def _prepare_targets_and_outputs(self, outputs: dict, targets: dict) -> tuple[dict, dict, dict, dict]:
         """Prepare targets and separate encoder/decoder outputs.
 
-        For dynamic queries, this creates a separate loss_targets dict with query-shaped
-        masks while keeping the original targets untouched (with additional fields for
+        For dynamic queries, this creates a separate loss_targets dict with the filtered targets,
+        while keeping the original targets untouched (with additional fields for
         metric computation). For static queries, loss_targets is the same as targets.
 
         Args:
@@ -380,14 +389,13 @@ class MaskFormer(nn.Module):
                 selected_indices, targets, self.dynamic_query_source, self.target_object
             )
 
-            # Create a separate dict for loss computation with query-shaped masks
+            # Create a separate dict for loss computation with filtered targets
             loss_targets = targets.copy()
-            # Keys follow {target}_{source}_valid for consistency (e.g. particle_hit_valid)
             loss_targets[f"{self.target_object}_{self.dynamic_query_source}_valid"] = query_constituent_mask
             loss_targets["query_first_occurrence"] = first_occurrence
             loss_targets[f"{self.target_object}_valid"] = query_target_valid
 
-            # Add mapping needed for metrics alignment
+            # Add mapping needed for post-hoc alignment of predictions to full targets
             targets["query_target_idx"] = query_target_idx
 
         # Sort targets if using a sorter
@@ -513,7 +521,7 @@ class MaskFormer(nn.Module):
 
         Args:
             decoder_outputs: Dictionary of decoder layer outputs (already permuted).
-            loss_targets: The targets dict to use for loss computation (query-shaped for dynamic queries).
+            loss_targets: The targets dict to use for loss computation (filtered for dynamic queries).
 
         Returns:
             Dictionary of decoder losses keyed by layer name and task name.
@@ -565,7 +573,7 @@ class MaskFormer(nn.Module):
             - losses: A dictionary containing the computed losses for each task.
         """
         # Prepare targets and separate encoder/decoder outputs
-        # For dynamic queries: targets = original (for metrics), loss_targets = query-shaped (for loss)
+        # For dynamic queries: targets = original (for metrics), loss_targets is filtered (for loss)
         targets, loss_targets, encoder_outputs, decoder_outputs = self._prepare_targets_and_outputs(outputs, targets)
 
         # Compute encoder losses (no matching required)
