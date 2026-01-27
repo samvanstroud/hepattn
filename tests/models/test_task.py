@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from hepattn.models.task import ObjectHitMaskTask
+from hepattn.models.task import HitFilterTask, HitFilterTaskBatched, ObjectHitMaskTask
 
 BATCH_SIZE = 2
 NUM_QUERIES = 5
@@ -253,3 +253,191 @@ class TestObjectHitMaskTaskBasics:
                     # All queries should have False attention to invalid constituents
                     assert torch.all(~traditional_mask_mixed[batch_idx, :, const_idx])
                     assert torch.all(~unified_mask_mixed[batch_idx, :, const_idx])
+
+
+class TestHitFilterTaskLossFunctions:
+    """Test class for HitFilterTask and HitFilterTaskBatched loss functions."""
+
+    @pytest.fixture
+    def base_config(self):
+        return {
+            "name": "hit_filter",
+            "input_object": "hit",
+            "target_field": "on_valid_particle",
+            "dim": DIM,
+            "threshold": 0.1,
+        }
+
+    @pytest.fixture
+    def sample_inputs(self):
+        """Sample input data for testing."""
+        return {
+            "hit_embed": torch.randn(BATCH_SIZE, NUM_CONSTITUENTS, DIM),
+        }
+
+    @pytest.fixture
+    def sample_targets(self):
+        """Sample target data with a mix of positive and negative labels."""
+        # Create targets with ~50% positive labels to ensure pos_weight calculation works
+        targets = torch.zeros(BATCH_SIZE, NUM_CONSTITUENTS, dtype=torch.float)
+        targets[:, :5] = 1.0  # First 5 hits are on valid particles
+        return {
+            "hit_on_valid_particle": targets,
+            "hit_valid": torch.ones(BATCH_SIZE, NUM_CONSTITUENTS, dtype=torch.bool),
+        }
+
+    @pytest.fixture
+    def sample_targets_all_zeros(self):
+        """Sample target data with all zeros (edge case for pos_weight)."""
+        return {
+            "hit_on_valid_particle": torch.zeros(BATCH_SIZE, NUM_CONSTITUENTS, dtype=torch.float),
+            "hit_valid": torch.ones(BATCH_SIZE, NUM_CONSTITUENTS, dtype=torch.bool),
+        }
+
+    # Tests for HitFilterTask
+    def test_hit_filter_task_bce_loss(self, base_config, sample_inputs, sample_targets):
+        """Test HitFilterTask with BCE loss function."""
+        config = base_config.copy()
+        config["loss_fn"] = "bce"
+        task = HitFilterTask(**config)
+
+        outputs = task(sample_inputs)
+        losses = task.loss(outputs, sample_targets)
+
+        assert "hit_bce" in losses
+        assert losses["hit_bce"].shape == ()  # scalar
+        assert not torch.isnan(losses["hit_bce"])
+        assert losses["hit_bce"] >= 0
+
+    def test_hit_filter_task_focal_loss(self, base_config, sample_inputs, sample_targets):
+        """Test HitFilterTask with focal loss function."""
+        config = base_config.copy()
+        config["loss_fn"] = "focal"
+        task = HitFilterTask(**config)
+
+        outputs = task(sample_inputs)
+        losses = task.loss(outputs, sample_targets)
+
+        assert "hit_focal" in losses
+        assert losses["hit_focal"].shape == ()  # scalar
+        assert not torch.isnan(losses["hit_focal"])
+        assert losses["hit_focal"] >= 0
+
+    def test_hit_filter_task_both_loss(self, base_config, sample_inputs, sample_targets):
+        """Test HitFilterTask with both BCE and focal loss functions."""
+        config = base_config.copy()
+        config["loss_fn"] = "both"
+        task = HitFilterTask(**config)
+
+        outputs = task(sample_inputs)
+        losses = task.loss(outputs, sample_targets)
+
+        assert "hit_bce" in losses
+        assert "hit_focal" in losses
+        assert losses["hit_bce"].shape == ()  # scalar
+        assert losses["hit_focal"].shape == ()  # scalar
+        assert not torch.isnan(losses["hit_bce"])
+        assert not torch.isnan(losses["hit_focal"])
+        assert losses["hit_bce"] >= 0
+        assert losses["hit_focal"] >= 0
+
+    def test_hit_filter_task_invalid_loss_fn(self, base_config, sample_inputs, sample_targets):
+        """Test HitFilterTask raises error for invalid loss function."""
+        config = base_config.copy()
+        config["loss_fn"] = "invalid"
+        task = HitFilterTask(**config)
+
+        outputs = task(sample_inputs)
+        with pytest.raises(ValueError, match="Unknown loss function"):
+            task.loss(outputs, sample_targets)
+
+    # Tests for HitFilterTaskBatched
+    def test_hit_filter_task_batched_bce_loss(self, base_config, sample_inputs, sample_targets):
+        """Test HitFilterTaskBatched with BCE loss function."""
+        config = base_config.copy()
+        config["loss_fn"] = "bce"
+        task = HitFilterTaskBatched(**config)
+
+        outputs = task(sample_inputs)
+        losses = task.loss(outputs, sample_targets)
+
+        assert "hit_bce" in losses
+        assert losses["hit_bce"].shape == ()  # scalar
+        assert not torch.isnan(losses["hit_bce"])
+        assert losses["hit_bce"] >= 0
+
+    def test_hit_filter_task_batched_focal_loss(self, base_config, sample_inputs, sample_targets):
+        """Test HitFilterTaskBatched with focal loss function."""
+        config = base_config.copy()
+        config["loss_fn"] = "focal"
+        task = HitFilterTaskBatched(**config)
+
+        outputs = task(sample_inputs)
+        losses = task.loss(outputs, sample_targets)
+
+        assert "hit_focal" in losses
+        assert losses["hit_focal"].shape == ()  # scalar
+        assert not torch.isnan(losses["hit_focal"])
+        assert losses["hit_focal"] >= 0
+
+    def test_hit_filter_task_batched_both_loss(self, base_config, sample_inputs, sample_targets):
+        """Test HitFilterTaskBatched with both BCE and focal loss functions."""
+        config = base_config.copy()
+        config["loss_fn"] = "both"
+        task = HitFilterTaskBatched(**config)
+
+        outputs = task(sample_inputs)
+        losses = task.loss(outputs, sample_targets)
+
+        assert "hit_bce" in losses
+        assert "hit_focal" in losses
+        assert losses["hit_bce"].shape == ()  # scalar
+        assert losses["hit_focal"].shape == ()  # scalar
+        assert not torch.isnan(losses["hit_bce"])
+        assert not torch.isnan(losses["hit_focal"])
+        assert losses["hit_bce"] >= 0
+        assert losses["hit_focal"] >= 0
+
+    def test_hit_filter_task_batched_invalid_loss_fn(self, base_config, sample_inputs, sample_targets):
+        """Test HitFilterTaskBatched raises error for invalid loss function."""
+        config = base_config.copy()
+        config["loss_fn"] = "invalid"
+        task = HitFilterTaskBatched(**config)
+
+        outputs = task(sample_inputs)
+        with pytest.raises(ValueError, match="Unknown loss function"):
+            task.loss(outputs, sample_targets)
+
+    def test_hit_filter_task_batched_with_valid_mask(self, base_config, sample_inputs, sample_targets):
+        """Test HitFilterTaskBatched correctly applies valid mask."""
+        config = base_config.copy()
+        config["loss_fn"] = "both"
+        task = HitFilterTaskBatched(**config)
+
+        # Create a valid mask that masks out some hits
+        valid_mask = torch.ones(BATCH_SIZE, NUM_CONSTITUENTS, dtype=torch.bool)
+        valid_mask[:, 5:] = False  # Mask out last 5 hits
+        sample_targets["hit_valid"] = valid_mask
+
+        outputs = task(sample_inputs)
+        losses = task.loss(outputs, sample_targets)
+
+        assert "hit_bce" in losses
+        assert "hit_focal" in losses
+        assert not torch.isnan(losses["hit_bce"])
+        assert not torch.isnan(losses["hit_focal"])
+
+    def test_hit_filter_task_batched_edge_case_all_zeros(self, base_config, sample_inputs, sample_targets_all_zeros):
+        """Test HitFilterTaskBatched handles edge case where all targets are zero."""
+        config = base_config.copy()
+        config["loss_fn"] = "both"
+        task = HitFilterTaskBatched(**config)
+
+        outputs = task(sample_inputs)
+        losses = task.loss(outputs, sample_targets_all_zeros)
+
+        # Should use weight=1.0 when target_mean is 0
+        assert "hit_bce" in losses
+        assert "hit_focal" in losses
+        assert not torch.isnan(losses["hit_bce"])
+        assert not torch.isnan(losses["hit_focal"])

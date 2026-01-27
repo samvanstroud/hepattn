@@ -1,0 +1,208 @@
+seed_everything: 42
+name: atlas-muon-tracking-test
+
+data:
+  dummy_data: true
+
+  train_dir: dummy
+  val_dir: dummy
+  test_dir: dummy
+
+  hit_eval_train: dummy
+  hit_eval_val: dummy
+  hit_eval_test: dummy
+
+  num_workers: 4
+  num_train: 4
+  num_val: 4
+  num_test: 4
+
+  # ATLAS muon data parameters
+  event_max_num_particles: &num_objects 2
+
+  inputs:
+    hit:
+      # Global hit coordinates
+      - spacePoint_globEdgeHighX
+      - spacePoint_globEdgeHighY
+      - spacePoint_globEdgeHighZ
+      - spacePoint_globEdgeLowX
+      - spacePoint_globEdgeLowY
+      - spacePoint_globEdgeLowZ
+      - spacePoint_driftR
+      # Detector information
+      - spacePoint_channel
+      - spacePoint_layer
+      - spacePoint_stationPhi
+      - spacePoint_stationEta
+      - spacePoint_stationIndex
+      - spacePoint_technology
+      # Derived hit fields
+      - r
+      - s
+      - theta
+      - phi
+      - eta
+
+  targets:
+    particle:
+      - truthMuon_pt
+      - truthMuon_q
+      - truthMuon_eta
+      - truthMuon_phi
+
+trainer:
+  max_epochs: 1
+  accelerator: cpu
+  devices: 1
+  precision: bf16-mixed
+  log_every_n_steps: 50
+  default_root_dir: test_logs
+  gradient_clip_val: 0.1
+  enable_progress_bar: true
+  logger: false
+
+  callbacks:
+    - class_path: hepattn.callbacks.SaveConfig
+    - class_path: hepattn.callbacks.Checkpoint
+      init_args:
+        monitor: val/loss
+    - class_path: hepattn.callbacks.PredictionWriter
+      init_args:
+        write_inputs: false
+        write_outputs: true
+        write_preds: true
+        write_targets: true
+        write_losses: false
+    - class_path: lightning.pytorch.callbacks.TQDMProgressBar
+      init_args:
+        refresh_rate: 50
+
+model:
+  optimizer: Lion
+
+  lrs_config:
+    initial: 1e-5
+    max: 5e-5
+    end: 1e-5
+    pct_start: 0.0
+    skip_scheduler: false
+    weight_decay: 1e-5
+
+  mtl: false
+
+  model:
+    class_path: hepattn.models.MaskFormer
+    init_args:
+      dim: &dim 32
+      sorter:
+        class_path: hepattn.utils.sorter.Sorter
+        init_args:
+          input_sort_field: phi
+      input_nets:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: hit
+                fields:
+                  - spacePoint_globEdgeHighX
+                  - spacePoint_globEdgeHighY
+                  - spacePoint_globEdgeHighZ
+                  - spacePoint_globEdgeLowX
+                  - spacePoint_globEdgeLowY
+                  - spacePoint_globEdgeLowZ
+                  - spacePoint_driftR
+                  - spacePoint_channel
+                  - spacePoint_layer
+                  - spacePoint_stationPhi
+                  - spacePoint_stationEta
+                  - spacePoint_stationIndex
+                  - spacePoint_technology
+                  - r
+                  - s
+                  - theta
+                  - phi
+                  - eta
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 18
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.PositionEncoder
+                  init_args:
+                    input_name: hit
+                    fields:
+                      - r
+                      - theta
+                      - phi
+                    dim: *dim
+
+      encoder:
+        class_path: hepattn.models.Encoder
+        init_args:
+          num_layers: 2
+          dim: *dim
+          attn_type: torch
+          hybrid_norm: true
+          norm: RMSNorm
+
+      decoder:
+        num_decoder_layers: 2
+        num_queries: *num_objects
+        mask_attention: true
+        use_query_masks: false
+        decoder_layer_config:
+          dim: *dim
+          norm: RMSNorm
+
+      tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.ObjectClassificationTask
+              init_args:
+                name: track_valid
+                input_object: query
+                output_object: track
+                target_object: particle
+                losses:
+                  object_bce: 1.0
+                costs:
+                  object_bce: 1.0
+                dim: *dim
+                null_weight: 1.0
+            - class_path: hepattn.models.task.ObjectHitMaskTask
+              init_args:
+                name: track_hit_valid
+                input_constituent: hit
+                input_object: query
+                output_object: track
+                target_object: particle
+                losses:
+                  mask_bce: 100.0
+                costs:
+                  mask_bce: 1.0
+                dim: *dim
+                null_weight: 1.0
+            - class_path: hepattn.models.task.ObjectRegressionTask
+              init_args:
+                name: parameter_regression
+                input_object: query
+                output_object: track
+                target_object: particle
+                fields:
+                  - truthMuon_eta
+                  - truthMuon_phi
+                  - truthMuon_pt
+                loss_weight: 1.0
+                cost_weight: 1.0
+                dim: *dim
+
+      matcher:
+        class_path: hepattn.models.matcher.Matcher
+        init_args:
+          default_solver: scipy
+          adaptive_solver: false
