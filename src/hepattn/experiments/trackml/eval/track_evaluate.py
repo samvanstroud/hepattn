@@ -221,9 +221,8 @@ def get_masks(f, idx, tracks, parts, key_mode=None):
             raise ValueError(
                 f"Inconsistent eval file for event {idx}: particle scalars have {n_parts} entries "
                 f"but targets/particle_hit_valid has {n_targets} rows. "
-                "Regenerate the eval file after ensuring dynamic-query target construction keeps "
-                "all particle_* targets (particle_pt/eta/phi, particle_valid, particle_id, particle_hit_valid, ...) "
-                "on the same particle/query axis."
+                "Ensure all particle_* targets (particle_pt/eta/phi, particle_valid, particle_id, particle_hit_valid, ...) "
+                "are on the same particle/query axis."
             )
 
     # number of predicted hits for each track (retained hits), shape = (n_max_particles, )

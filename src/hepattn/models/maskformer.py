@@ -23,7 +23,6 @@ class MaskFormer(nn.Module):
         unified_decoding: bool = False,
         dynamic_query_source: str = "hit",
         encoder_tasks: nn.ModuleList | None = None,
-        filter_dynamic_targets: bool = True,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object reconstruction with attention-based decoding and optional encoder blocks.
@@ -42,8 +41,6 @@ class MaskFormer(nn.Module):
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after encoding.
             dynamic_query_source: Name of the input type to use as the source for dynamic query initialization (default: "hit").
             encoder_tasks: Optional list of tasks to run after the encoder (before decoder). These tasks operate on post-encoder features.
-            filter_dynamic_targets: If True and using dynamic queries, only targets with at least one selected
-                constituent are used for loss computation. If False, the full target set is used.
         """
         super().__init__()
 
@@ -61,8 +58,6 @@ class MaskFormer(nn.Module):
         self.decoder.unified_decoding = unified_decoding
         self.dynamic_query_source = dynamic_query_source
         self.decoder.dynamic_query_source = dynamic_query_source
-        self.filter_dynamic_targets = filter_dynamic_targets
-        self.decoder.filter_dynamic_targets = filter_dynamic_targets
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
@@ -77,65 +72,6 @@ class MaskFormer(nn.Module):
     @property
     def input_names(self) -> list[str]:
         return [input_net.input_name for input_net in self.input_nets]
-
-    @staticmethod
-    def build_dynamic_targets(
-        selected_indices: Tensor, targets: dict[str, Tensor], source_name: str, target_name: str
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """Filter out target objects which do not have any constituents selected as queries.
-
-        The idea is that if we don't select a constituent from a given target object to 
-        be an initial query, we should not try to predict that target object at all.
-
-        Note: Only batch size 1 is supported for dynamic queries.
-
-        Args:
-            selected_indices: (N_queries,) indices of constituents selected as queries
-            targets: dict with constituent_target_id (1, N_constituents), target_id (1, N_targets), etc.
-            source_name: Name of the query source (e.g., "hit")
-            target_name: Name of the target object (e.g., "particle")
-
-        Returns:
-            Tuple of:
-                - filtered_constituent_mask: (1, N_queries, N_constituents) mask indicating which constituents belong to each query's target
-                - first_occurrence: (1, N_queries) mask indicating which queries are the first of their target
-                - filtered_target_valid: (1, N_queries) mask indicating which query slots are valid
-        """
-        # extract info and remove batch dimension
-        source_target_id_key = f"{source_name}_{target_name}_id"
-        constituent_target_id = targets[source_target_id_key][0]  # (N_constituents,)
-
-        # Get the target ID for each selected constituent/query
-        filtered_target_id = constituent_target_id[selected_indices]  # (N_queries,)
-
-        # Handle duplicates: only keep FIRST occurrence of each target
-        # This ensures multiple selected constituents from same target don't create duplicate targets
-        # Vectorized approach: sort by inverse_indices and find boundaries
-        _, inverse_indices = torch.unique(filtered_target_id, return_inverse=True, sorted=False)
-        sorted_inverse, sorted_idx = torch.sort(inverse_indices, stable=True)
-        # Identify positions where inverse_index changes (first occurrences in sorted order)
-        is_first_sorted = torch.cat([torch.tensor([True], device=inverse_indices.device), sorted_inverse[1:] != sorted_inverse[:-1]])
-        # Map back to original positions
-        first_occurrence = torch.zeros_like(filtered_target_id, dtype=torch.bool)
-        first_occurrence[sorted_idx[is_first_sorted]] = True
-
-        # Build the filtered target mask using only filtered particles
-        # filtered_target_id: (N_queries,), constituent_target_id: (N_constituents,)
-        # Shape: (N_queries, N_constituents)
-        filtered_constituent_mask = filtered_target_id.unsqueeze(-1) == constituent_target_id.unsqueeze(0)
-
-        # Zero out duplicate query rows (only first constituent per target gets targets)
-        filtered_constituent_mask[~first_occurrence] = False
-
-        # Create validity mask: only first occurrence queries are valid
-        filtered_target_valid = first_occurrence
-
-        # Add back the batch dimension
-        filtered_constituent_mask = filtered_constituent_mask.unsqueeze(0)  # (1, N_queries, N_constituents)
-        first_occurrence = first_occurrence.unsqueeze(0)  # (1, N_queries)
-        filtered_target_valid = filtered_target_valid.unsqueeze(0)  # (1, N_queries)
-
-        return filtered_constituent_mask, first_occurrence, filtered_target_valid
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, dict[str, dict[str, Tensor]]]:
         batch_size = inputs[self.input_names[0] + "_valid"].shape[0]
@@ -277,22 +213,16 @@ class MaskFormer(nn.Module):
 
         return preds
 
-    def _prepare_targets_and_outputs(self, outputs: dict, targets: dict) -> tuple[dict, dict, dict, dict]:
+    def _prepare_targets_and_outputs(self, outputs: dict, targets: dict) -> tuple[dict, dict, dict]:
         """Prepare targets and separate encoder/decoder outputs.
-
-        For dynamic queries, this creates a separate loss_targets dict with the filtered targets,
-        while keeping the original targets untouched (with additional fields for
-        metric computation). For static queries, loss_targets is the same as targets.
 
         Args:
             outputs: The outputs produced by the forward pass of the model.
-            targets: The data containing the targets (not mutated, but enriched for metrics).
+            targets: The data containing the targets.
 
         Returns:
-            Tuple of (targets, loss_targets, encoder_outputs, decoder_outputs) where:
-            - targets: Original targets dict (unmodified)
-            - loss_targets: Targets dict to use for loss computation. For dynamic queries,
-              this is a subset of the original targets corresponding to the selected queries.
+            Tuple of (targets, encoder_outputs, decoder_outputs) where:
+            - targets: Targets dict with query_mask added if present
             - encoder_outputs: Separated encoder outputs
             - decoder_outputs: Separated decoder layer outputs
         """
@@ -300,43 +230,16 @@ class MaskFormer(nn.Module):
         encoder_outputs = {"encoder": outputs["encoder"]} if "encoder" in outputs else {}
         decoder_outputs = {k: v for k, v in outputs.items() if k != "encoder"}
 
-        # If dynamic queries are used, expose query_mask on targets for downstream metrics/logging.
-        # (The loss path uses a separate loss_targets dict; this is purely for visibility.)
+        # Include query_mask in targets if present (for masking padded query losses)
         if "encoder" in outputs and "query_mask" in outputs["encoder"] and "query_mask" not in targets:
             targets = targets.copy()
             targets["query_mask"] = outputs["encoder"]["query_mask"]
 
-        # For static queries, use targets directly for loss computation
-        loss_targets = targets
-
-        # Include query_mask in loss_targets if present (for masking padded query losses)
-        if "encoder" in outputs and "query_mask" in outputs["encoder"]:
-            loss_targets = targets.copy()
-            loss_targets["query_mask"] = outputs["encoder"]["query_mask"]
-
-        # Build dynamic targets if using dynamic queries with target filtering enabled
-        if self.decoder.dynamic_queries and self.filter_dynamic_targets and "encoder" in outputs and "selected_query_indices" in outputs["encoder"]:
-            selected_indices = outputs["encoder"]["selected_query_indices"].detach()
-            query_constituent_mask, first_occurrence, query_target_valid = self.build_dynamic_targets(
-                selected_indices, targets, self.dynamic_query_source, self.target_object
-            )
-
-            # Create a separate dict for loss computation with filtered targets
-            loss_targets = targets.copy()
-            loss_targets[f"{self.target_object}_{self.dynamic_query_source}_valid"] = query_constituent_mask
-            #loss_targets["query_first_occurrence"] = first_occurrence
-            loss_targets[f"{self.target_object}_valid"] = query_target_valid
-
-            # Keep query_mask available for downstream masking/matching (all-true when filtering targets).
-            if "encoder" in outputs and "query_mask" in outputs["encoder"]:
-                loss_targets["query_mask"] = outputs["encoder"]["query_mask"]
-
         # Sort targets if using a sorter
         if self.sorter is not None:
             targets = self.sorter.sort_targets(targets, decoder_outputs["final"][self.sorter.input_sort_field])
-            loss_targets = self.sorter.sort_targets(loss_targets, decoder_outputs["final"][self.sorter.input_sort_field])
 
-        return targets, loss_targets, encoder_outputs, decoder_outputs
+        return targets, encoder_outputs, decoder_outputs
 
     def _compute_encoder_losses(self, encoder_outputs: dict, targets: dict) -> dict[str, dict[str, Tensor]]:
         """Compute losses for encoder tasks (no matching required).
@@ -455,12 +358,12 @@ class MaskFormer(nn.Module):
                         output_tensor = decoder_outputs[layer_name][task.name][output_name]
                         decoder_outputs[layer_name][task.name][output_name] = output_tensor[batch_idxs_expanded, pred_idxs]
 
-    def _compute_decoder_losses(self, decoder_outputs: dict, loss_targets: dict) -> dict[str, dict[str, Tensor]]:
+    def _compute_decoder_losses(self, decoder_outputs: dict, targets: dict) -> dict[str, dict[str, Tensor]]:
         """Compute final losses for decoder tasks using permuted outputs.
 
         Args:
             decoder_outputs: Dictionary of decoder layer outputs (already permuted).
-            loss_targets: The targets dict to use for loss computation (filtered for dynamic queries).
+            targets: The targets dict to use for loss computation.
 
         Returns:
             Dictionary of decoder losses keyed by layer name and task name.
@@ -474,7 +377,7 @@ class MaskFormer(nn.Module):
                 if task.name not in layer_outputs:
                     continue
 
-                task_losses = task.loss(layer_outputs[task.name], loss_targets, layer_outputs=layer_outputs)
+                task_losses = task.loss(layer_outputs[task.name], targets, layer_outputs=layer_outputs)
                 losses[layer_name][task.name] = task_losses
 
         return losses
@@ -496,9 +399,6 @@ class MaskFormer(nn.Module):
            reorders predictions so that `output[i]` corresponds to `target[i]`. After this permutation,
            the original `particle_valid` mask can be used directly to filter matched pairs.
 
-        For dynamic queries, a separate `loss_targets` dict is used for loss computation,
-        containing a subset of the original targets that correspond to the dynamically initialised queries.
-
         Args:
             outputs: The outputs produced by the forward pass of the model.
             targets: The data containing the targets.
@@ -510,21 +410,20 @@ class MaskFormer(nn.Module):
             - losses: A dictionary containing the computed losses for each task.
         """
         # Prepare targets and separate encoder/decoder outputs
-        # For dynamic queries: targets = original (for metrics), loss_targets is filtered (for loss)
-        targets, loss_targets, encoder_outputs, decoder_outputs = self._prepare_targets_and_outputs(outputs, targets)
+        targets, encoder_outputs, decoder_outputs = self._prepare_targets_and_outputs(outputs, targets)
 
         # Compute encoder losses (no matching required)
-        losses = self._compute_encoder_losses(encoder_outputs, loss_targets)
+        losses = self._compute_encoder_losses(encoder_outputs, targets)
 
         # Compute costs for decoder layers
-        costs = self._compute_decoder_costs(decoder_outputs, loss_targets)
+        costs = self._compute_decoder_costs(decoder_outputs, targets)
 
         # Perform matching and permute decoder outputs to align with target order
         # After this, output[i] corresponds to target[i] for all i
-        self._match_and_permute_outputs(decoder_outputs, costs, loss_targets)
+        self._match_and_permute_outputs(decoder_outputs, costs, targets)
 
         # Compute final decoder losses using permuted outputs
-        decoder_losses = self._compute_decoder_losses(decoder_outputs, loss_targets)
+        decoder_losses = self._compute_decoder_losses(decoder_outputs, targets)
         losses.update(decoder_losses)
 
         return outputs, targets, losses
