@@ -77,6 +77,7 @@ class MaskFormerDecoder(nn.Module):
         self.unified_decoding = unified_decoding
         self.dynamic_queries = dynamic_queries
         self.dynamic_query_source = dynamic_query_source
+        self.filter_dynamic_targets = True  # Will be set by MaskFormer
 
         # Only initialize learned queries if not using dynamic queries
         if not dynamic_queries:
@@ -98,7 +99,7 @@ class MaskFormerDecoder(nn.Module):
             return x["query_embed"].shape[1]
         return self._num_queries
 
-    def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor, Tensor]:
+    def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor, Tensor | None]:
         """Initialize queries dynamically using the `query_init` task.
 
         This selects hit embeddings whose predicted first-hit probability passes the task threshold,
@@ -109,7 +110,11 @@ class MaskFormerDecoder(nn.Module):
             - Expects `x` to contain `source_embed` and `source_valid`.
 
         Returns:
-            (query_embed, query_valid, selected_indices)
+            Tuple of:
+                - query_embed: (1, N_queries, dim) query embeddings
+                - query_valid: (1, N_queries) validity mask (always created for torch.compile compatibility)
+                - selected_query_indices: (N_queries,) constituent indices selected as queries, 
+                  or None if filter_dynamic_targets=False
 
         Raises:
             ValueError: If `decoder.dynamic_queries` is False, decoder tasks are unset, the `query_init` task
@@ -151,7 +156,7 @@ class MaskFormerDecoder(nn.Module):
         selected_indices = torch.where(valid_mask)[0]
 
         if selected_indices.numel() == 0:
-            raise ValueError("dynamic query initialization selected 0 constituents. Lower the query_init threshold or disable dynamic_queries.")
+            selected_indices = source_prob[0].topk(self._num_queries).indices
 
         # If more candidates than needed, keep top-k by probability
         if selected_indices.numel() > self._num_queries:
@@ -160,11 +165,34 @@ class MaskFormerDecoder(nn.Module):
             selected_indices = selected_indices[top_k_idx]
 
         # Sort to preserve original spatial ordering
-        final_indices = selected_indices.sort().values
-        query_embed = x[source_embed_key][0, final_indices].detach().unsqueeze(0)  # (1, N_queries, dim)
-        query_valid = torch.ones(1, final_indices.numel(), dtype=torch.bool, device=query_embed.device)
+        selected_query_indices = selected_indices.sort().values
+        num_selected = selected_query_indices.numel()
+        device = x[source_embed_key].device
 
-        return query_embed, query_valid, final_indices
+        # get selected embeddings
+        selected_constituent_embeds = x[source_embed_key][0, selected_query_indices].detach()
+
+        # Pad to fixed num_queries size if fewer were selected AND we're not filtering targets
+        # When filter_dynamic_targets=True, targets are dynamically sized to match queries, so no padding needed
+        # When filter_dynamic_targets=False, we need fixed-size queries to match the full target set
+        if num_selected < self._num_queries and not self.filter_dynamic_targets:
+            num_padding = self._num_queries - num_selected
+            # Pad with zero embeddings
+            null_padding = torch.zeros(num_padding, self.dim, device=device, dtype=selected_constituent_embeds.dtype)
+            query_embed = torch.cat([selected_constituent_embeds, null_padding], dim=0).unsqueeze(0)  # (1, num_queries, dim)
+            # Validity: selected queries are valid, padding is not
+            query_valid = torch.cat([
+                torch.ones(num_selected, dtype=torch.bool, device=device),
+                torch.zeros(num_padding, dtype=torch.bool, device=device),
+            ]).unsqueeze(0)  # (1, num_queries)
+            # Not filtering targets, so selected_query_indices won't be used
+            selected_query_indices = None
+        else:
+            query_embed = selected_constituent_embeds.unsqueeze(0)  # (1, N_selected, dim)
+            # All queries are valid - still create mask for consistent control flow with torch.compile
+            query_valid = torch.ones(1, num_selected, dtype=torch.bool, device=device)
+
+        return query_embed, query_valid, selected_query_indices
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -189,11 +217,13 @@ class MaskFormerDecoder(nn.Module):
         if not self.dynamic_queries:
             # Static learned queries (backward compatible)
             x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
-            x["query_valid"] = torch.full((batch_size, self.num_queries(x)), True, device=x["query_embed"].device)
         else:
-            # Initialize dynamic queries (will raise if required inputs are missing)
-            x["query_embed"], x["query_valid"], selected_indices = self.initialize_dynamic_queries(x)
+            # Initialize dynamic queries
+            x["query_embed"], query_valid, selected_indices = self.initialize_dynamic_queries(x)
             outputs["encoder"]["selected_query_indices"] = selected_indices
+            # Always set query_mask for consistent control flow with torch.compile
+            x["query_mask"] = query_valid
+            outputs["encoder"]["query_mask"] = query_valid
 
         if self.posenc:
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)

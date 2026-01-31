@@ -23,6 +23,7 @@ def test_object_hit_mask_task_iou():
     iou_task = IoUPredictionTask(
         name="test_iou_task",
         input_object="track",
+        mask_task_name="test_mask_task",
         mask_logit_key="track_hit_logit",
         target_mask_key="track_hit",
         dim=dim,
@@ -56,8 +57,11 @@ def test_object_hit_mask_task_iou():
     assert "track_iou" in preds
     assert preds["track_iou"].shape == (batch_size, num_objects)
 
-    # Loss - inject mask logits into iou_outputs (simulating what maskformer does)
-    iou_outputs["track_hit_logit"] = mask_outputs["track_hit_logit"]
+    # Build layer_outputs dict (simulating what maskformer passes to loss)
+    layer_outputs = {
+        "test_mask_task": mask_outputs,
+        "test_iou_task": iou_outputs,
+    }
 
     targets = {
         "track_hit_valid": torch.randint(0, 2, (batch_size, num_objects, num_hits)).float(),
@@ -65,6 +69,6 @@ def test_object_hit_mask_task_iou():
         "hit_valid": torch.ones(batch_size, num_hits, dtype=torch.bool),
     }
 
-    losses = iou_task.loss(iou_outputs, targets)
+    losses = iou_task.loss(iou_outputs, targets, layer_outputs=layer_outputs)
     assert "iou_mse" in losses
     assert losses["iou_mse"] > 0

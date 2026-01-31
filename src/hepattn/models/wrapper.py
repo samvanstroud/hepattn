@@ -65,7 +65,13 @@ class ModelWrapper(LightningModule):
     def log_task_metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor], stage: str) -> None:
         # Log any task specific metrics
         for layer_name in preds:
-            for task in self.model.tasks:
+            # Determine which task list to use based on layer name
+            if layer_name == "encoder":
+                tasks = self.model.encoder_tasks
+            else:
+                tasks = self.model.tasks
+
+            for task in tasks:
                 if task.name not in preds[layer_name]:
                     continue
 

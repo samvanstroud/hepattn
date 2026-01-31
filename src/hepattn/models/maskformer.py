@@ -23,6 +23,7 @@ class MaskFormer(nn.Module):
         unified_decoding: bool = False,
         dynamic_query_source: str = "hit",
         encoder_tasks: nn.ModuleList | None = None,
+        filter_dynamic_targets: bool = True,
     ):
         """Initializes the MaskFormer model, which is a modular transformer-style architecture designed
         for multi-task object reconstruction with attention-based decoding and optional encoder blocks.
@@ -41,6 +42,8 @@ class MaskFormer(nn.Module):
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after encoding.
             dynamic_query_source: Name of the input type to use as the source for dynamic query initialization (default: "hit").
             encoder_tasks: Optional list of tasks to run after the encoder (before decoder). These tasks operate on post-encoder features.
+            filter_dynamic_targets: If True and using dynamic queries, only targets with at least one selected
+                constituent are used for loss computation. If False, the full target set is used.
         """
         super().__init__()
 
@@ -58,6 +61,8 @@ class MaskFormer(nn.Module):
         self.decoder.unified_decoding = unified_decoding
         self.dynamic_query_source = dynamic_query_source
         self.decoder.dynamic_query_source = dynamic_query_source
+        self.filter_dynamic_targets = filter_dynamic_targets
+        self.decoder.filter_dynamic_targets = filter_dynamic_targets
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
@@ -246,6 +251,9 @@ class MaskFormer(nn.Module):
         """
         preds: dict[str, dict[str, Any]] = {}
 
+        # Get query_mask from encoder outputs for masking padded queries in predictions
+        query_mask = outputs.get("encoder", {}).get("query_mask")
+
         # Compute predictions for each task in each block
         for layer_name, layer_outputs in outputs.items():
             if layer_name.startswith("_"):
@@ -265,7 +273,7 @@ class MaskFormer(nn.Module):
                 for task in self.tasks:
                     if task.name not in layer_outputs:
                         continue
-                    preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
+                    preds[layer_name][task.name] = task.predict(layer_outputs[task.name], query_mask=query_mask)
 
         return preds
 
@@ -292,11 +300,22 @@ class MaskFormer(nn.Module):
         encoder_outputs = {"encoder": outputs["encoder"]} if "encoder" in outputs else {}
         decoder_outputs = {k: v for k, v in outputs.items() if k != "encoder"}
 
+        # If dynamic queries are used, expose query_mask on targets for downstream metrics/logging.
+        # (The loss path uses a separate loss_targets dict; this is purely for visibility.)
+        if "encoder" in outputs and "query_mask" in outputs["encoder"] and "query_mask" not in targets:
+            targets = targets.copy()
+            targets["query_mask"] = outputs["encoder"]["query_mask"]
+
         # For static queries, use targets directly for loss computation
         loss_targets = targets
 
-        # Build dynamic targets if using dynamic queries
-        if self.decoder.dynamic_queries and "encoder" in outputs and "selected_query_indices" in outputs["encoder"]:
+        # Include query_mask in loss_targets if present (for masking padded query losses)
+        if "encoder" in outputs and "query_mask" in outputs["encoder"]:
+            loss_targets = targets.copy()
+            loss_targets["query_mask"] = outputs["encoder"]["query_mask"]
+
+        # Build dynamic targets if using dynamic queries with target filtering enabled
+        if self.decoder.dynamic_queries and self.filter_dynamic_targets and "encoder" in outputs and "selected_query_indices" in outputs["encoder"]:
             selected_indices = outputs["encoder"]["selected_query_indices"].detach()
             query_constituent_mask, first_occurrence, query_target_valid = self.build_dynamic_targets(
                 selected_indices, targets, self.dynamic_query_source, self.target_object
@@ -305,8 +324,12 @@ class MaskFormer(nn.Module):
             # Create a separate dict for loss computation with filtered targets
             loss_targets = targets.copy()
             loss_targets[f"{self.target_object}_{self.dynamic_query_source}_valid"] = query_constituent_mask
-            loss_targets["query_first_occurrence"] = first_occurrence
+            #loss_targets["query_first_occurrence"] = first_occurrence
             loss_targets[f"{self.target_object}_valid"] = query_target_valid
+
+            # Keep query_mask available for downstream masking/matching (all-true when filtering targets).
+            if "encoder" in outputs and "query_mask" in outputs["encoder"]:
+                loss_targets["query_mask"] = outputs["encoder"]["query_mask"]
 
         # Sort targets if using a sorter
         if self.sorter is not None:
@@ -331,7 +354,7 @@ class MaskFormer(nn.Module):
             for task in self.encoder_tasks:
                 if task.name not in layer_outputs:
                     continue
-                losses[layer_name][task.name] = task.loss(layer_outputs[task.name], targets)
+                losses[layer_name][task.name] = task.loss(layer_outputs[task.name], targets, layer_outputs=layer_outputs)
         return losses
 
     def _compute_decoder_costs(self, decoder_outputs: dict, targets: dict) -> dict[str, Tensor]:
@@ -398,15 +421,21 @@ class MaskFormer(nn.Module):
             num_target = stacked_costs.shape[3]
 
             # Reshape to [num_layers * batch, num_pred, num_target] to use layers as additional batch dim
-            stacked_costs = stacked_costs.view(num_layers * batch_size, num_pred, num_target)
+            stacked_costs = stacked_costs.reshape(num_layers * batch_size, num_pred, num_target)
 
             # Expand validity mask to match stacked batch dimension: [num_layers * batch, num_target]
             target_valid = targets[f"{self.target_object}_valid"]
             stacked_target_valid = target_valid.unsqueeze(0).expand(num_layers, -1, -1).reshape(num_layers * batch_size, -1)
 
+            # Get query_mask if present (for masking padded queries in matching)
+            query_mask = targets.get("query_mask")
+            stacked_query_valid = None
+            if query_mask is not None:
+                stacked_query_valid = query_mask.unsqueeze(0).expand(num_layers, -1, -1).reshape(num_layers * batch_size, -1)
+
             # Get the indices that can permute the predictions to yield their optimal matching
             # Output shape: [num_layers * batch, num_pred]
-            stacked_pred_idxs = self.matcher(stacked_costs, stacked_target_valid)
+            stacked_pred_idxs = self.matcher(stacked_costs, stacked_target_valid, stacked_query_valid)
 
             # Reshape back to [num_layers, batch, num_pred]
             stacked_pred_idxs = stacked_pred_idxs.view(num_layers, batch_size, num_pred)
@@ -445,7 +474,7 @@ class MaskFormer(nn.Module):
                 if task.name not in layer_outputs:
                     continue
 
-                task_losses = task.loss(layer_outputs[task.name], loss_targets)
+                task_losses = task.loss(layer_outputs[task.name], loss_targets, layer_outputs=layer_outputs)
                 losses[layer_name][task.name] = task_losses
 
         return losses

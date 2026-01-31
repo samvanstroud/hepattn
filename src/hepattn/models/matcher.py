@@ -218,7 +218,7 @@ class Matcher(nn.Module):
         self.step = 0
         self.verbose = verbose
 
-    def compute_matching(self, costs, object_valid_mask=None):
+    def compute_matching(self, costs, object_valid_mask=None, query_valid_mask=None):
         if object_valid_mask is None:
             object_valid_mask = torch.ones((costs.shape[0], costs.shape[1]), dtype=torch.bool)
 
@@ -227,6 +227,15 @@ class Matcher(nn.Module):
         lengths_np = batch_obj_lengths.squeeze(-1).cpu().numpy().astype(np.int32, copy=False)
 
         pred_dim = costs.shape[1]
+
+        # If we have invalid/padded queries, set their costs to a high value
+        # so they won't be matched to valid targets
+        if query_valid_mask is not None:
+            query_valid_mask = query_valid_mask.detach().bool()
+            # Set costs for invalid queries to max float32 value
+            # costs shape: [batch, num_pred, num_target]
+            invalid_query_mask = ~query_valid_mask.unsqueeze(-1)  # [batch, num_pred, 1]
+            costs = np.where(invalid_query_mask.cpu().numpy(), np.finfo(np.float32).max/10, costs)
 
         if self.parallel_solver:
             # Transpose costs: [batch, pred, true] -> [batch, true, pred]
@@ -248,14 +257,14 @@ class Matcher(nn.Module):
         return torch.from_numpy(np.stack(idxs))
 
     @torch.no_grad()
-    def forward(self, costs, object_valid_mask=None):
+    def forward(self, costs, object_valid_mask=None, query_valid_mask=None):
         # Convert costs to numpy on CPU for solver compatibility
         costs = costs.detach().to(torch.float32).cpu().numpy()
 
         if self.adaptive_solver and self.step % self.adaptive_check_interval == 0:
             self.adapt_solver(costs)
 
-        pred_idxs = self.compute_matching(costs, object_valid_mask)
+        pred_idxs = self.compute_matching(costs, object_valid_mask, query_valid_mask)
         self.step += 1
 
         assert torch.all(pred_idxs >= 0), "Matcher error!"
