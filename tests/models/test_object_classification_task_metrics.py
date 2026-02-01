@@ -43,5 +43,5 @@ def test_object_classification_task_metrics_basic():
 
     assert metrics["num_queries"] == 4.0
     assert torch.isclose(metrics["query_frac_pred_valid"], torch.tensor(0.5))  # 4/8
-    assert torch.isclose(metrics["query_tpr"], torch.tensor(0.75))  # 3/4
-    assert torch.isclose(metrics["query_fpr"], torch.tensor(0.25))  # 1/4
+    assert torch.isclose(metrics["query_eff"], torch.tensor(0.75))  # 3/4 (formerly query_tpr)
+    assert torch.isclose(metrics["query_fr"], torch.tensor(0.25))  # 1/4 (formerly query_fpr)

@@ -57,7 +57,7 @@ class MockMatcher(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, costs, object_valid_mask=None):
+    def forward(self, costs, target_valid_mask=None, query_valid_mask=None):
         # Return identity permutation for simplicity
         batch_size, num_pred, _ = costs.shape
         return torch.arange(num_pred).unsqueeze(0).expand(batch_size, -1)
@@ -158,7 +158,7 @@ class TestMaskFormerSorting:
         }
 
         # Should not raise any errors
-        losses, _ = model.loss(outputs, targets)
+        outputs, targets, losses = model.loss(outputs, targets)
 
         # Check that losses are computed
         assert "final" in losses
@@ -212,7 +212,7 @@ class TestMaskFormerSorting:
         }
 
         # Run loss computation which should sort targets
-        _, sorted_targets = model.loss(outputs, deepcopy(targets))
+        outputs, sorted_targets, losses = model.loss(outputs, deepcopy(targets))
 
         # check that particle valid is unchanged
         assert torch.allclose(sorted_targets["particle_valid"], targets["particle_valid"])

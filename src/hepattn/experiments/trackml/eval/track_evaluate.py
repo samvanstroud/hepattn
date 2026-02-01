@@ -194,13 +194,6 @@ def get_masks(f, idx, tracks, parts, key_mode=None):
         The DataFrame for particles, count true hits for each particle
     key_mode: str
         specify if output file structure type
-
-    Raises:
-    -------
-    ValueError:
-        If the eval file contains inconsistent particle-axis shapes (e.g. particle-level scalars
-        and particle_hit_valid have different lengths).
-
     """
     # extract hit mask and its target
     if key_mode == "old":
