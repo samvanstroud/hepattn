@@ -12,4 +12,4 @@ def test_tracking_old_sort() -> None:
 
 
 def test_tracking_dynamic_queries() -> None:
-    run_test(run_tracking, "tests/experiments/trackml/test_dyanmic_queries.yaml")
+    run_test(run_tracking, "tests/experiments/trackml/test_dynamic_queries.yaml")

@@ -212,7 +212,7 @@ class TestMaskFormerSorting:
         }
 
         # Run loss computation which should sort targets
-        outputs, sorted_targets, losses = model.loss(outputs, deepcopy(targets))
+        outputs, sorted_targets, _losses = model.loss(outputs, deepcopy(targets))
 
         # check that particle valid is unchanged
         assert torch.allclose(sorted_targets["particle_valid"], targets["particle_valid"])

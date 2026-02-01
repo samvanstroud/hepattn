@@ -1300,7 +1300,7 @@ class IncidenceRegressionTask(Task):
 
         return {self.incidence_key: incidence_pred}
 
-    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    def predict(self, outputs: dict[str, Tensor], query_mask: Tensor | None = None) -> dict[str, Tensor]:
         return {self.output_object + "_incidence": outputs[self.incidence_key].detach()}
 
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
