@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 import pandas as pd
+from tqdm import tqdm
 
 from hepattn.experiments.trackml import cluster_features
 
@@ -29,7 +30,7 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
     detector_config_path = Path(in_dir).parent / "detectors.csv"
     assert detector_config_path.is_file(), f"Missing detector config at {detector_config_path}"
 
-    for truth_in_path in Path(in_dir).glob("event*-truth.csv.gz"):
+    for truth_in_path in tqdm(list(Path(in_dir).glob("event*-truth.csv.gz"))):
         event_name = str(truth_in_path.name).replace("-truth.csv.gz", "")
 
         # Other input files along with the particles input file that we require
@@ -39,19 +40,19 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
 
         # Check that all of the input files required exist, otherwise skip this event
         if not is_valid_file(truth_in_path):
-            print(f"Skipping {event_name} as found no corresponding truth input file")
+            tqdm.write(f"Skipping {event_name} as found no corresponding truth input file")
             continue
 
         if not is_valid_file(parts_in_path):
-            print(f"Skipping {event_name} as found no corresponding parts input file")
+            tqdm.write(f"Skipping {event_name} as found no corresponding parts input file")
             continue
 
         if not is_valid_file(hits_in_path):
-            print(f"Skipping {event_name} as found no corresponding hits input file")
+            tqdm.write(f"Skipping {event_name} as found no corresponding hits input file")
             continue
 
         if not is_valid_file(cells_in_path):
-            print(f"Skipping {event_name} as found no corresponding cells input file")
+            tqdm.write(f"Skipping {event_name} as found no corresponding cells input file")
             continue
 
         # Define the output file paths
@@ -60,7 +61,7 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
 
         # Check if we have already prepped the event
         if parts_out_path.exists() and hits_out_path.exists() and (overwrite is False):
-            print(f"Skipping {event_name} as found existing parts and hits output files")
+            tqdm.write(f"Skipping {event_name} as found existing parts and hits output files")
             continue
 
         # Load the input information
@@ -85,7 +86,7 @@ def preprocess(in_dir: str, out_dir: str, overwrite: bool):
         parts.to_parquet(parts_out_path)
         hits.to_parquet(hits_out_path)
 
-        print(f"Prepped {event_name}")
+        tqdm.write(f"Prepped {event_name}")
 
 
 if __name__ == "__main__":

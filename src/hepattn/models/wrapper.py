@@ -80,8 +80,6 @@ class ModelWrapper(LightningModule):
                     self.log_dict({f"{stage}/{layer_name}_{task.name}_{k}": v for k, v in task_metrics.items()}, sync_dist=True)
 
     def log_metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor], stage: str) -> None:
-        # Predictions are already aligned to original target dimension by MaskFormer.predict()
-        # for dynamic queries, so no alignment needed here.
         self.log_task_metrics(preds, targets, stage)
 
         if hasattr(self, "log_custom_metrics"):
@@ -126,7 +124,7 @@ class ModelWrapper(LightningModule):
 
     def test_step(
         self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]
-    ) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
+    ) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
         inputs, targets = batch
         outputs = self.model(inputs)
 
@@ -136,7 +134,7 @@ class ModelWrapper(LightningModule):
         # Get the predictions from the model
         preds = self.model.predict(outputs)
 
-        return outputs, preds, losses, targets
+        return outputs, preds, losses
 
     def on_train_start(self) -> None:
         # Manually overwride the learning rate in case we are starting

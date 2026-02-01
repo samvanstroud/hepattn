@@ -212,19 +212,6 @@ def get_masks(f, idx, tracks, parts, key_mode=None):
         # truth tracks and associated hits, shape = (n_max_particles, n_hits)
         targets = np.array(f[idx]["targets"]["particle_hit_valid"][:][0])
 
-        # Sanity check: particle-level scalars must match the particle axis of particle_hit_valid.
-        # If this fails, the eval file is internally inconsistent (often caused by dynamic-query
-        # code mutating only a subset of particle-shaped targets before writing).
-        n_targets = int(targets.shape[0])
-        n_parts = len(parts)
-        if n_parts != n_targets:
-            raise ValueError(
-                f"Inconsistent eval file for event {idx}: particle scalars have {n_parts} entries "
-                f"but targets/particle_hit_valid has {n_targets} rows. "
-                "Ensure all particle_* targets (particle_pt/eta/phi, particle_valid, particle_id, particle_hit_valid, ...) "
-                "are on the same particle/query axis."
-            )
-
     # number of predicted hits for each track (retained hits), shape = (n_max_particles, )
     tracks["n_pred_hits"] = np.sum(masks, axis=-1)
     # number of truth hits for each track (true hits), shape = (n_max_particles, )

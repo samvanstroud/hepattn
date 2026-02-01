@@ -40,7 +40,6 @@ class PredictionWriter(Callback):
         self.trainer = trainer
         self.dataset = trainer.datamodule.test_dataloader().dataset
 
-        # For writing fixed-size track outputs when using dynamic queries.
         self.num_queries = self._resolve_num_queries(pl_module)
 
         # Open the handle for writing to the file
@@ -75,13 +74,7 @@ class PredictionWriter(Callback):
 
     def on_test_batch_end(self, trainer, pl_module, test_step_outputs, batch, batch_idx):
         inputs, targets = batch
-        outputs, preds, losses, targets_updated = test_step_outputs
-
-        # Check if dynamic queries are active and align predictions if needed
-        if "query_particle_idx" in targets_updated and "particle_valid_full" in targets_updated:
-            # Align predictions to full particle dimension before writing
-            num_full_particles = targets_updated["particle_valid_full"].shape[1]
-            preds = pl_module.align_predictions_to_full_targets(preds, targets_updated["query_particle_idx"], num_full_particles)
+        outputs, preds, losses = test_step_outputs
 
         # handle batched case
         if "sample_id" in targets:
