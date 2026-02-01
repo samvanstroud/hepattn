@@ -49,7 +49,7 @@ class MockTask(nn.Module):
     def cost(self, outputs, targets):
         return {"cost": torch.randn(2, 5, 5)}
 
-    def loss(self, outputs, targets):
+    def loss(self, outputs, targets, layer_outputs=None):
         return {"loss": torch.tensor(0.1)}
 
 

@@ -218,7 +218,8 @@ class TestMaskFormerDecoder:
 
         # When no hits pass threshold, it falls back to topk, so this should succeed
         query_embed, _query_valid = dynamic_decoder.initialize_dynamic_queries(x)
-        assert query_embed.shape[1] == dynamic_decoder.num_queries(x)
+        # Verify the number of queries returned matches _num_queries
+        assert query_embed.shape[1] == dynamic_decoder._num_queries  # noqa: SLF001
 
     def test_initialize_dynamic_queries_ordering_consistency(self, decoder_layer_config):
         """Test that dynamically selected queries preserve original hit ordering.

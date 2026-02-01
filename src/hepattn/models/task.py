@@ -678,10 +678,7 @@ class IoUPredictionTask(Task):
     ) -> dict[str, Tensor]:
         # Read mask logits directly from the mask task's outputs (already permuted by Hungarian matching)
         if layer_outputs is None or self.mask_task_name not in layer_outputs:
-            raise ValueError(
-                f"Mask task '{self.mask_task_name}' not found in layer_outputs. "
-                f"Make sure the mask task runs before IoUPredictionTask."
-            )
+            raise ValueError(f"Mask task '{self.mask_task_name}' not found in layer_outputs. Make sure the mask task runs before IoUPredictionTask.")
 
         mask_task_outputs = layer_outputs[self.mask_task_name]
         if self.mask_logit_key not in mask_task_outputs:
@@ -766,7 +763,7 @@ class RegressionTask(Task):
         latent = self.latent(x)
         return {self.regression_key: latent}
 
-    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    def predict(self, outputs: dict[str, Tensor], query_mask: Tensor | None = None) -> dict[str, Tensor]:
         # Split the regression vector into the separate fields
         latent = outputs[self.regression_key]
         return {self.output_object + "_" + field: latent[..., i] for i, field in enumerate(self.fields)}
@@ -1469,7 +1466,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
             raise ValueError(f"Invalid mode {self.mode}")
         return {self.output_object + "_regr": preds, self.output_object + "_proxy_regr": proxy_feats}
 
-    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    def predict(self, outputs: dict[str, Tensor], query_mask: Tensor | None = None) -> dict[str, Tensor]:
         # Split the regression vector into the separate fields
         pflow_regr = outputs[self.output_object + "_regr"]
         proxy_regr = outputs[self.output_object + "_proxy_regr"]

@@ -118,9 +118,7 @@ class ModelWrapper(LightningModule):
 
         return {"loss": total_loss}
 
-    def test_step(
-        self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]
-    ) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
+    def test_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
         inputs, targets = batch
         outputs = self.model(inputs)
 
