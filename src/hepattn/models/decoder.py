@@ -243,7 +243,6 @@ class MaskFormerDecoder(nn.Module):
                 x["key_embed"] = x["key_embed"] + x["key_posenc"]
 
             attn_masks: dict[str, torch.Tensor] = {}
-            query_mask = None
 
             assert self.tasks is not None
             for task in self.tasks:

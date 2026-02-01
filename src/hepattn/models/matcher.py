@@ -235,7 +235,7 @@ class Matcher(nn.Module):
             # Set costs for invalid queries to max float32 value
             # costs shape: [batch, num_pred, num_target]
             invalid_query_mask = ~query_valid_mask.unsqueeze(-1)  # [batch, num_pred, 1]
-            costs = np.where(invalid_query_mask.cpu().numpy(), np.finfo(np.float32).max/10, costs)
+            costs = np.where(invalid_query_mask.cpu().numpy(), np.finfo(np.float32).max / 10, costs)
 
         if self.parallel_solver:
             # Transpose costs: [batch, pred, true] -> [batch, true, pred]
