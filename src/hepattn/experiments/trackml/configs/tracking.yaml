@@ -267,6 +267,7 @@ model:
               init_args:
                 name: track_iou
                 input_object: query
+                mask_task_name: track_hit_valid
                 mask_logit_key: track_hit_logit
                 target_mask_key: particle_hit
                 dim: *dim
