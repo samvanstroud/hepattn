@@ -430,6 +430,52 @@ class HitFilterTask(Task):
         }
 
 
+class HitFilterTaskBatched(HitFilterTask):
+    """Batched variant of `HitFilterTask`.
+
+    This subclass overrides the `loss` method to support batched inputs where
+    hit tensors are padded to a common length. It uses a provided valid mask
+    in `targets` (key: `{input_object}_valid`) to ignore padded positions
+    when computing losses.
+    """
+
+    def loss(self, outputs: dict, targets: dict) -> dict:
+        # Pick out the field that denotes whether a hit is on a reconstructable object or not
+        output = outputs[f"{self.input_object}_logit"]
+        target = targets[f"{self.input_object}_{self.target_field}"].type_as(output)
+
+        # Get the valid mask to exclude padded positions from loss calculation
+        # This is important when batching events with different numbers of hits
+        valid_mask = targets.get(f"{self.input_object}_valid", None)
+
+        if valid_mask is not None:
+            # Apply mask to select only valid (non-padded) positions
+            output = output[valid_mask]
+            target = target[valid_mask]
+
+        # Calculate the BCE loss with class weighting
+        if self.loss_fn == "bce":
+            # Guard against edge case where all targets are 0 (or mean is 0)
+            target_mean = target.float().mean()
+            weight = 1 / target_mean if target_mean > 0 else torch.tensor(1.0, device=output.device)
+            loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=weight)
+            return {f"{self.input_object}_{self.loss_fn}": loss}
+        if self.loss_fn == "focal":
+            # Use the mask-aware focal loss implementation available in loss.py
+            loss = mask_focal_loss(output, target)
+            return {f"{self.input_object}_{self.loss_fn}": loss}
+        if self.loss_fn == "both":
+            target_mean = target.float().mean()
+            weight = 1 / target_mean if target_mean > 0 else torch.tensor(1.0, device=output.device)
+            bce_loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=weight)
+            focal_loss_value = mask_focal_loss(output, target)
+            return {
+                f"{self.input_object}_bce": bce_loss,
+                f"{self.input_object}_focal": focal_loss_value,
+            }
+        raise ValueError(f"Unknown loss function: {self.loss_fn}")
+
+
 class ObjectHitMaskTask(Task):
     def __init__(
         self,
