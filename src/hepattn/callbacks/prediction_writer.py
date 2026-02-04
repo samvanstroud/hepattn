@@ -49,23 +49,6 @@ class PredictionWriter(Callback):
         # User assumption: model.decoder._num_queries is always available.
         return int(pl_module.model.decoder._num_queries)  # noqa: SLF001
 
-    def _pad_to_num_queries(self, value: Tensor) -> Tensor:
-        # TODO: consider instead padding in the decoder to support batching and avoid doing this here
-        if self.num_queries is None:
-            return value
-        if value.dim() < 2:
-            return value
-
-        n = value.shape[1]
-        if n >= self.num_queries:
-            return value
-
-        padded_shape = list(value.shape)
-        padded_shape[1] = self.num_queries
-        padded = value.new_zeros(padded_shape)
-        padded[:, :n, ...] = value
-        return padded
-
     @property
     def output_path(self) -> Path:
         # The output dataset will be saved in the same directory as the checkpoint
