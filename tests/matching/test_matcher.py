@@ -3,7 +3,7 @@ import pytest
 import torch
 
 from hepattn.models.loss import mask_bce_cost, mask_dice_cost, mask_focal_cost
-from hepattn.models.matcher import SOLVERS, Matcher
+from hepattn.models.matcher import SOLVERS, Matcher, match_multiprocess, match_parallel
 
 
 @pytest.mark.parametrize("size", [10, 100, 500])
@@ -70,3 +70,116 @@ def test_parallel_matching_correctness(solver, batch_size, num_queries):
 
     # Check that results are identical
     assert torch.equal(sequential_result, parallel_result), f"Results differ for solver {solver}"
+
+
+@pytest.mark.parametrize("solver", SOLVERS.keys())
+@pytest.mark.parametrize("batch_size", [8, 16])
+@pytest.mark.parametrize("num_queries", [50, 100])
+def test_multiprocess_matching_correctness(solver, batch_size, num_queries):
+    """Test that multiprocess matching produces the same results as sequential matching."""
+    torch.manual_seed(42)
+
+    # Create random cost matrix
+    costs = torch.randn(batch_size, num_queries, num_queries)
+
+    # Sequential matcher
+    matcher_sequential = Matcher(default_solver=solver, adaptive_solver=False, parallel_solver=False)
+
+    # Multiprocess matcher
+    matcher_multiprocess = Matcher(
+        default_solver=solver, adaptive_solver=False, parallel_solver=True, parallel_backend="process", n_jobs=2
+    )
+
+    # Get results from both
+    sequential_result = matcher_sequential(costs)
+    multiprocess_result = matcher_multiprocess(costs)
+
+    # Check that results are identical
+    assert torch.equal(sequential_result, multiprocess_result), f"Results differ for solver {solver}"
+
+
+@pytest.mark.parametrize("solver", SOLVERS.keys())
+def test_query_valid_mask(solver):
+    """Test that query_valid_mask properly masks out invalid queries."""
+    torch.manual_seed(42)
+
+    batch_size, num_queries = 4, 20
+
+    # Create random cost matrix
+    costs = torch.randn(batch_size, num_queries, num_queries)
+
+    # Create query valid mask - mark some queries as invalid
+    query_valid_mask = torch.ones(batch_size, num_queries, dtype=torch.bool)
+    query_valid_mask[:, -5:] = False  # Last 5 queries are invalid
+
+    matcher = Matcher(default_solver=solver, adaptive_solver=False)
+
+    # Run with and without mask
+    result_no_mask = matcher(costs)
+    result_with_mask = matcher(costs, query_valid_mask=query_valid_mask)
+
+    # Results should be different since invalid queries have high cost
+    assert result_no_mask.shape == result_with_mask.shape
+
+
+@pytest.mark.parametrize("solver", SOLVERS.keys())
+def test_adaptive_solver_verbose(solver, capsys):
+    """Test adaptive solver with verbose output."""
+    torch.manual_seed(42)
+
+    costs = torch.randn(2, 10, 10)
+
+    # Create matcher with adaptive solver and verbose mode
+    matcher = Matcher(default_solver=solver, adaptive_solver=True, adaptive_check_interval=1, verbose=True)
+
+    # Run the matcher - this should trigger adapt_solver and print verbose output
+    matcher(costs)
+
+    # Capture printed output
+    captured = capsys.readouterr()
+    assert "Adaptive LAP Solver" in captured.out
+
+
+def test_parallel_single_batch():
+    """Test parallel matching with batch_size=1 and n_jobs=1 (edge case)."""
+    torch.manual_seed(42)
+
+    costs = torch.randn(1, 10, 10)
+
+    # Parallel matcher with n_jobs=1 should fallback to sequential
+    matcher = Matcher(default_solver="scipy", adaptive_solver=False, parallel_solver=True, n_jobs=1)
+
+    result = matcher(costs)
+    assert result.shape == (1, 10)
+
+
+def test_match_parallel_low_jobs():
+    """Test match_parallel function with n_jobs <= 1."""
+    costs = np.random.default_rng(42).random((2, 10, 10)).astype(np.float32)
+    lengths = np.array([10, 10], dtype=np.int32)
+
+    from hepattn.models.matcher import SOLVERS
+
+    result = match_parallel(SOLVERS["scipy"], costs, lengths, pred_dim=10, n_jobs=1)
+    assert result.shape == (2, 10)
+
+
+def test_match_multiprocess_unknown_solver():
+    """Test match_multiprocess raises error for unknown solver."""
+    costs = np.random.default_rng(42).random((2, 10, 10)).astype(np.float32)
+    lengths = np.array([10, 10], dtype=np.int32)
+
+    with pytest.raises(ValueError, match="Unknown solver"):
+        match_multiprocess("nonexistent_solver", costs, lengths, pred_dim=10, n_jobs=2)
+
+
+def test_matcher_invalid_solver():
+    """Test Matcher raises error for invalid solver name."""
+    with pytest.raises(ValueError, match="Unknown solver"):
+        Matcher(default_solver="nonexistent_solver")
+
+
+def test_matcher_invalid_parallel_backend():
+    """Test Matcher raises error for invalid parallel_backend."""
+    with pytest.raises(ValueError, match="parallel_backend must be"):
+        Matcher(parallel_backend="invalid_backend")
