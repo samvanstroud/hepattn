@@ -86,9 +86,7 @@ def test_multiprocess_matching_correctness(solver, batch_size, num_queries):
     matcher_sequential = Matcher(default_solver=solver, adaptive_solver=False, parallel_solver=False)
 
     # Multiprocess matcher
-    matcher_multiprocess = Matcher(
-        default_solver=solver, adaptive_solver=False, parallel_solver=True, parallel_backend="process", n_jobs=2
-    )
+    matcher_multiprocess = Matcher(default_solver=solver, adaptive_solver=False, parallel_solver=True, parallel_backend="process", n_jobs=2)
 
     # Get results from both
     sequential_result = matcher_sequential(costs)
