@@ -29,6 +29,7 @@ class TrackMLDataset(Dataset):
         event_max_num_particles=1000,
         strict_max_objects: bool = False,
         hit_eval_path: str | None = None,
+        hit_filter_threshold: float = 0.1,
         dummy_data: bool = False,
     ):
         super().__init__()
@@ -45,6 +46,7 @@ class TrackMLDataset(Dataset):
             rank_zero_info("Generating dummy data...")
             self.dirpath = Path(dirpath) if dirpath else Path()
             self.hit_eval_path = None
+            self.hit_filter_threshold = hit_filter_threshold
             self.inputs = inputs
             self.targets = targets
             self.num_events = max(num_events, 1) if num_events > 0 else 10
@@ -76,6 +78,7 @@ class TrackMLDataset(Dataset):
         # Metadata
         self.dirpath = Path(dirpath)
         self.hit_eval_path = hit_eval_path
+        self.hit_filter_threshold = hit_filter_threshold
         self.inputs = inputs
         self.targets = targets
         self.num_events = num_events
@@ -147,10 +150,16 @@ class TrackMLDataset(Dataset):
         hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
         targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
+        # Store particle and hit IDs for dynamic query selection
+        targets["hit_particle_id"] = hit_particle_ids.unsqueeze(0)  # (1, N_hits)
+        targets["particle_id"] = particle_ids.unsqueeze(0)  # (1, N_particles)
+
         # Create the hit filter targets (note this ignores the event_max_num_particles filtering)
         for target_feature, fields in self.targets.items():
             if "on_valid_particle" in fields:
                 targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy()).unsqueeze(0)
+            if "is_first" in fields:
+                targets[f"{target_feature}_is_first"] = torch.from_numpy(hits["is_first"].to_numpy()).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)
@@ -211,7 +220,8 @@ class TrackMLDataset(Dataset):
                 assert str(self.sample_ids[idx]) in hit_eval_file, f"Key {self.sample_ids[idx]} not found in file {self.hit_eval_path}"
 
                 # The dataset has shape (1, num_hits)
-                hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
+                hit_filter_probs = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle_prob"][0]
+                hit_filter_pred = hit_filter_probs >= self.hit_filter_threshold
                 hits = hits[hit_filter_pred]
 
         # TODO: Add back truth based hit filtering
@@ -223,6 +233,13 @@ class TrackMLDataset(Dataset):
 
         # Mark which hits are on a valid / reconstructable particle, for the hit filter
         hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
+
+        # Mark which hits are the first (innermost) hit on each particle track
+        # Only calculate for hits on valid particles
+        valid_hits = hits[hits["on_valid_particle"]]
+        first_hit_indices = valid_hits.groupby("particle_id")["r"].idxmin()
+        hits["is_first"] = False
+        hits.loc[first_hit_indices, "is_first"] = True
 
         # Sanity checks
         assert len(particles) != 0, "No particles remaining - loosen selection!"
@@ -276,8 +293,13 @@ class TrackMLDataset(Dataset):
         # Create the mask targets
         targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
+        # Store particle and hit IDs for dynamic query selection
+        targets["hit_particle_id"] = hit_particle_ids.unsqueeze(0)  # (1, N_hits)
+        targets["particle_id"] = particle_ids.unsqueeze(0)  # (1, N_particles)
+
         # Create the hit filter targets (random boolean)
         targets["hit_on_valid_particle"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
+        targets["hit_is_first"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([idx], dtype=torch.int32)

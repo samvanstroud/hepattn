@@ -64,23 +64,20 @@ class ModelWrapper(LightningModule):
 
     def log_task_metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor], stage: str) -> None:
         # Log any task specific metrics
-        for task in self.model.tasks:
-            # Check that the task actually has some metrics to log
-            if not hasattr(task, "metrics"):
-                continue
+        for layer_name in preds:
+            # Determine which task list to use based on layer name
+            tasks = self.model.encoder_tasks if layer_name == "encoder" else self.model.tasks
+            for task in tasks:
+                if task.name not in preds[layer_name]:
+                    continue
 
-            # Just log the predictions from the final layer for now
-            task_metrics = task.metrics(preds["final"][task.name], targets)
-
-            # If the task returned a non-empty metrics dict, log it
-            if task_metrics:
-                self.log_dict({f"{stage}/final_{task.name}_{k}": v for k, v in task_metrics.items()}, sync_dist=True)
+                task_metrics = task.metrics(preds[layer_name][task.name], targets)
+                if task_metrics:
+                    self.log_dict({f"{stage}/{layer_name}_{task.name}_{k}": v for k, v in task_metrics.items()}, sync_dist=True)
 
     def log_metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor], stage: str) -> None:
-        # First log any task metrics
         self.log_task_metrics(preds, targets, stage)
 
-        # Log any custom metrics implemented by subclass
         if hasattr(self, "log_custom_metrics"):
             self.log_custom_metrics(preds, targets, stage)
 
@@ -91,7 +88,7 @@ class ModelWrapper(LightningModule):
         outputs = self.model(inputs)
 
         # Compute and log losses
-        losses, targets = self.model.loss(outputs, targets)
+        outputs, targets, losses = self.model.loss(outputs, targets)
 
         # Get the predictions from the model, avoid calling predict if possible
         if batch_idx % self.trainer.log_every_n_steps == 0:
@@ -102,7 +99,8 @@ class ModelWrapper(LightningModule):
             self.mlt_opt(losses, outputs)
             return None
         total_loss = self.aggregate_losses(losses, stage="train")
-        return {"loss": total_loss, **outputs}
+
+        return {"loss": total_loss}
 
     def validation_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> dict[str, Tensor]:
         inputs, targets = batch
@@ -111,21 +109,21 @@ class ModelWrapper(LightningModule):
         outputs = self.model(inputs)
 
         # Compute losses then aggregate and log them
-        losses, targets = self.model.loss(outputs, targets)
+        outputs, targets, losses = self.model.loss(outputs, targets)
         total_loss = self.aggregate_losses(losses, stage="val")
 
         # Get the predictions from the model
         preds = self.model.predict(outputs)
         self.log_metrics(preds, targets, "val")
 
-        return {"loss": total_loss, **outputs}
+        return {"loss": total_loss}
 
     def test_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
         inputs, targets = batch
         outputs = self.model(inputs)
 
         # Calculate loss to also run matching
-        losses, targets = self.model.loss(outputs, targets)
+        outputs, targets, losses = self.model.loss(outputs, targets)
 
         # Get the predictions from the model
         preds = self.model.predict(outputs)

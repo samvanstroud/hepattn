@@ -54,6 +54,7 @@ class CLI(LightningCLI):
             "--matmul_precision",
             type=str,
             choices=["highest", "high", "medium", "low"],
+            default="high",
             help="Precision setting for float32 matrix multiplications.",
         )
 

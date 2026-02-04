@@ -58,6 +58,7 @@ data:
   targets:
     hit:
       - on_valid_particle
+      - is_first
     particle:
       - pt
 
