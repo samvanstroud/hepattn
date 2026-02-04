@@ -77,6 +77,7 @@ trainer:
   callbacks:
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.AttnMaskLogger
+    - class_path: hepattn.callbacks.Compile
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
