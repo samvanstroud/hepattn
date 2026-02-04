@@ -158,8 +158,6 @@ def test_match_parallel_low_jobs():
     costs = np.random.default_rng(42).random((2, 10, 10)).astype(np.float32)
     lengths = np.array([10, 10], dtype=np.int32)
 
-    from hepattn.models.matcher import SOLVERS
-
     result = match_parallel(SOLVERS["scipy"], costs, lengths, pred_dim=10, n_jobs=1)
     assert result.shape == (2, 10)
 
@@ -182,4 +180,4 @@ def test_matcher_invalid_solver():
 def test_matcher_invalid_parallel_backend():
     """Test Matcher raises error for invalid parallel_backend."""
     with pytest.raises(ValueError, match="parallel_backend must be"):
-        Matcher(parallel_backend="invalid_backend")
+        Matcher(parallel_backend="invalid_backend")  # type: ignore[arg-type]
