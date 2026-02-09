@@ -124,7 +124,7 @@ model:
 
   # Learning rate scheduler config
   lrs_config:
-    initial: 1e-5
+    initial: 1e-7
     max: 5e-5
     end: 1e-5
     pct_start: 0.02
@@ -219,7 +219,7 @@ model:
                 input_object: hit
                 classes: ["is_first"]
                 loss_weight: 1.0
-                threshold: 0.1
+                threshold: 0.05
                 permute_loss: false
                 net:
                   class_path: hepattn.models.Dense
