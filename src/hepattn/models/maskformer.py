@@ -58,6 +58,7 @@ class MaskFormer(nn.Module):
         self.decoder.unified_decoding = unified_decoding
         self.dynamic_query_source = dynamic_query_source
         self.decoder.dynamic_query_source = dynamic_query_source
+        self.dim = decoder.dim
 
         assert not (input_sort_field and sorter), "Cannot specify both input_sort_field and sorter."
         self.input_sort_field = input_sort_field
@@ -213,6 +214,86 @@ class MaskFormer(nn.Module):
 
         return preds
 
+    def _pad_decoder_outputs_for_loss(
+        self, decoder_outputs: dict, targets: dict, encoder_outputs: dict
+    ) -> tuple[dict, dict]:
+        """Pad decoder outputs and query_mask up to the fixed num_queries for matching/loss."""
+        
+        query_embed = encoder_outputs["encoder"].get("query_embed")
+        device = query_embed.device
+
+
+        num_queries = self.decoder._num_queries
+        
+        num_pred = query_embed.shape[1]
+        num_padding = num_queries - num_pred
+
+        if num_padding == 0:
+            return decoder_outputs, targets
+
+
+        null_padding = torch.zeros(
+            query_embed.shape[0], num_padding, self.dim,
+            device=query_embed.device, dtype=query_embed.dtype
+        )
+        query_embed = torch.cat([query_embed, null_padding], dim=1)  # (1, num_queries, dim)
+
+        query_mask = torch.cat(
+            [
+                torch.ones(query_embed.shape[0], num_pred, dtype=torch.bool, device=query_embed.device),
+                torch.zeros(query_embed.shape[0], num_padding, dtype=torch.bool, device=query_embed.device),
+            ],
+            dim=1,
+        )
+
+        encoder_outputs["encoder"]["query_embed"] = query_embed
+        encoder_outputs["encoder"]["query_mask"] = query_mask
+
+        targets = targets.copy()
+        targets["query_mask"] = query_mask
+
+        def pad_tensor(t: Tensor) -> Tensor:
+            if t.dim() < 1:
+                return t
+            try:
+                pad_dim = next(i for i, s in enumerate(t.shape) if s == num_pred)
+            except StopIteration:
+                return t
+            padded_shape = list(t.shape)
+            padded_shape[pad_dim] = num_queries
+            padded = t.new_zeros(padded_shape)
+            slices = [slice(None)] * t.dim()
+            slices[pad_dim] = slice(0, num_pred)
+            padded[tuple(slices)] = t
+            return padded
+
+        padded_decoder_outputs: dict = {}
+        for layer_name, layer_outputs in decoder_outputs.items():
+            if isinstance(layer_outputs, Tensor):
+                padded_decoder_outputs[layer_name] = pad_tensor(layer_outputs)
+                continue
+
+            padded_layer_outputs: dict = {}
+            for name, value in layer_outputs.items():
+                if isinstance(value, Tensor):
+                    if name == "attn_mask_log":
+                        padded_layer_outputs[name] = value
+                    else:
+                        padded_layer_outputs[name] = pad_tensor(value)
+                elif isinstance(value, dict):
+                    padded_task_outputs: dict = {}
+                    for out_name, out_val in value.items():
+                        if isinstance(out_val, Tensor) and out_name != "attn_mask_log":
+                            padded_task_outputs[out_name] = pad_tensor(out_val)
+                        else:
+                            padded_task_outputs[out_name] = out_val
+                    padded_layer_outputs[name] = padded_task_outputs
+                else:
+                    padded_layer_outputs[name] = value
+            padded_decoder_outputs[layer_name] = padded_layer_outputs
+
+        return padded_decoder_outputs, targets
+
     def _prepare_targets_and_outputs(self, outputs: dict, targets: dict) -> tuple[dict, dict, dict]:
         """Prepare targets and separate encoder/decoder outputs.
 
@@ -238,6 +319,9 @@ class MaskFormer(nn.Module):
         # Sort targets if using a sorter
         if self.sorter is not None:
             targets = self.sorter.sort_targets(targets, decoder_outputs["final"][self.sorter.input_sort_field])
+
+        # Pad decoder outputs and query_mask for matching/loss if dynamic queries are shorter
+        decoder_outputs, targets = self._pad_decoder_outputs_for_loss(decoder_outputs, targets, encoder_outputs)
 
         return targets, encoder_outputs, decoder_outputs
 
@@ -425,5 +509,11 @@ class MaskFormer(nn.Module):
         # Compute final decoder losses using permuted outputs
         decoder_losses = self._compute_decoder_losses(decoder_outputs, targets)
         losses.update(decoder_losses)
+
+        # Ensure outputs reflect any padding/permutation updates done during loss
+        outputs = outputs.copy()
+        if "encoder" in encoder_outputs:
+            outputs["encoder"] = encoder_outputs["encoder"]
+        outputs.update(decoder_outputs)
 
         return outputs, targets, losses

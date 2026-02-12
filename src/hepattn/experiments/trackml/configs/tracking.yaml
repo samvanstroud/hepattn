@@ -200,7 +200,7 @@ model:
         num_queries: *num_objects
         mask_attention: true
         use_query_masks: false
-        unmask_all_false: false
+        unmask_all_false: true
         decoder_layer_config:
           dim: *dim
           norm: CustomLayerNorm

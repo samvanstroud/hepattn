@@ -169,23 +169,12 @@ class MaskFormerDecoder(nn.Module):
         # get selected embeddings
         selected_constituent_embeds = x[source_embed_key][0, selected_indices].detach()
 
-        # Pad to fixed num_queries size if fewer were selected to match the full target set
-        if num_selected < self._num_queries:
-            num_padding = self._num_queries - num_selected
-            # Pad with zero embeddings
-            null_padding = torch.zeros(num_padding, self.dim, device=device, dtype=selected_constituent_embeds.dtype)
-            query_embed = torch.cat([selected_constituent_embeds, null_padding], dim=0).unsqueeze(0)  # (1, num_queries, dim)
-            # Validity: selected queries are valid, padding is not
-            query_valid = torch.cat([
-                torch.ones(num_selected, dtype=torch.bool, device=device),
-                torch.zeros(num_padding, dtype=torch.bool, device=device),
-            ]).unsqueeze(0)  # (1, num_queries)
-        else:
-            query_embed = selected_constituent_embeds.unsqueeze(0)  # (1, N_selected, dim)
-            # All queries are valid - still create mask for consistent control flow with torch.compile
-            query_valid = torch.ones(1, num_selected, dtype=torch.bool, device=device)
+        # Do not pad here; keep dynamic queries at their selected length and pad later for loss/matching.
+        query_embed = selected_constituent_embeds.unsqueeze(0)  # (1, N_selected, dim)
+        # All queries are valid - still create mask for consistent control flow with torch.compile
+        query_valid = torch.ones(1, num_selected, dtype=torch.bool, device=device)
 
-        return query_embed, query_valid
+        return query_embed, query_valid, selected_indices
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -212,10 +201,14 @@ class MaskFormerDecoder(nn.Module):
             x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
         else:
             # Initialize dynamic queries
-            x["query_embed"], query_valid = self.initialize_dynamic_queries(x)
+            x["query_embed"], query_valid, selected_indices = self.initialize_dynamic_queries(x)
             # Always set query_mask for consistent control flow with torch.compile
             x["query_mask"] = query_valid
             outputs["encoder"]["query_mask"] = query_valid
+            outputs["encoder"]["query_embed"] = x["query_embed"]
+
+            init_indices = selected_indices.unsqueeze(0)
+            outputs["encoder"]["query_init_indices"] = init_indices
 
         if self.posenc:
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
@@ -285,7 +278,11 @@ class MaskFormerDecoder(nn.Module):
                 # If the attn mask is completely invalid for a given query, allow it to attend everywhere
                 # TODO: check and see see if this is really necessary
                 if self.unmask_all_false:
-                    attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
+                    all_false = torch.all(~attn_mask, dim=-1, keepdim=True)
+                    query_mask = x.get("query_mask")
+                    if query_mask is not None:
+                        all_false = all_false & query_mask.unsqueeze(-1)
+                    attn_mask = torch.where(all_false, True, attn_mask)
 
             if (attn_mask is not None) and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
