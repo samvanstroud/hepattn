@@ -100,6 +100,13 @@ relations_links = {
         ("MUON", "YokeBarrelCollection"),
         ("MUON", "YokeEndcapCollection"),
     ],
+    # "SiTrackMCTruthLink": [
+    "MCTruthSiTracksLink": [
+        ("SiTracks_Refitted", "MCParticles"),
+    ],
+    "ClusterMCTruthLink": [
+        ("PandoraClusters", "MCParticles"),
+    ],
 }
 
 # Specify the mask/links which use particle based links
@@ -388,6 +395,8 @@ output_masks = [
     ("particle", "hco"),
     ("particle", "msb"),
     ("particle", "mse"),
+    ("particle", "sitrack"),
+    ("particle", "topocluster"),
     ("pandora", "sitrack"),
     ("pandora", "topocluster"),
     ("sitrack", "vtb"),
@@ -440,6 +449,79 @@ def get_particle_class(pid, charge):
         return non_hadron_pdgid_to_class[np.abs(pid)]
     return -1
 
+def attach_trackstate_fields(events, event_idx, items):
+    """Write per-location TrackState params directly onto SiTracks_Refitted.
+       No extra items, no masks. Leaves NaN when a given state is missing.
+    """
+    # If there are no tracks, nothing to do
+    if "SiTracks_Refitted" not in items or len(items["SiTracks_Refitted"]) == 0:
+        return
+
+    # 1) Per-track slice into pooled states
+    try:
+        starts = ak.to_numpy(
+            events["SiTracks_Refitted/SiTracks_Refitted.trackStates_begin"]
+            .array(entry_start=event_idx, entry_stop=event_idx + 1)[0]
+        )
+        ends = ak.to_numpy(
+            events["SiTracks_Refitted/SiTracks_Refitted.trackStates_end"]
+            .array(entry_start=event_idx, entry_stop=event_idx + 1)[0]
+        )
+    except Exception:
+        # No trackStates in this file/config
+        return
+
+    # 2) Pooled state arrays (read once)
+    def _np(key, dtype=None):
+        arr = events[key].array(entry_start=event_idx, entry_stop=event_idx + 1)[0]
+        out = np.asarray(ak.to_numpy(arr))
+        if dtype is not None:
+            out = out.astype(dtype, copy=False)
+        return out
+
+    loc = _np("_SiTracks_Refitted_trackStates/_SiTracks_Refitted_trackStates.location")
+    D0  = _np("_SiTracks_Refitted_trackStates/_SiTracks_Refitted_trackStates.D0",         np.float32)
+    phi = _np("_SiTracks_Refitted_trackStates/_SiTracks_Refitted_trackStates.phi",        np.float32)
+    omg = _np("_SiTracks_Refitted_trackStates/_SiTracks_Refitted_trackStates.omega",      np.float32)
+    Z0  = _np("_SiTracks_Refitted_trackStates/_SiTracks_Refitted_trackStates.Z0",         np.float32)
+    tl  = _np("_SiTracks_Refitted_trackStates/_SiTracks_Refitted_trackStates.tanLambda",  np.float32)
+
+    n_trk = len(items["SiTracks_Refitted"])
+
+    LOC_SUFFIX = {
+        1: "atIP",
+        2: "atFirstHit",
+        3: "atLastHit",
+        4: "atCalorimeter",
+    }
+
+    def _empty(): return np.full(n_trk, np.nan, dtype=np.float32)
+
+    per_loc = {}
+    for base in ("d0", "phi", "omega", "z0", "tanlambda"):
+        for suf in LOC_SUFFIX.values():
+            per_loc[f"{base}_{suf}"] = _empty()
+
+    # 4) Fill per-track fields (take first occurrence of each location in the [begin:end) slice)
+    for i in range(n_trk):
+        j0, j1 = int(starts[i]), int(ends[i])
+        if j1 <= j0:
+            continue
+        li = loc[j0:j1]
+        for code, suf in LOC_SUFFIX.items():
+            rel = np.flatnonzero(li == code)
+            if rel.size:
+                j = j0 + rel[0]
+                per_loc[f"d0_{suf}"][i]        = D0[j]
+                per_loc[f"phi_{suf}"][i]       = phi[j]
+                per_loc[f"omega_{suf}"][i]     = omg[j]
+                per_loc[f"z0_{suf}"][i]        = Z0[j]
+                per_loc[f"tanlambda_{suf}"][i] = tl[j]
+
+    # 5) Attach to tracks; these get saved like other sitrack fields
+    for name, arr in per_loc.items():
+        items["SiTracks_Refitted"][name] = arr
+
 
 def preprocess_event(events, event_idx, namecodes, min_pt, verbose):
     items = {}
@@ -450,6 +532,8 @@ def preprocess_event(events, event_idx, namecodes, min_pt, verbose):
         x = events[item_name].array(entry_start=event_idx, entry_stop=event_idx + 1)[0]
         x = ak.zip({field.replace(f"{item_name}.", ""): x[field] for field in x.fields}, depth_limit=1)
         items[item_name] = x
+
+    attach_trackstate_fields(events, event_idx, items)
 
     # Add in particle classes
     pids = items["MCParticles"]["PDG"]
