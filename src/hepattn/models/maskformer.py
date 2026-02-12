@@ -92,10 +92,11 @@ class MaskFormer(nn.Module):
             key_slices[input_name] = slice(key_start, key_start + n_objects)
             key_start += n_objects
 
-            # These slices can be used to pick out specific
-            # objects after we have merged them all together
-            # Only needed when not doing unified decoding
-            if not self.unified_decoding:
+            # These masks/slices can be used to pick out specific
+            # objects after we have merged them all together.
+            # Normally only needed when not doing unified decoding,
+            # but also required for dynamic queries with a sorter.
+            if (not self.unified_decoding) or (self.unified_decoding and self.decoder.dynamic_queries and self.sorter is not None):
                 device = inputs[input_name + "_valid"].device
                 mask = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1)
                 x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
@@ -135,13 +136,20 @@ class MaskFormer(nn.Module):
         # source_embed/source_valid refer to *post-encoder* features.
         if self.decoder.dynamic_queries and self.unified_decoding:
             if self.sorter is not None:
-                raise ValueError("dynamic_queries with unified_decoding is not supported when sorter is enabled")
-            if self.dynamic_query_source not in key_slices:
-                raise ValueError(f"dynamic_queries=True requires an input named '{self.dynamic_query_source}'")
-            source_slice = key_slices[self.dynamic_query_source]
-            x[f"{self.dynamic_query_source}_embed"] = x["key_embed"][:, source_slice, :]
-            x[f"{self.dynamic_query_source}_valid"] = x["key_valid_full"][:, source_slice]
-
+                source_mask_key = f"key_is_{self.dynamic_query_source}"
+                if source_mask_key not in x:
+                    raise ValueError(f"dynamic_queries=True requires an input named '{self.dynamic_query_source}'")
+                if x["key_embed"].shape[0] != 1:
+                    raise ValueError("dynamic_queries with unified_decoding and sorter only supports batch_size=1")
+                source_idx = torch.where(x[source_mask_key][0])[0]
+                x[f"{self.dynamic_query_source}_embed"] = x["key_embed"][:, source_idx, :]
+                x[f"{self.dynamic_query_source}_valid"] = x["key_valid_full"][:, source_idx]
+            else:
+                if self.dynamic_query_source not in key_slices:
+                    raise ValueError(f"dynamic_queries=True requires an input named '{self.dynamic_query_source}'")
+                source_slice = key_slices[self.dynamic_query_source]
+                x[f"{self.dynamic_query_source}_embed"] = x["key_embed"][:, source_slice, :]
+                x[f"{self.dynamic_query_source}_valid"] = x["key_valid_full"][:, source_slice]
         # Unmerge the updated features back into the separate input types only if not doing unified decoding
         if not self.unified_decoding:
             x = unmerge_inputs(x, self.input_names)

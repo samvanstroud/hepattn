@@ -47,8 +47,20 @@ class Sorter(nn.Module):
         return inputs
 
     def sort_targets(self, targets: dict, sort_fields: dict[str, Tensor]) -> dict:
-        for input_name in self.input_names:
-            sort_idx = torch.argsort(sort_fields[f"{input_name}_{self.input_sort_field}"], dim=-1)
+        # Include merged "key" for unified decoding targets if present.
+        input_names = [*self.input_names, "key"]
+        key_sort_idx = None
+
+        for input_name in input_names:
+            if input_name == "key":
+                if key_sort_idx is None:
+                    key_sort_values = torch.concatenate(
+                        [sort_fields[f"{name}_{self.input_sort_field}"] for name in self.input_names], dim=-1
+                    )
+                    key_sort_idx = torch.argsort(key_sort_values, dim=-1)
+                sort_idx = key_sort_idx
+            else:
+                sort_idx = torch.argsort(sort_fields[f"{input_name}_{self.input_sort_field}"], dim=-1)
 
             for key, x in targets.items():
                 if x is None or input_name not in key:
@@ -72,3 +84,4 @@ class Sorter(nn.Module):
                 assert targets[key].shape == shape_before, f"Shape mismatch after sorting: {targets[key].shape} != {shape_before} for key {key}"
 
         return targets
+

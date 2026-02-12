@@ -47,7 +47,9 @@ class PredictionWriter(Callback):
 
     def _resolve_num_queries(self, pl_module: LightningModule) -> int:
         # User assumption: model.decoder._num_queries is always available.
-        return int(pl_module.model.decoder._num_queries)  # noqa: SLF001
+        if hasattr(pl_module.model, "decoder"):
+            return int(pl_module.model.decoder._num_queries)  # noqa: SLF001
+        return 0
 
     @property
     def output_path(self) -> Path:
@@ -57,7 +59,8 @@ class PredictionWriter(Callback):
 
     def on_test_batch_end(self, trainer, pl_module, test_step_outputs, batch, batch_idx):
         inputs, targets = batch
-        outputs, preds, losses = test_step_outputs
+
+        outputs, preds, losses, targets = test_step_outputs
 
         # handle batched case
         if "sample_id" in targets:
