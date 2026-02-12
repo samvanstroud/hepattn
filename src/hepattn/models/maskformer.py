@@ -216,15 +216,17 @@ class MaskFormer(nn.Module):
 
     def _pad_decoder_outputs_for_loss(
         self, decoder_outputs: dict, targets: dict, encoder_outputs: dict
-    ) -> tuple[dict, dict]:
+    ) -> tuple[dict, dict, dict]:
         """Pad decoder outputs and query_mask up to the fixed num_queries for matching/loss."""
+        encoder_outputs = encoder_outputs.copy()
+        encoder_outputs["encoder"] = encoder_outputs["encoder"].copy()
         query_embed = encoder_outputs["encoder"].get("query_embed")
         num_queries = self.decoder.num_queries(encoder_outputs["encoder"])
         num_pred = query_embed.shape[1]
         num_padding = num_queries - num_pred
 
         if num_padding == 0:
-            return decoder_outputs, targets
+            return decoder_outputs, targets, encoder_outputs
 
         null_padding = torch.zeros(
             query_embed.shape[0], num_padding, self.dim,
@@ -286,7 +288,7 @@ class MaskFormer(nn.Module):
                     padded_layer_outputs[name] = value
             padded_decoder_outputs[layer_name] = padded_layer_outputs
 
-        return padded_decoder_outputs, targets
+        return padded_decoder_outputs, targets, encoder_outputs
 
     def _prepare_targets_and_outputs(self, outputs: dict, targets: dict) -> tuple[dict, dict, dict]:
         """Prepare targets and separate encoder/decoder outputs.
@@ -315,7 +317,9 @@ class MaskFormer(nn.Module):
             targets = self.sorter.sort_targets(targets, decoder_outputs["final"][self.sorter.input_sort_field])
 
         # Pad decoder outputs and query_mask for matching/loss if dynamic queries are shorter
-        decoder_outputs, targets = self._pad_decoder_outputs_for_loss(decoder_outputs, targets, encoder_outputs)
+        decoder_outputs, targets, encoder_outputs = self._pad_decoder_outputs_for_loss(
+            decoder_outputs, targets, encoder_outputs
+        )
 
         return targets, encoder_outputs, decoder_outputs
 

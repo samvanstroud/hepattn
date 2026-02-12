@@ -98,7 +98,7 @@ class MaskFormerDecoder(nn.Module):
             return x["query_embed"].shape[1]
         return self._num_queries
 
-    def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
+    def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor, Tensor]:
         """Initialize queries dynamically using the `query_init` task.
 
         This selects hit embeddings whose predicted first-hit probability passes the task threshold,
