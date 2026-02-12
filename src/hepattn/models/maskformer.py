@@ -218,19 +218,13 @@ class MaskFormer(nn.Module):
         self, decoder_outputs: dict, targets: dict, encoder_outputs: dict
     ) -> tuple[dict, dict]:
         """Pad decoder outputs and query_mask up to the fixed num_queries for matching/loss."""
-        
         query_embed = encoder_outputs["encoder"].get("query_embed")
-        device = query_embed.device
-
-
-        num_queries = self.decoder._num_queries
-        
+        num_queries = self.decoder.num_queries(encoder_outputs["encoder"])
         num_pred = query_embed.shape[1]
         num_padding = num_queries - num_pred
 
         if num_padding == 0:
             return decoder_outputs, targets
-
 
         null_padding = torch.zeros(
             query_embed.shape[0], num_padding, self.dim,
