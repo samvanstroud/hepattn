@@ -20,10 +20,6 @@ class TrackMLTracker(ModelWrapper):
         super().__init__(name, model, lrs_config, optimizer, mtl)
 
     def log_custom_metrics(self, preds, targets, stage):
-        query_mask = targets.get("query_mask")
-        if query_mask is not None:
-            query_mask = query_mask.bool()
-
         # log intermediate layer mask predictions
         for layer_name, layer_preds in preds.items():
             # Skip layers that don't have track_hit_valid task (e.g., encoder layer)
@@ -33,28 +29,17 @@ class TrackMLTracker(ModelWrapper):
             if mask is not None:
                 num_valid = mask.sum(-1).float()
                 frac_valid = num_valid / mask.shape[-1]
-
-                if query_mask is None:
-                    self.log(f"{stage}/{layer_name}_avg_num_valid_hits", torch.mean(num_valid), sync_dist=True)
-                    self.log(f"{stage}/{layer_name}_avg_frac_valid_hits", torch.mean(frac_valid), sync_dist=True)
-                else:
-                    valid_num_valid = num_valid[query_mask]
-                    valid_frac_valid = frac_valid[query_mask]
-                    if valid_num_valid.numel() > 0:
-                        self.log(f"{stage}/{layer_name}_avg_num_valid_hits", valid_num_valid.mean(), sync_dist=True)
-                    if valid_frac_valid.numel() > 0:
-                        self.log(f"{stage}/{layer_name}_avg_frac_valid_hits", valid_frac_valid.mean(), sync_dist=True)
+                self.log(f"{stage}/{layer_name}_avg_num_valid_hits", torch.mean(num_valid), sync_dist=True)
+                self.log(f"{stage}/{layer_name}_avg_frac_valid_hits", torch.mean(frac_valid), sync_dist=True)
 
         # Just log predictions from the final layer
         preds = preds["final"]
+        targets = targets.get("matched", targets)
 
         # First log metrics that depend on outputs from multiple tasks
         # TODO: Make the task names configurable or match task names automatically
         pred_valid = preds["track_valid"]["track_valid"]
         true_valid = targets["particle_valid"]
-
-        if query_mask is not None:
-            pred_valid = pred_valid & query_mask
 
         # Set the masks of any track slots that are not used as null
         pred_hit_masks = preds["track_hit_valid"]["track_hit_valid"] & pred_valid.unsqueeze(-1)

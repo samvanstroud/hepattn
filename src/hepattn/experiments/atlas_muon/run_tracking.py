@@ -46,6 +46,7 @@ class TrackMLTracker(ModelWrapper):
         """
         # Extract final-stage predictions and required target masks
         preds = preds["final"]
+        targets = targets.get("matched", targets)
         pred_valid = preds["track_valid"]["track_valid"]
         true_valid = targets["particle_valid"]
 

@@ -32,33 +32,35 @@ class MPflow(ModelWrapper):
         if stage == "train":
             return
 
-        # get info
+        if "final" not in preds:
+            return
+
+        labels = labels.get("matched", labels)
         pred_valid = None
         particle_class_labels = labels["particle_class"].squeeze()
         truth_valid = particle_class_labels < 5
-        for key, value in preds.items():
-            for task_name, task_value in value.items():
-                if task_name == "classification":
-                    particle_class_preds = task_value["pflow_class"].squeeze()  # remove batch index
+        for task_name, task_value in preds["final"].items():
+            if task_name == "classification":
+                particle_class_preds = task_value["pflow_class"].squeeze()  # remove batch index
 
-                    # object class prediction metrics
-                    self.obj_accuracy_micro(particle_class_preds.view(-1), particle_class_labels.view(-1))
-                    self.log(f"{stage}/{key}_obj_class_accuracy_micro", self.obj_accuracy_micro, **kwargs)
-                    self.obj_accuracy_macro(particle_class_preds.view(-1), particle_class_labels.view(-1))
-                    self.log(f"{stage}/{key}_obj_class_accuracy_macro", self.obj_accuracy_macro, **kwargs)
+                # object class prediction metrics
+                self.obj_accuracy_micro(particle_class_preds.view(-1), particle_class_labels.view(-1))
+                self.log(f"{stage}/final_obj_class_accuracy_micro", self.obj_accuracy_micro, **kwargs)
+                self.obj_accuracy_macro(particle_class_preds.view(-1), particle_class_labels.view(-1))
+                self.log(f"{stage}/final_obj_class_accuracy_macro", self.obj_accuracy_macro, **kwargs)
 
-                    # tracking efficiency and fake rate
-                    pred_valid = particle_class_preds < 5
-                    self.eff(pred_valid, truth_valid)
-                    self.pur(pred_valid, truth_valid)
+                # tracking efficiency and fake rate
+                pred_valid = particle_class_preds < 5
+                self.eff(pred_valid, truth_valid)
+                self.pur(pred_valid, truth_valid)
 
-                    self.log(f"{stage}/{key}_pur", self.pur, **kwargs)
-                    self.log(f"{stage}/{key}_eff", self.eff, **kwargs)
-                if task_name == "mask":
-                    pred_masks = task_value["pflow_node_valid"].squeeze()  # remove batch index
-                    truth_masks = labels["particle_node_valid"].squeeze()  # remove batch index
+                self.log(f"{stage}/final_pur", self.pur, **kwargs)
+                self.log(f"{stage}/final_eff", self.eff, **kwargs)
+            if task_name == "mask":
+                pred_masks = task_value["pflow_node_valid"].squeeze()  # remove batch index
+                truth_masks = labels["particle_node_valid"].squeeze()  # remove batch index
 
-                    self.mask_metrics(pred_masks, truth_masks, pred_valid, truth_valid, f"{stage}/{key}", **kwargs)
+                self.mask_metrics(pred_masks, truth_masks, pred_valid, truth_valid, f"{stage}/final", **kwargs)
 
         # regression metrics
         # if "regression" not in preds:
