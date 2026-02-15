@@ -185,11 +185,10 @@ class TestMaskFormerDecoder:
         hit_valid = torch.tensor([[True, True, True, True]])
         x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
 
-        query_embed, query_valid = dynamic_decoder.initialize_dynamic_queries(x)
+        query_embed = dynamic_decoder.initialize_dynamic_queries(x)
 
         # Verify we got top 2 queries (indices 0 and 2 based on probabilities)
         assert query_embed.shape == (1, 2, DIM)
-        assert torch.all(query_valid)
         assert torch.allclose(query_embed[0, 0], hit_embed[0, 0])
         assert torch.allclose(query_embed[0, 1], hit_embed[0, 2])
 
@@ -217,7 +216,7 @@ class TestMaskFormerDecoder:
         x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
 
         # When no hits pass threshold, it falls back to topk, so this should succeed
-        query_embed, _query_valid = dynamic_decoder.initialize_dynamic_queries(x)
+        query_embed = dynamic_decoder.initialize_dynamic_queries(x)
         # Verify the number of queries returned matches _num_queries
         assert query_embed.shape[1] == dynamic_decoder._num_queries  # noqa: SLF001
 
@@ -257,7 +256,7 @@ class TestMaskFormerDecoder:
         hit_valid = torch.ones(1, num_hits, dtype=torch.bool)
         x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
 
-        query_embed, _query_valid = decoder.initialize_dynamic_queries(x)
+        query_embed = decoder.initialize_dynamic_queries(x)
 
         # Extract the indices from the embeddings (we used the first feature as identifier)
         indices = query_embed[0, :, 0].long()
@@ -286,7 +285,6 @@ class TestMaskFormerDecoder:
         """Test that the decoder initializes correctly."""
         assert decoder._num_queries == NUM_QUERIES  # noqa: SLF001
         assert decoder.mask_attention is True
-        assert decoder.use_query_masks is False
         assert len(decoder.decoder_layers) == NUM_LAYERS
         assert decoder.tasks is None
         assert decoder.posenc is None
@@ -302,11 +300,9 @@ class TestMaskFormerDecoder:
             decoder_layer_config=decoder_layer_config,
             num_decoder_layers=NUM_LAYERS,
             mask_attention=False,
-            use_query_masks=True,
         )
 
         assert decoder.mask_attention is False
-        assert decoder.use_query_masks is True
 
     def test_forward_without_tasks(self, decoder_no_mask_attention, sample_decoder_data):
         """Test forward pass without any tasks defined."""
@@ -709,9 +705,6 @@ class TestMaskFormerDecoderUnified:
         # Test final embeddings shapes
         assert x_out["query_embed"].shape == (BATCH_SIZE, NUM_QUERIES, DIM)
         assert x_out["key_embed"].shape == (BATCH_SIZE, SEQ_LEN, DIM)
-        # query_valid is only set when dynamic_queries=True, not in regular mode
-        if "query_mask" in x_out:
-            assert x_out["query_mask"].shape == (BATCH_SIZE, NUM_QUERIES)
 
         # Test that layer outputs have correct structure
         for layer_idx in range(NUM_LAYERS):

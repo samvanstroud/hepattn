@@ -187,9 +187,6 @@ class MaskFormer(nn.Module):
         """
         preds: dict[str, dict[str, Any]] = {}
 
-        # Get query_mask from encoder outputs for masking padded queries in predictions
-        query_mask = outputs.get("encoder", {}).get("query_mask")
-
         # Compute predictions for each task in each block
         for layer_name, layer_outputs in outputs.items():
             if layer_name.startswith("_"):
@@ -209,7 +206,7 @@ class MaskFormer(nn.Module):
                 for task in self.tasks:
                     if task.name not in layer_outputs:
                         continue
-                    preds[layer_name][task.name] = task.predict(layer_outputs[task.name], query_mask=query_mask)
+                    preds[layer_name][task.name] = task.predict(layer_outputs[task.name])
 
         return preds
 
@@ -222,18 +219,13 @@ class MaskFormer(nn.Module):
 
         Returns:
             Tuple of (targets, encoder_outputs, decoder_outputs) where:
-            - targets: Targets dict with query_mask added if present
+            - targets: Targets dict
             - encoder_outputs: Separated encoder outputs
             - decoder_outputs: Separated decoder layer outputs
         """
         # Separate encoder and decoder outputs for cleaner logic
         encoder_outputs = {"encoder": outputs["encoder"]} if "encoder" in outputs else {}
         decoder_outputs = {k: v for k, v in outputs.items() if k != "encoder"}
-
-        # Include query_mask in targets if present (for masking padded query losses)
-        if "encoder" in outputs and "query_mask" in outputs["encoder"] and "query_mask" not in targets:
-            targets = targets.copy()
-            targets["query_mask"] = outputs["encoder"]["query_mask"]
 
         # Sort targets if using a sorter
         if self.sorter is not None:
@@ -301,20 +293,29 @@ class MaskFormer(nn.Module):
 
         return costs
 
-    def _match_and_permute_outputs(self, decoder_outputs: dict, costs: dict[str, Tensor], targets: dict) -> None:
-        """Perform optimal matching and permute decoder outputs accordingly.
+    def _gather_targets(self, targets: dict, target_idxs: Tensor, num_targets: int) -> dict:
+        batch_size = target_idxs.shape[0]
+        device = next((v.device for v in targets.values() if torch.is_tensor(v)), target_idxs.device)
+        if target_idxs.device != device:
+            target_idxs = target_idxs.to(device)
+        batch_idxs = torch.arange(batch_size, device=device).unsqueeze(1)
+        gathered = targets.copy()
 
-        After permutation, outputs are aligned with target order, so the original
-        particle_valid mask can be used directly by all tasks for loss computation.
+        for key, value in targets.items():
+            if not torch.is_tensor(value):
+                continue
+            if value.ndim < 2 or value.shape[0] != batch_size or value.shape[1] != num_targets:
+                continue
+            gathered[key] = value[batch_idxs, target_idxs]
 
-        Args:
-            decoder_outputs: Dictionary of decoder layer outputs (will be modified in-place).
-            costs: Dictionary of costs keyed by layer name.
-            targets: The data containing the targets.
-        """
+        return gathered
+
+    def _match_and_gather_targets(self, costs: dict[str, Tensor], targets: dict) -> dict[str, dict]:
+        """Perform optimal matching and gather targets into query order for each layer."""
         # Stack all layer costs into a single 4D tensor for parallel matching
         layer_names = list(costs.keys())
         num_layers = len(layer_names)
+        gathered_targets: dict[str, dict] = {}
 
         if num_layers > 0:
             # Stack costs: [num_layers, batch, num_pred, num_target]
@@ -330,40 +331,23 @@ class MaskFormer(nn.Module):
             target_valid = targets[f"{self.target_object}_valid"]
             stacked_target_valid = target_valid.unsqueeze(0).expand(num_layers, -1, -1).reshape(num_layers * batch_size, -1)
 
-            # Get query_mask if present (for masking padded queries in matching)
-            query_mask = targets.get("query_mask")
-            stacked_query_valid = None
-            if query_mask is not None:
-                stacked_query_valid = query_mask.unsqueeze(0).expand(num_layers, -1, -1).reshape(num_layers * batch_size, -1)
-
-            # Get the indices that can permute the predictions to yield their optimal matching
-            # Output shape: [num_layers * batch, num_pred]
-            stacked_pred_idxs = self.matcher(stacked_costs, stacked_target_valid, stacked_query_valid)
+            # Get the target indices for each prediction. Output shape: [num_layers * batch, num_pred]
+            stacked_target_idxs = self.matcher(stacked_costs, stacked_target_valid)
 
             # Reshape back to [num_layers, batch, num_pred]
-            stacked_pred_idxs = stacked_pred_idxs.view(num_layers, batch_size, num_pred)
+            stacked_target_idxs = stacked_target_idxs.view(num_layers, batch_size, num_pred)
 
-            # Create batch indices for indexing
-            batch_idxs_expanded = torch.arange(batch_size, device=stacked_pred_idxs.device).unsqueeze(1)
-
-            # Apply layer-specific permutations
             for layer_idx, layer_name in enumerate(layer_names):
-                pred_idxs = stacked_pred_idxs[layer_idx]
+                gathered_targets[layer_name] = self._gather_targets(targets, stacked_target_idxs[layer_idx], num_target)
 
-                for task in self.tasks:
-                    if not task.should_permute_outputs(layer_name, decoder_outputs[layer_name]):
-                        continue
+        return gathered_targets
 
-                    for output_name in task.outputs:
-                        output_tensor = decoder_outputs[layer_name][task.name][output_name]
-                        decoder_outputs[layer_name][task.name][output_name] = output_tensor[batch_idxs_expanded, pred_idxs]
-
-    def _compute_decoder_losses(self, decoder_outputs: dict, targets: dict) -> dict[str, dict[str, Tensor]]:
-        """Compute final losses for decoder tasks using permuted outputs.
+    def _compute_decoder_losses(self, decoder_outputs: dict, gathered_targets: dict[str, dict]) -> dict[str, dict[str, Tensor]]:
+        """Compute final losses for decoder tasks using gathered targets.
 
         Args:
-            decoder_outputs: Dictionary of decoder layer outputs (already permuted).
-            targets: The targets dict to use for loss computation.
+            decoder_outputs: Dictionary of decoder layer outputs.
+            gathered_targets: Targets gathered into query order per decoder layer.
 
         Returns:
             Dictionary of decoder losses keyed by layer name and task name.
@@ -371,6 +355,9 @@ class MaskFormer(nn.Module):
         losses: dict[str, dict[str, Tensor]] = {}
 
         for layer_name, layer_outputs in decoder_outputs.items():
+            targets = gathered_targets.get(layer_name)
+            if targets is None:
+                continue
             losses[layer_name] = {}
 
             for task in self.tasks:
@@ -391,13 +378,11 @@ class MaskFormer(nn.Module):
         1. **Cost Matrix**: A cost matrix of shape [batch, num_pred, num_target] is computed by summing
            task-specific costs (e.g., BCE for classification, L1 for regression).
 
-        2. **Hungarian Matching**: The matcher solves the linear assignment problem on the transposed
-           cost matrix [batch, num_target, num_pred] and returns `pred_idxs` of shape [batch, num_pred]
-           where `pred_idxs[i]` = which prediction slot should be placed at target position `i`.
+        2. **Hungarian Matching**: The matcher solves the linear assignment problem and returns
+           `target_idxs` of shape [batch, num_pred], where each prediction is assigned a target index.
 
-        3. **Output Permutation**: Outputs are gathered using `output[batch_idxs, pred_idxs]`, which
-           reorders predictions so that `output[i]` corresponds to `target[i]`. After this permutation,
-           the original `particle_valid` mask can be used directly to filter matched pairs.
+        3. **Target Gathering**: Targets are gathered into query order for each layer so that
+           `targets[i]` corresponds to `output[i]`. Unmatched queries map to padded target slots.
 
         Args:
             outputs: The outputs produced by the forward pass of the model.
@@ -406,7 +391,7 @@ class MaskFormer(nn.Module):
         Returns:
             Tuple of (outputs, targets, losses) where:
             - outputs: The outputs dict.
-            - targets: The targets dict.
+            - targets: The targets dict (with gathered final-layer targets attached under `matched`).
             - losses: A dictionary containing the computed losses for each task.
         """
         # Prepare targets and separate encoder/decoder outputs
@@ -418,12 +403,15 @@ class MaskFormer(nn.Module):
         # Compute costs for decoder layers
         costs = self._compute_decoder_costs(decoder_outputs, targets)
 
-        # Perform matching and permute decoder outputs to align with target order
-        # After this, output[i] corresponds to target[i] for all i
-        self._match_and_permute_outputs(decoder_outputs, costs, targets)
+        # Perform matching and gather targets into query order
+        gathered_targets = self._match_and_gather_targets(costs, targets)
 
-        # Compute final decoder losses using permuted outputs
-        decoder_losses = self._compute_decoder_losses(decoder_outputs, targets)
+        # Compute final decoder losses using gathered targets
+        decoder_losses = self._compute_decoder_losses(decoder_outputs, gathered_targets)
         losses.update(decoder_losses)
+
+        if "final" in gathered_targets:
+            targets = targets.copy()
+            targets["matched"] = gathered_targets["final"]
 
         return outputs, targets, losses

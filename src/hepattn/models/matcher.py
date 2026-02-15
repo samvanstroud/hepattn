@@ -62,8 +62,7 @@ def _close_pools() -> None:
 
 
 def solve_scipy(cost):
-    _, col_idx = scipy.optimize.linear_sum_assignment(cost)
-    return col_idx
+    return scipy.optimize.linear_sum_assignment(cost)
 
 
 SOLVERS = {
@@ -93,44 +92,92 @@ else:
     )
 
 
-def match_individual(solver_fn, cost: np.ndarray, default_idx: np.ndarray) -> np.ndarray:
-    pred_idx = np.asarray(solver_fn(cost), dtype=np.int32)
-
-    if solver_fn is SOLVERS["scipy"]:
-        remaining = np.ones(default_idx.shape[0], dtype=np.bool_)
-        remaining[pred_idx] = False
-        pred_idx = np.concatenate([pred_idx, default_idx[remaining]])
-
-    return pred_idx
+def _null_target_index(num_valid_targets: int, num_targets: int) -> int:
+    if num_valid_targets < num_targets:
+        return num_valid_targets
+    if num_targets == 0:
+        return 0
+    return num_targets - 1
 
 
-def match_parallel(solver_fn, costs_t: np.ndarray, lengths_np: np.ndarray, pred_dim: int, n_jobs: int = 8) -> torch.Tensor:
+def _parse_assignment(result, n_rows: int, n_cols: int) -> tuple[np.ndarray, np.ndarray]:
+    if isinstance(result, (tuple, list)) and len(result) == 2:
+        row_idx, col_idx = result
+    else:
+        arr = np.asarray(result)
+        if arr.ndim == 2 and arr.shape[0] == 2:
+            row_idx, col_idx = arr[0], arr[1]
+        elif arr.ndim == 1:
+            if arr.size == n_rows:
+                row_idx = np.arange(n_rows, dtype=np.int32)
+                col_idx = arr
+            elif arr.size == n_cols:
+                row_idx = arr
+                col_idx = np.arange(n_cols, dtype=np.int32)
+            else:
+                raise ValueError(f"Unsupported assignment size {arr.size} for shape ({n_rows}, {n_cols})")
+        else:
+            raise ValueError(f"Unsupported assignment output with shape {arr.shape}")
+    return np.asarray(row_idx, dtype=np.int32), np.asarray(col_idx, dtype=np.int32)
+
+
+def match_individual(
+    solver_fn,
+    costs_t: np.ndarray,
+    num_valid_targets: int,
+    num_targets: int,
+    pred_dim: int,
+) -> np.ndarray:
+    null_index = _null_target_index(num_valid_targets, num_targets)
+    target_idxs = np.full(pred_dim, null_index, dtype=np.int32)
+
+    if num_valid_targets == 0 or pred_dim == 0:
+        return target_idxs
+
+    if pred_dim >= num_valid_targets:
+        cost = costs_t[:num_valid_targets]
+        row_idx, col_idx = _parse_assignment(solver_fn(cost), cost.shape[0], cost.shape[1])
+        valid = (row_idx >= 0) & (col_idx >= 0)
+        target_idxs[col_idx[valid]] = row_idx[valid]
+        return target_idxs
+
+    cost = costs_t[:num_valid_targets].T
+    row_idx, col_idx = _parse_assignment(solver_fn(cost), cost.shape[0], cost.shape[1])
+    valid = (row_idx >= 0) & (col_idx >= 0)
+    target_idxs[row_idx[valid]] = col_idx[valid]
+    return target_idxs
+
+
+def match_parallel(
+    solver_fn,
+    costs_t: np.ndarray,
+    lengths_np: np.ndarray,
+    num_targets: int,
+    pred_dim: int,
+    n_jobs: int = 8,
+) -> torch.Tensor:
     """Thread-based parallel matching across batch."""
     batch_size = len(costs_t)
     n_jobs = min(n_jobs, batch_size)
     chunk_size = (batch_size + n_jobs - 1) // n_jobs
-    default_idx = np.arange(pred_dim, dtype=np.int32)
-
     if n_jobs <= 1 or batch_size <= 1:
-        results = [match_individual(solver_fn, costs_t[i][: lengths_np[i]], default_idx) for i in range(batch_size)]
+        results = [match_individual(solver_fn, costs_t[i], lengths_np[i], num_targets, pred_dim) for i in range(batch_size)]
         return torch.from_numpy(np.stack(results, axis=0))
 
     def _run(i: int) -> np.ndarray:
-        return match_individual(solver_fn, costs_t[i][: lengths_np[i]], default_idx)
+        return match_individual(solver_fn, costs_t[i], lengths_np[i], num_targets, pred_dim)
 
     pool = _get_thread_pool(n_jobs)
     results = pool.map(_run, range(batch_size), chunksize=chunk_size)
     return torch.from_numpy(np.stack(results, axis=0))
 
 
-def _mp_match_task(args: tuple[str, str, tuple[int, int, int], str, int, int, int]) -> np.ndarray:
-    solver_name, shm_name, shape, dtype_str, i, length, pred_dim = args
+def _mp_match_task(args: tuple[str, str, tuple[int, int, int], str, int, int, int, int]) -> np.ndarray:
+    solver_name, shm_name, shape, dtype_str, i, length, num_targets, pred_dim = args
     shm = shared_memory.SharedMemory(name=shm_name)
     try:
         costs_t = np.ndarray(shape, dtype=np.dtype(dtype_str), buffer=shm.buf)
-        default_idx = np.arange(pred_dim, dtype=np.int32)
-        cost = costs_t[i][:length]
-        return match_individual(SOLVERS[solver_name], cost, default_idx)
+        return match_individual(SOLVERS[solver_name], costs_t[i], length, num_targets, pred_dim)
     finally:
         shm.close()
 
@@ -139,6 +186,7 @@ def match_multiprocess(
     solver_name: str,
     costs_t: np.ndarray,
     lengths_np: np.ndarray,
+    num_targets: int,
     pred_dim: int,
     n_jobs: int = 8,
 ) -> torch.Tensor:
@@ -159,7 +207,10 @@ def match_multiprocess(
         shm_arr = np.ndarray(costs_t.shape, dtype=costs_t.dtype, buffer=shm.buf)
         shm_arr[...] = costs_t
 
-        tasks = [(solver_name, shm.name, costs_t.shape, costs_t.dtype.str, i, int(lengths_np[i]), pred_dim) for i in range(batch_size)]
+        tasks = [
+            (solver_name, shm.name, costs_t.shape, costs_t.dtype.str, i, int(lengths_np[i]), num_targets, pred_dim)
+            for i in range(batch_size)
+        ]
 
         pool = _get_process_pool(n_jobs)
         results = pool.map(_mp_match_task, tasks, chunksize=chunk_size)
@@ -218,57 +269,46 @@ class Matcher(nn.Module):
         self.step = 0
         self.verbose = verbose
 
-    def compute_matching(self, costs, object_valid_mask=None, query_valid_mask=None):
+    def compute_matching(self, costs, object_valid_mask=None):
         if object_valid_mask is None:
-            object_valid_mask = torch.ones((costs.shape[0], costs.shape[1]), dtype=torch.bool)
+            object_valid_mask = torch.ones((costs.shape[0], costs.shape[2]), dtype=torch.bool)
 
         object_valid_mask = object_valid_mask.detach().bool()
         batch_obj_lengths = torch.sum(object_valid_mask, dim=1).unsqueeze(-1)
         lengths_np = batch_obj_lengths.squeeze(-1).cpu().numpy().astype(np.int32, copy=False)
 
         pred_dim = costs.shape[1]
-
-        # If we have invalid/padded queries, set their costs to a high value
-        # so they won't be matched to valid targets
-        if query_valid_mask is not None:
-            query_valid_mask = query_valid_mask.detach().bool()
-            # Set costs for invalid queries to max float32 value
-            # costs shape: [batch, num_pred, num_target]
-            invalid_query_mask = ~query_valid_mask.unsqueeze(-1)  # [batch, num_pred, 1]
-            costs = np.where(invalid_query_mask.cpu().numpy(), np.finfo(np.float32).max / 10, costs)
+        num_targets = costs.shape[2]
 
         if self.parallel_solver:
             # Transpose costs: [batch, pred, true] -> [batch, true, pred]
             costs_t = np.ascontiguousarray(costs.swapaxes(1, 2))
             if self.parallel_backend == "thread":
-                return match_parallel(SOLVERS[self.solver], costs_t, lengths_np, pred_dim, n_jobs=self.n_jobs)
-            return match_multiprocess(self.solver, costs_t, lengths_np, pred_dim, n_jobs=self.n_jobs)
+                return match_parallel(SOLVERS[self.solver], costs_t, lengths_np, num_targets, pred_dim, n_jobs=self.n_jobs)
+            return match_multiprocess(self.solver, costs_t, lengths_np, num_targets, pred_dim, n_jobs=self.n_jobs)
 
         # Sequential matching
         costs_t = costs.swapaxes(1, 2)
-        default_idx = np.arange(pred_dim, dtype=np.int32)
         idxs = []
 
         for k in range(len(costs)):
-            cost = costs_t[k][: lengths_np[k]]
-            pred_idx = match_individual(SOLVERS[self.solver], cost, default_idx)
-            idxs.append(pred_idx)
+            idxs.append(match_individual(SOLVERS[self.solver], costs_t[k], lengths_np[k], num_targets, pred_dim))
 
         return torch.from_numpy(np.stack(idxs))
 
     @torch.no_grad()
-    def forward(self, costs, object_valid_mask=None, query_valid_mask=None):
+    def forward(self, costs, object_valid_mask=None):
         # Convert costs to numpy on CPU for solver compatibility
         costs = costs.detach().to(torch.float32).cpu().numpy()
 
         if self.adaptive_solver and self.step % self.adaptive_check_interval == 0:
             self.adapt_solver(costs)
 
-        pred_idxs = self.compute_matching(costs, object_valid_mask, query_valid_mask)
+        target_idxs = self.compute_matching(costs, object_valid_mask)
         self.step += 1
 
-        assert torch.all(pred_idxs >= 0), "Matcher error!"
-        return pred_idxs
+        assert torch.all(target_idxs >= 0), "Matcher error!"
+        return target_idxs
 
     def adapt_solver(self, costs):
         solver_times = {}

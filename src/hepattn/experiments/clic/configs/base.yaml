@@ -129,7 +129,6 @@ model:
         num_decoder_layers: 4
         num_queries: *num_particles
         mask_attention: true
-        use_query_masks: false
         decoder_layer_config:
           dim: *dim
           hybrid_norm: true
@@ -168,7 +167,6 @@ model:
                     hidden_layers: [256, 128, 32]
                 null_weight: 0.5
                 class_weights: [1.0, 3.0, 8.0, 1.5, 1.0]
-                mask_queries: false
                 has_intermediate_loss: true
 
             - class_path: hepattn.models.task.ObjectHitMaskTask

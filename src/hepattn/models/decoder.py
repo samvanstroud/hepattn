@@ -26,7 +26,6 @@ class MaskFormerDecoder(nn.Module):
         decoder_layer_config: dict,
         num_decoder_layers: int,
         mask_attention: bool = True,
-        use_query_masks: bool = False,
         posenc: dict[str, float] | None = None,
         local_strided_attn: bool = False,
         window_size: int = 512,
@@ -46,7 +45,6 @@ class MaskFormerDecoder(nn.Module):
             decoder_layer_config: Configuration dictionary used to initialize each MaskFormerDecoderLayer.
             num_decoder_layers: The number of decoder layers to stack.
             mask_attention: If True, attention masks will be used to control which input constituents are attended to.
-            use_query_masks: If True, predicted query masks will be used to control which queries are valid.
             posenc: Optional module for positional encoding.
             local_strided_attn: If True, uses local strided window attention.
             window_size: The size of the window for local strided window attention.
@@ -68,7 +66,6 @@ class MaskFormerDecoder(nn.Module):
         self.encoder_tasks: list | None = None  # Will be set by MaskFormer
         self._num_queries = num_queries
         self.mask_attention = mask_attention
-        self.use_query_masks = use_query_masks
         self.posenc = posenc
         self.local_strided_attn = local_strided_attn
         self.attn_type = decoder_layer_config.get("attn_kwargs", {}).get("attn_type", "torch")
@@ -98,7 +95,7 @@ class MaskFormerDecoder(nn.Module):
             return x["query_embed"].shape[1]
         return self._num_queries
 
-    def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
+    def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> Tensor:
         """Initialize queries dynamically using the `query_init` task.
 
         This selects hit embeddings whose predicted first-hit probability passes the task threshold,
@@ -109,9 +106,7 @@ class MaskFormerDecoder(nn.Module):
             - Expects `x` to contain `source_embed` and `source_valid`.
 
         Returns:
-            Tuple of:
-                - query_embed: (1, N_queries, dim) query embeddings
-                - query_valid: (1, N_queries) validity mask (always created for torch.compile compatibility)
+            query_embed: (1, N_queries, dim) query embeddings
 
         Raises:
             ValueError: If `decoder.dynamic_queries` is False, decoder tasks are unset, the `query_init` task
@@ -169,23 +164,8 @@ class MaskFormerDecoder(nn.Module):
         # get selected embeddings
         selected_constituent_embeds = x[source_embed_key][0, selected_indices].detach()
 
-        # Pad to fixed num_queries size if fewer were selected to match the full target set
-        if num_selected < self._num_queries:
-            num_padding = self._num_queries - num_selected
-            # Pad with zero embeddings
-            null_padding = torch.zeros(num_padding, self.dim, device=device, dtype=selected_constituent_embeds.dtype)
-            query_embed = torch.cat([selected_constituent_embeds, null_padding], dim=0).unsqueeze(0)  # (1, num_queries, dim)
-            # Validity: selected queries are valid, padding is not
-            query_valid = torch.cat([
-                torch.ones(num_selected, dtype=torch.bool, device=device),
-                torch.zeros(num_padding, dtype=torch.bool, device=device),
-            ]).unsqueeze(0)  # (1, num_queries)
-        else:
-            query_embed = selected_constituent_embeds.unsqueeze(0)  # (1, N_selected, dim)
-            # All queries are valid - still create mask for consistent control flow with torch.compile
-            query_valid = torch.ones(1, num_selected, dtype=torch.bool, device=device)
-
-        return query_embed, query_valid
+        query_embed = selected_constituent_embeds.unsqueeze(0)  # (1, N_selected, dim)
+        return query_embed
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -212,10 +192,7 @@ class MaskFormerDecoder(nn.Module):
             x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
         else:
             # Initialize dynamic queries
-            x["query_embed"], query_valid = self.initialize_dynamic_queries(x)
-            # Always set query_mask for consistent control flow with torch.compile
-            x["query_mask"] = query_valid
-            outputs["encoder"]["query_mask"] = query_valid
+            x["query_embed"] = self.initialize_dynamic_queries(x)
 
         if self.posenc:
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
@@ -294,7 +271,6 @@ class MaskFormerDecoder(nn.Module):
                 x["query_embed"],
                 x["key_embed"],
                 attn_mask=attn_mask,
-                q_mask=x.get("query_mask"),
                 kv_mask=x.get("key_valid"),
                 query_posenc=x["query_posenc"] if self.posenc else None,
                 key_posenc=x["key_posenc"] if self.posenc else None,

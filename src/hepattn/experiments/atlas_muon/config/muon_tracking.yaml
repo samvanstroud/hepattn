@@ -177,7 +177,6 @@ model:
         num_decoder_layers: 2
         num_queries: *num_objects
         mask_attention: true
-        use_query_masks: false
         decoder_layer_config:
           dim: *dim
           norm: RMSNorm
@@ -208,7 +207,6 @@ model:
                   object_bce: 10.0
                 dim: *dim
                 null_weight: 1.0
-                mask_queries: false
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: track_hit_valid

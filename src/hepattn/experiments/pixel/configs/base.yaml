@@ -199,7 +199,6 @@ model:
         num_decoder_layers: 2
         num_queries: *cluster_max_multiplicity
         mask_attention: false
-        use_query_masks: false
         decoder_layer_config:
           dim: *dim
 

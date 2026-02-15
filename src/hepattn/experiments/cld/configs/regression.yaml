@@ -19,7 +19,6 @@ model:
                   object_bce: 10.0
                 dim: *dim
                 null_weight: 1.0
-                mask_queries: false
 
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
