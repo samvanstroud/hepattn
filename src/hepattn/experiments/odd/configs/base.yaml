@@ -2,9 +2,12 @@ name: ODD_Tracking_Example
 
 data:
   # Paths to preprocessed data directories
-  train_dir: /share/lustre/maxhart/data/colliderml/v0/ttbar_p0/
-  val_dir: /share/lustre/maxhart/data/colliderml/v0/ttbar_p0/
-  test_dir: /share/lustre/maxhart/data/colliderml/v0/ttbar_p0/
+  train_dir: /share/lustre/maxhart/data/colliderml/v1/pu200/
+  val_dir: /share/lustre/maxhart/data/colliderml/v1/pu200/
+  test_dir: /share/lustre/maxhart/data/colliderml/v1/pu200/
+
+  # Event process name in this directory layout
+  event_type: ttbar
 
   # Number of events to include in each set
   num_workers: 0
@@ -13,15 +16,12 @@ data:
   num_val: 100
 
   # Minimum pT for a particle to be deemed reconstructve in GeV
-  particle_min_pt: 1.0
+  particle_min_pt: 0.5
   particle_max_abs_eta: 4.0
 
   # Whether to include charged / neutral particles as targets
   particle_include_charged: true
-  particle_include_neutral: false
-
-  # Number of query slots / particles to generate per event
-  event_max_num_particles: 1024
+  particle_include_neutral: true
 
   return_calohits: false
   return_tracks: false

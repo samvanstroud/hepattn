@@ -111,7 +111,7 @@ core
 # NFS
 *.nfs*
 
-# external data
+# External data
 *.tar
 *.zip
 *.parquet
@@ -120,3 +120,8 @@ core
 *.csv
 *.npy
 *.npz
+
+# Log files
+src/hepattn/experiments/cld/plots/
+src/hepattn/experiments/cld/eval/
+src/hepattn/experiments/trackml/eval/
