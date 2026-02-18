@@ -5,6 +5,7 @@ from time import perf_counter
 import awkward as ak
 import numpy as np
 import pyarrow.parquet as pq
+import scipy.sparse as sp
 import torch
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
@@ -281,8 +282,8 @@ class ODDDataset(Dataset):
         row_indices: np.ndarray,
         col_indices: np.ndarray,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        row_indices = row_indices.astype(np.int64, copy=False)
-        col_indices = col_indices.astype(np.int64, copy=False)
+        row_indices = np.asarray(row_indices, dtype=np.int64)
+        col_indices = np.asarray(col_indices, dtype=np.int64)
 
         if row_indices.size == 0:
             indptr = np.zeros(num_rows + 1, dtype=np.int64)
@@ -290,15 +291,13 @@ class ODDDataset(Dataset):
             shape = np.array([num_rows, num_cols], dtype=np.int64)
             return torch.from_numpy(indptr), torch.from_numpy(indices), torch.from_numpy(shape)
 
-        pairs = np.stack((row_indices, col_indices), axis=1)
-        pairs = np.unique(pairs, axis=0)
-        order = np.lexsort((pairs[:, 1], pairs[:, 0]))
-        pairs = pairs[order]
-
-        counts = np.bincount(pairs[:, 0], minlength=num_rows)
-        indptr = np.zeros(num_rows + 1, dtype=np.int64)
-        indptr[1:] = np.cumsum(counts)
-        indices = pairs[:, 1]
+        # Build canonical CSR with optimized sparse backend:
+        # deduplicates duplicate entries and stores row-sorted indices.
+        values = np.ones(row_indices.shape[0], dtype=np.uint8)
+        csr = sp.coo_matrix((values, (row_indices, col_indices)), shape=(num_rows, num_cols), dtype=np.uint8).tocsr()
+        csr.sum_duplicates()
+        indptr = np.array(csr.indptr, dtype=np.int64, copy=True)
+        indices = np.array(csr.indices, dtype=np.int64, copy=True)
         shape = np.array([num_rows, num_cols], dtype=np.int64)
         return torch.from_numpy(indptr), torch.from_numpy(indices), torch.from_numpy(shape)
 
@@ -394,36 +393,42 @@ class ODDDataset(Dataset):
         pdg_id = targets[pdg_key].to(torch.int64)
         abs_pdg_id = torch.abs(pdg_id)
 
-        is_photon = abs_pdg_id == 22
-        is_electron = abs_pdg_id == 11
-        is_muon = abs_pdg_id == 13
-        is_tau = abs_pdg_id == 15
-        is_neutrino = (abs_pdg_id == 12) | (abs_pdg_id == 14) | (abs_pdg_id == 16) | (abs_pdg_id == 18)
+        class_masks: dict[str, torch.Tensor] = {
+            "is_photon": abs_pdg_id == 22,
+            "is_electron": abs_pdg_id == 11,
+            "is_muon": abs_pdg_id == 13,
+            "is_tau": abs_pdg_id == 15,
+            "is_neutrino": (abs_pdg_id == 12) | (abs_pdg_id == 14) | (abs_pdg_id == 16) | (abs_pdg_id == 18),
+        }
 
-        # Anything not in the explicit lepton/photon classes is treated as hadronic.
-        is_known_nonhadron = is_photon | is_electron | is_muon | is_tau | is_neutrino
-        is_charged_hadron = (~is_known_nonhadron) & targets["particle_charged"]
-        is_neutral_hadron = (~is_known_nonhadron) & targets["particle_neutral"]
-        is_other = ~(is_charged_hadron | is_neutral_hadron | is_photon | is_electron | is_muon | is_tau | is_neutrino)
+        is_known_nonhadron = torch.zeros_like(abs_pdg_id, dtype=torch.bool)
+        for mask in class_masks.values():
+            is_known_nonhadron |= mask
 
+        class_masks["is_charged_hadron"] = (~is_known_nonhadron) & targets["particle_charged"]
+        class_masks["is_neutral_hadron"] = (~is_known_nonhadron) & targets["particle_neutral"]
+
+        class_assignment = {
+            "is_neutral_hadron": 0,
+            "is_charged_hadron": 1,
+            "is_photon": 3,
+            "is_electron": 4,
+            "is_muon": 5,
+            "is_tau": 6,
+            "is_neutrino": 7,
+        }
         class_id = torch.full_like(abs_pdg_id, -1, dtype=torch.int64)
-        class_id = torch.where(is_neutral_hadron, torch.full_like(class_id, 0), class_id)
-        class_id = torch.where(is_charged_hadron, torch.full_like(class_id, 1), class_id)
-        class_id = torch.where(is_photon, torch.full_like(class_id, 3), class_id)
-        class_id = torch.where(is_electron, torch.full_like(class_id, 4), class_id)
-        class_id = torch.where(is_muon, torch.full_like(class_id, 5), class_id)
-        class_id = torch.where(is_tau, torch.full_like(class_id, 6), class_id)
-        class_id = torch.where(is_neutrino, torch.full_like(class_id, 7), class_id)
+        for class_name, class_value in class_assignment.items():
+            class_id[class_masks[class_name]] = class_value
+
+        is_other = torch.ones_like(abs_pdg_id, dtype=torch.bool)
+        for class_name in class_assignment:
+            is_other &= ~class_masks[class_name]
+        class_masks["is_other"] = is_other
 
         targets["particle_class"] = class_id
-        targets["particle_is_neutral_hadron"] = is_neutral_hadron
-        targets["particle_is_charged_hadron"] = is_charged_hadron
-        targets["particle_is_photon"] = is_photon
-        targets["particle_is_electron"] = is_electron
-        targets["particle_is_muon"] = is_muon
-        targets["particle_is_tau"] = is_tau
-        targets["particle_is_neutrino"] = is_neutrino
-        targets["particle_is_other"] = is_other
+        for class_name, class_mask in class_masks.items():
+            targets[f"particle_{class_name}"] = class_mask
 
     def _build_particle_kinematic_mask(self, targets: dict[str, torch.Tensor]) -> torch.Tensor:
         particle_valid = targets["particle_pt"] >= self.particle_min_pt
@@ -490,26 +495,27 @@ class ODDDataset(Dataset):
             if row_indices.size > 0:
                 matched_energies = flat_contrib_energies[matched]
                 matched_detectors = flat_contrib_detector[matched]
+                contrib_cols = np.arange(row_indices.size, dtype=np.int64)
+                assignment = sp.coo_matrix(
+                    (
+                        np.ones(row_indices.size, dtype=np.float32),
+                        (row_indices, contrib_cols),
+                    ),
+                    shape=(num_particles, row_indices.size),
+                    dtype=np.float32,
+                ).tocsr()
+                assignment.sum_duplicates()
 
-                particle_energy_raw["calo_sum"] = torch.from_numpy(
-                    np.bincount(
-                        row_indices,
-                        weights=matched_energies,
-                        minlength=num_particles,
-                    ).astype(np.float32, copy=False)
-                )
+                particle_energy_raw["calo_sum"] = torch.from_numpy(np.asarray(assignment @ matched_energies, dtype=np.float32))
 
                 for subsystem, detector_ids in self.CALO_SUBSYSTEM_DETECTOR_IDS.items():
                     subsystem_mask = np.isin(matched_detectors, detector_ids)
                     if not np.any(subsystem_mask):
                         continue
 
+                    weighted_subsystem = matched_energies * subsystem_mask.astype(np.float32, copy=False)
                     particle_energy_raw[subsystem] = torch.from_numpy(
-                        np.bincount(
-                            row_indices[subsystem_mask],
-                            weights=matched_energies[subsystem_mask],
-                            minlength=num_particles,
-                        ).astype(np.float32, copy=False)
+                        np.asarray(assignment @ weighted_subsystem, dtype=np.float32)
                     )
 
         for subsystem, scale in self.CALO_SUBSYSTEM_CALIBRATION.items():
