@@ -185,7 +185,7 @@ class TestMaskFormerDecoder:
         hit_valid = torch.tensor([[True, True, True, True]])
         x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
 
-        query_embed, query_valid = dynamic_decoder.initialize_dynamic_queries(x)
+        query_embed, query_valid, selected_indices = dynamic_decoder.initialize_dynamic_queries(x)
 
         # Verify we got top 2 queries (indices 0 and 2 based on probabilities)
         assert query_embed.shape == (1, 2, DIM)
