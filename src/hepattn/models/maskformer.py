@@ -223,6 +223,10 @@ class MaskFormer(nn.Module):
         num_pred = query_embed.shape[1]
         num_padding = num_queries - num_pred
 
+        if num_padding < 0:
+            raise ValueError(
+                f"Number of predicted queries ({num_pred}) exceeds configured num_queries ({num_queries})."
+            )
         if num_padding == 0:
             return decoder_outputs, targets, encoder_outputs
 
