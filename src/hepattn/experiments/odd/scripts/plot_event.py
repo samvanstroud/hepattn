@@ -28,6 +28,8 @@ def _build_dataset_kwargs(config):
 
     if "particle_min_num_sihits" in config:
         dataset_kwargs["particle_min_num_sihits"] = config["particle_min_num_sihits"]
+    if "particle_min_num_calohits" in config:
+        dataset_kwargs["particle_min_num_calohits"] = config["particle_min_num_calohits"]
 
     return dataset_kwargs
 
@@ -92,6 +94,17 @@ fig = plot_odd_event(
 fig.savefig(plot_save_dir / Path("particles.png"))
 plt.close(fig)
 print(f"Saved particles.png in {perf_counter() - t0:.2f}s", flush=True)
+
+# Plot full detector calohits coloured by detector ID
+t0 = perf_counter()
+print("Plotting calohits by detector ID...", flush=True)
+fig = plot_odd_event(
+    event_data,
+    plot_calohits_by_detector=True,
+)
+fig.savefig(plot_save_dir / Path("calohits_by_detector.png"))
+plt.close(fig)
+print(f"Saved calohits_by_detector.png in {perf_counter() - t0:.2f}s", flush=True)
 
 # Plot tracker for particles
 t0 = perf_counter()

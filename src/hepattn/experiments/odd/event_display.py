@@ -67,6 +67,27 @@ def _plot_particle_calohits(ax, data, x, y, batch_idx: int, cycler) -> None:
         )
 
 
+def _plot_calohits_by_detector(ax, data, x, y, batch_idx: int, add_legend: bool = False) -> None:
+    detector_id = data["calohit_detector"][batch_idx].to(torch.int64)
+    unique_detector_ids = torch.unique(detector_id, sorted=True)
+    colormap = plt.cm.tab20
+    marker_size = torch.sqrt(1e6 * data["calohit_total_energy"][batch_idx])
+
+    for idx, det_id_tensor in enumerate(unique_detector_ids):
+        det_id = int(det_id_tensor.item())
+        detector_mask = detector_id == det_id
+        label = f"detector {det_id}" if add_legend else None
+        ax.scatter(
+            x[detector_mask],
+            y[detector_mask],
+            color=colormap(idx % colormap.N),
+            marker=".",
+            alpha=0.7,
+            s=marker_size[detector_mask],
+            label=label,
+        )
+
+
 def _build_helix_path(
     phi: torch.Tensor,
     eta: torch.Tensor,
@@ -183,6 +204,7 @@ def plot_odd_event(
     plot_particle_sihits: bool = False,
     plot_track_sihits: bool = False,
     plot_calohits: bool = False,
+    plot_calohits_by_detector: bool = False,
     plot_particle_calohits: bool = False,
     plot_particles: bool = False,
     plot_tracker: bool = False,
@@ -195,6 +217,7 @@ def plot_odd_event(
             plot_particle_sihits,
             plot_track_sihits,
             plot_calohits,
+            plot_calohits_by_detector,
             plot_particle_calohits,
             plot_particles,
             plot_tracker,
@@ -235,11 +258,13 @@ def plot_odd_event(
             if plot_track_sihits:
                 _plot_object_sihits(ax[ax_idx], data, "track", si_x, si_y, batch_idx, cycler)
 
-        if plot_calohits or plot_particle_calohits:
+        if plot_calohits or plot_calohits_by_detector or plot_particle_calohits:
             calo_x = data[f"calohit_{x_field}"][batch_idx]
 
             if plot_calohits:
                 ax[ax_idx].scatter(calo_x, calo_y, alpha=0.25, s=1.0, color="black", marker=".")
+            if plot_calohits_by_detector:
+                _plot_calohits_by_detector(ax[ax_idx], data, calo_x, calo_y, batch_idx, add_legend=(ax_idx == 0))
             if plot_particle_calohits:
                 _plot_particle_calohits(ax[ax_idx], data, calo_x, calo_y, batch_idx, cycler)
 
@@ -263,5 +288,8 @@ def plot_odd_event(
 
         ax[ax_idx].set_xlabel(x_label)
         ax[ax_idx].set_ylabel(y_label)
+
+    if plot_calohits_by_detector:
+        ax[0].legend(loc="upper right", frameon=False, fontsize=7, markerscale=3.0, ncol=2)
 
     return fig
