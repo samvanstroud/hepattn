@@ -174,7 +174,7 @@ class MaskFormerDecoder(nn.Module):
         # All queries are valid - still create mask for consistent control flow with torch.compile
         query_valid = torch.ones(1, num_selected, dtype=torch.bool, device=device)
 
-        return query_embed, query_valid, selected_indices
+        return query_embed, query_valid
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -201,14 +201,11 @@ class MaskFormerDecoder(nn.Module):
             x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
         else:
             # Initialize dynamic queries
-            x["query_embed"], query_valid, selected_indices = self.initialize_dynamic_queries(x)
+            x["query_embed"], query_valid = self.initialize_dynamic_queries(x)
             # Always set query_mask for consistent control flow with torch.compile
             x["query_mask"] = query_valid
             outputs["encoder"]["query_mask"] = query_valid
             outputs["encoder"]["query_embed"] = x["query_embed"]
-
-            init_indices = selected_indices.unsqueeze(0)
-            outputs["encoder"]["query_init_indices"] = init_indices
 
         if self.posenc:
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
