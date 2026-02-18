@@ -10,16 +10,55 @@ def _csr_row_indices(indptr: torch.Tensor, indices: torch.Tensor, row: int) -> t
     return indices[start:end].to(torch.long)
 
 
-def _plot_object_sihits(ax, data, object_name: str, x, y, batch_idx: int, cycler) -> None:
+def _select_top_particle_indices(data, batch_idx: int, top_n_particles_by_pt: int) -> torch.Tensor:
+    particle_valid = data["particle_valid"][batch_idx].to(torch.bool)
+    valid_indices = torch.nonzero(particle_valid, as_tuple=False).flatten()
+    if valid_indices.numel() == 0:
+        return valid_indices
+
+    num_keep = min(int(top_n_particles_by_pt), int(valid_indices.numel()))
+    if num_keep <= 0:
+        return valid_indices[:0]
+
+    particle_pt = data["particle_pt"][batch_idx].to(torch.float32).abs()
+    sorted_valid = torch.argsort(particle_pt[valid_indices], descending=True)
+    return valid_indices[sorted_valid[:num_keep]]
+
+
+def _build_csr_selected_hit_mask(
+    indptr: torch.Tensor,
+    indices: torch.Tensor,
+    object_indices: torch.Tensor,
+    num_hits: int,
+) -> torch.Tensor:
+    hit_mask = torch.zeros(num_hits, dtype=torch.bool, device=indices.device)
+    num_objects = max(int(indptr.numel()) - 1, 0)
+
+    for object_idx_tensor in object_indices:
+        object_idx = int(object_idx_tensor.item())
+        if object_idx < 0 or object_idx >= num_objects:
+            continue
+        hit_indices = _csr_row_indices(indptr, indices, object_idx)
+        if hit_indices.numel() == 0:
+            continue
+        hit_mask[hit_indices] = True
+
+    return hit_mask
+
+
+def _plot_object_sihits(ax, data, object_name: str, x, y, batch_idx: int, cycler, object_indices: torch.Tensor | None = None) -> None:
     indptr = data[f"{object_name}_sihit_indptr"][batch_idx]
     indices = data[f"{object_name}_sihit_indices"][batch_idx]
     object_valid = data[f"{object_name}_valid"][batch_idx]
     sihit_time = data["sihit_time"][batch_idx]
     num_object_slots = min(max(int(indptr.numel()) - 1, 0), int(object_valid.numel()))
 
-    for object_idx_tensor in torch.nonzero(object_valid, as_tuple=False).flatten():
+    if object_indices is None:
+        object_indices = torch.nonzero(object_valid, as_tuple=False).flatten()
+
+    for object_idx_tensor in object_indices:
         object_idx = int(object_idx_tensor.item())
-        if object_idx >= num_object_slots:
+        if object_idx >= num_object_slots or not bool(object_valid[object_idx].item()):
             continue
 
         hit_indices = _csr_row_indices(indptr, indices, object_idx)
@@ -40,16 +79,19 @@ def _plot_object_sihits(ax, data, object_name: str, x, y, batch_idx: int, cycler
         )
 
 
-def _plot_particle_calohits(ax, data, x, y, batch_idx: int, cycler) -> None:
+def _plot_particle_calohits(ax, data, x, y, batch_idx: int, cycler, particle_indices: torch.Tensor | None = None) -> None:
     indptr = data["particle_calohit_indptr"][batch_idx]
     indices = data["particle_calohit_indices"][batch_idx]
     particle_valid = data["particle_valid"][batch_idx]
     calohit_energy = torch.sqrt(1e6 * data["calohit_total_energy"][batch_idx])
     num_particles = min(max(int(indptr.numel()) - 1, 0), int(particle_valid.numel()))
 
-    for particle_idx_tensor in torch.nonzero(particle_valid, as_tuple=False).flatten():
+    if particle_indices is None:
+        particle_indices = torch.nonzero(particle_valid, as_tuple=False).flatten()
+
+    for particle_idx_tensor in particle_indices:
         particle_idx = int(particle_idx_tensor.item())
-        if particle_idx >= num_particles:
+        if particle_idx >= num_particles or not bool(particle_valid[particle_idx].item()):
             continue
 
         hit_indices = _csr_row_indices(indptr, indices, particle_idx)
@@ -67,12 +109,29 @@ def _plot_particle_calohits(ax, data, x, y, batch_idx: int, cycler) -> None:
         )
 
 
-def _plot_calohits_by_detector(ax, data, x, y, batch_idx: int, add_legend: bool = False) -> None:
+def _plot_calohits_by_detector(
+    ax,
+    data,
+    x,
+    y,
+    batch_idx: int,
+    add_legend: bool = False,
+    hit_mask: torch.Tensor | None = None,
+) -> None:
     detector_id = data["calohit_detector"][batch_idx].to(torch.int64)
-    unique_detector_ids = torch.unique(detector_id, sorted=True)
     colormap = plt.cm.tab20
     marker_size = torch.sqrt(1e6 * data["calohit_total_energy"][batch_idx])
 
+    if hit_mask is not None:
+        detector_id = detector_id[hit_mask]
+        x = x[hit_mask]
+        y = y[hit_mask]
+        marker_size = marker_size[hit_mask]
+
+    if detector_id.numel() == 0:
+        return
+
+    unique_detector_ids = torch.unique(detector_id, sorted=True)
     for idx, det_id_tensor in enumerate(unique_detector_ids):
         det_id = int(det_id_tensor.item())
         detector_mask = detector_id == det_id
@@ -128,7 +187,15 @@ def _build_helix_path(
     return x, y, z, y_linear
 
 
-def _build_object_helices(data, object_name: str, batch_idx: int, magnetic_field_t: float, helix_radius_m: float, cycler):
+def _build_object_helices(
+    data,
+    object_name: str,
+    batch_idx: int,
+    magnetic_field_t: float,
+    helix_radius_m: float,
+    cycler,
+    object_indices: torch.Tensor | None = None,
+):
     phi = data[f"{object_name}_phi"][batch_idx].to(torch.float32)
     if object_name == "track":
         theta = data["track_theta"][batch_idx].to(torch.float32)
@@ -158,9 +225,14 @@ def _build_object_helices(data, object_name: str, batch_idx: int, magnetic_field
     z0 = 1e-3 * data[f"{object_name}_z0"][batch_idx].to(torch.float32)
     valid = data[f"{object_name}_valid"][batch_idx].to(torch.bool)
 
+    if object_indices is None:
+        object_indices = torch.nonzero(valid, as_tuple=False).flatten()
+
     helices = []
-    for object_idx_tensor in torch.nonzero(valid, as_tuple=False).flatten():
+    for object_idx_tensor in object_indices:
         object_idx = int(object_idx_tensor.item())
+        if object_idx >= int(valid.numel()) or not bool(valid[object_idx].item()):
+            continue
         helix = _build_helix_path(
             phi[object_idx],
             eta[object_idx],
@@ -210,6 +282,7 @@ def plot_odd_event(
     plot_tracker: bool = False,
     magnetic_field_t: float = 3.0,
     helix_radius_m: float = 1.0,
+    top_n_particles_by_pt: int | None = None,
 ):
     if not any(
         [
@@ -225,6 +298,9 @@ def plot_odd_event(
     ):
         msg = "Nothing selected to plot. Enable at least one plot_* flag."
         raise ValueError(msg)
+    if top_n_particles_by_pt is not None and top_n_particles_by_pt <= 0:
+        msg = "top_n_particles_by_pt must be a positive integer when provided."
+        raise ValueError(msg)
 
     fig, ax = plt.subplots(1, 2)
     fig.set_size_inches(16, 8)
@@ -233,10 +309,41 @@ def plot_odd_event(
     colormap = plt.cm.tab20
     cycler = [colormap(i) for i in range(colormap.N)]
     axis_specs = [("x", "y", r"Global $x$", r"Global $y$"), ("z", "y", r"Global $z$", r"Global $y$")]
+    particle_indices = None
+    if top_n_particles_by_pt is not None:
+        particle_indices = _select_top_particle_indices(data, batch_idx, top_n_particles_by_pt)
+
+    selected_particle_sihit_mask = None
+    if particle_indices is not None and (plot_sihits or plot_particle_sihits):
+        selected_particle_sihit_mask = _build_csr_selected_hit_mask(
+            data["particle_sihit_indptr"][batch_idx],
+            data["particle_sihit_indices"][batch_idx],
+            particle_indices,
+            num_hits=int(data["sihit_valid"][batch_idx].numel()),
+        )
+
+    selected_particle_calohit_mask = None
+    if particle_indices is not None and (plot_calohits or plot_calohits_by_detector or plot_particle_calohits):
+        if "particle_calohit_indptr" in data and "particle_calohit_indices" in data and "calohit_valid" in data:
+            selected_particle_calohit_mask = _build_csr_selected_hit_mask(
+                data["particle_calohit_indptr"][batch_idx],
+                data["particle_calohit_indices"][batch_idx],
+                particle_indices,
+                num_hits=int(data["calohit_valid"][batch_idx].numel()),
+            )
+
     particle_helices = []
     track_helices = []
     if plot_particles:
-        particle_helices = _build_object_helices(data, "particle", batch_idx, magnetic_field_t, helix_radius_m, cycler)
+        particle_helices = _build_object_helices(
+            data,
+            "particle",
+            batch_idx,
+            magnetic_field_t,
+            helix_radius_m,
+            cycler,
+            object_indices=particle_indices,
+        )
     if plot_tracker:
         track_helices = _build_object_helices(data, "track", batch_idx, magnetic_field_t, helix_radius_m, cycler)
 
@@ -252,9 +359,21 @@ def plot_odd_event(
             si_x = data[f"sihit_{x_field}"][batch_idx]
 
             if plot_sihits:
-                ax[ax_idx].scatter(si_x, si_y, alpha=0.25, s=1.0, color="black")
+                if selected_particle_sihit_mask is None:
+                    ax[ax_idx].scatter(si_x, si_y, alpha=0.25, s=1.0, color="black")
+                else:
+                    ax[ax_idx].scatter(si_x[selected_particle_sihit_mask], si_y[selected_particle_sihit_mask], alpha=0.25, s=1.0, color="black")
             if plot_particle_sihits:
-                _plot_object_sihits(ax[ax_idx], data, "particle", si_x, si_y, batch_idx, cycler)
+                _plot_object_sihits(
+                    ax[ax_idx],
+                    data,
+                    "particle",
+                    si_x,
+                    si_y,
+                    batch_idx,
+                    cycler,
+                    object_indices=particle_indices,
+                )
             if plot_track_sihits:
                 _plot_object_sihits(ax[ax_idx], data, "track", si_x, si_y, batch_idx, cycler)
 
@@ -262,11 +381,37 @@ def plot_odd_event(
             calo_x = data[f"calohit_{x_field}"][batch_idx]
 
             if plot_calohits:
-                ax[ax_idx].scatter(calo_x, calo_y, alpha=0.25, s=1.0, color="black", marker=".")
+                if selected_particle_calohit_mask is None:
+                    ax[ax_idx].scatter(calo_x, calo_y, alpha=0.25, s=1.0, color="black", marker=".")
+                else:
+                    ax[ax_idx].scatter(
+                        calo_x[selected_particle_calohit_mask],
+                        calo_y[selected_particle_calohit_mask],
+                        alpha=0.25,
+                        s=1.0,
+                        color="black",
+                        marker=".",
+                    )
             if plot_calohits_by_detector:
-                _plot_calohits_by_detector(ax[ax_idx], data, calo_x, calo_y, batch_idx, add_legend=(ax_idx == 0))
+                _plot_calohits_by_detector(
+                    ax[ax_idx],
+                    data,
+                    calo_x,
+                    calo_y,
+                    batch_idx,
+                    add_legend=(ax_idx == 0),
+                    hit_mask=selected_particle_calohit_mask,
+                )
             if plot_particle_calohits:
-                _plot_particle_calohits(ax[ax_idx], data, calo_x, calo_y, batch_idx, cycler)
+                _plot_particle_calohits(
+                    ax[ax_idx],
+                    data,
+                    calo_x,
+                    calo_y,
+                    batch_idx,
+                    cycler,
+                    particle_indices=particle_indices,
+                )
 
         for x_path, y_path, z_path, y_linear_path, color in particle_helices:
             x_path, y_path, z_path, y_linear_path = _clip_helix_to_z_extent(x_path, y_path, z_path, y_linear_path, z_extent)
