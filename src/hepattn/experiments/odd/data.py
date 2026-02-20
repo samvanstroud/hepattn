@@ -12,17 +12,45 @@ from torch.utils.data import DataLoader, Dataset
 
 
 class ODDDataset(Dataset):
+    CALO_SUBSYSTEMS = ("ecb", "ece", "hcb", "hce")
     CALO_SUBSYSTEM_DETECTOR_IDS = {
         "ecb": np.array([10], dtype=np.int64),
         "ece": np.array([9, 11], dtype=np.int64),
         "hcb": np.array([13], dtype=np.int64),
         "hce": np.array([12, 14], dtype=np.int64),
     }
+    CALO_ECAL_DETECTOR_IDS = np.array([9, 10, 11], dtype=np.int64)
+    CALO_HCAL_DETECTOR_IDS = np.array([12, 13, 14], dtype=np.int64)
     CALO_SUBSYSTEM_CALIBRATION = {
         "ecb": 37.5,
         "ece": 38.7,
         "hcb": 45.0,
         "hce": 46.9,
+    }
+    CALO_GROUP_DETECTOR_IDS = {
+        "ecalhits": CALO_ECAL_DETECTOR_IDS,
+        "hcalhits": CALO_HCAL_DETECTOR_IDS,
+    }
+    PARTICLE_HIT_CUT_CLASS_TO_MASK = {
+        "all": "particle_valid",
+        "charged_hadron": "particle_is_charged_hadron",
+        "neutral_hadron": "particle_is_neutral_hadron",
+        "electron": "particle_is_electron",
+        "photon": "particle_is_photon",
+        "muon": "particle_is_muon",
+        "tau": "particle_is_tau",
+        "neutrino": "particle_is_neutrino",
+        "other": "particle_is_other",
+    }
+    PARTICLE_HIT_CUT_KEYS = (
+        "min_num_sihit",
+        "min_num_ecal",
+        "min_num_hcal",
+    )
+    PARTICLE_HIT_CUT_DEFAULTS = {
+        "min_num_sihit": 0,
+        "min_num_ecal": 0,
+        "min_num_hcal": 0,
     }
 
     def __init__(
@@ -31,8 +59,7 @@ class ODDDataset(Dataset):
         num_events: int = -1,
         particle_min_pt: float = 0.5,
         particle_max_abs_eta: float = 4.0,
-        particle_min_num_sihits: int = 6,
-        particle_min_num_calohits: int = 8,
+        particle_hit_cuts: dict[str, dict[str, int]] | None = None,
         particle_include_charged: bool = True,
         particle_include_neutral: bool = True,
         return_calohits: bool = True,
@@ -52,8 +79,14 @@ class ODDDataset(Dataset):
             "tracks": self.dirpath / f"{dataset_prefix}_tracks",
         }
 
+        self.particle_hit_cuts = self._normalize_particle_hit_cuts(particle_hit_cuts)
+        self._requires_calohits_for_hit_cuts = any(
+            cuts["min_num_ecal"] > 0 or cuts["min_num_hcal"] > 0
+            for cuts in self.particle_hit_cuts.values()
+        )
+
         required_collections = {"particles", "tracker_hits"}
-        if return_calohits or (particle_include_neutral and particle_min_num_calohits > 0):
+        if return_calohits or self._requires_calohits_for_hit_cuts:
             required_collections.add("calo_hits")
         if return_tracks:
             required_collections.add("tracks")
@@ -106,8 +139,6 @@ class ODDDataset(Dataset):
         # Particle level cuts
         self.particle_min_pt = particle_min_pt
         self.particle_max_abs_eta = particle_max_abs_eta
-        self.particle_min_num_sihits = particle_min_num_sihits
-        self.particle_min_num_calohits = particle_min_num_calohits
         self.particle_include_charged = particle_include_charged
         self.particle_include_neutral = particle_include_neutral
 
@@ -117,6 +148,59 @@ class ODDDataset(Dataset):
         self.event_type = event_type
         self.build_calohit_associations = build_calohit_associations
         self.debug = debug
+
+    @staticmethod
+    def _coerce_non_negative_int(name: str, value) -> int:
+        if isinstance(value, bool):
+            msg = f"Cut '{name}' must be numeric, got bool."
+            raise TypeError(msg)
+        as_float = float(value)
+        if as_float < 0:
+            msg = f"Cut '{name}' must be non-negative, got {value}."
+            raise ValueError(msg)
+        as_int = int(as_float)
+        if as_int != as_float:
+            msg = f"Cut '{name}' must be an integer-like value, got {value}."
+            raise ValueError(msg)
+        return as_int
+
+    @classmethod
+    def _normalize_particle_hit_cuts(cls, particle_hit_cuts: dict[str, dict[str, int]] | None) -> dict[str, dict[str, int]]:
+        if particle_hit_cuts is None:
+            return {}
+        if not isinstance(particle_hit_cuts, dict):
+            msg = "particle_hit_cuts must be a dict like {'electron': {'min_num_sihit': 6, ...}}."
+            raise TypeError(msg)
+
+        normalized: dict[str, dict[str, int]] = {}
+        for particle_type, cut_cfg in particle_hit_cuts.items():
+            class_key = str(particle_type).strip().lower()
+            if class_key not in cls.PARTICLE_HIT_CUT_CLASS_TO_MASK:
+                valid = ", ".join(sorted(set(cls.PARTICLE_HIT_CUT_CLASS_TO_MASK)))
+                msg = f"Unknown particle_hit_cuts class '{particle_type}'. Valid classes: {valid}"
+                raise ValueError(msg)
+            if not isinstance(cut_cfg, dict):
+                msg = f"particle_hit_cuts['{particle_type}'] must be a dict."
+                raise TypeError(msg)
+
+            mask_key = cls.PARTICLE_HIT_CUT_CLASS_TO_MASK[class_key]
+            if mask_key not in normalized:
+                normalized[mask_key] = cls.PARTICLE_HIT_CUT_DEFAULTS.copy()
+
+            for cut_name, cut_value in cut_cfg.items():
+                cut_key = str(cut_name).strip().lower()
+                if cut_key not in cls.PARTICLE_HIT_CUT_KEYS:
+                    valid = ", ".join(sorted(cls.PARTICLE_HIT_CUT_KEYS))
+                    msg = f"Unknown cut key '{cut_name}' for '{particle_type}'. Valid keys: {valid}"
+                    raise ValueError(msg)
+                cut_threshold = cls._coerce_non_negative_int(cut_name, cut_value)
+                normalized[mask_key][cut_key] = max(normalized[mask_key][cut_key], cut_threshold)
+
+        return {
+            mask_key: cfg
+            for mask_key, cfg in normalized.items()
+            if any(cfg[cut_key] > 0 for cut_key in cls.PARTICLE_HIT_CUT_KEYS)
+        }
 
     def __len__(self):
         return int(self.num_events)
@@ -301,6 +385,25 @@ class ODDDataset(Dataset):
         shape = np.array([num_rows, num_cols], dtype=np.int64)
         return torch.from_numpy(indptr), torch.from_numpy(indices), torch.from_numpy(shape)
 
+    @staticmethod
+    def _empty_csr_components(num_rows: int, num_cols: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        empty = np.zeros(0, dtype=np.int64)
+        return ODDDataset._build_csr_components(num_rows, num_cols, empty, empty)
+
+    @staticmethod
+    def _float32_bincount(
+        indices: np.ndarray,
+        *,
+        minlength: int,
+        weights: np.ndarray | None = None,
+    ) -> np.ndarray:
+        counts = np.bincount(indices, weights=weights, minlength=minlength)
+        return counts.astype(np.float32, copy=False)
+
+    @staticmethod
+    def _get_calohit_detector_ids(calohits: ak.Record) -> np.ndarray:
+        return np.asarray(ak.to_numpy(calohits["detector"]), dtype=np.int64).reshape(-1)
+
     def _build_particle_sihit_csr(
         self,
         particle_ids: torch.Tensor,
@@ -309,14 +412,14 @@ class ODDDataset(Dataset):
         num_particles = int(particle_ids.numel())
         num_sihits = int(sihit_particle_ids.numel())
         if num_particles == 0 or num_sihits == 0:
-            return self._build_csr_components(num_particles, num_sihits, np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64))
+            return self._empty_csr_components(num_particles, num_sihits)
 
         particle_ids_np = particle_ids.cpu().numpy()
         sihit_particle_ids_np = sihit_particle_ids.cpu().numpy()
 
         row_indices, matched = self._lookup_row_indices(particle_ids_np, sihit_particle_ids_np)
         if row_indices.size == 0:
-            return self._build_csr_components(num_particles, num_sihits, np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64))
+            return self._empty_csr_components(num_particles, num_sihits)
 
         col_indices = np.nonzero(matched)[0]
         return self._build_csr_components(num_particles, num_sihits, row_indices, col_indices)
@@ -325,11 +428,11 @@ class ODDDataset(Dataset):
         num_particles = int(particle_ids.numel())
         num_calohits = int(len(calohits["contrib_particle_ids"]))
         if num_particles == 0 or num_calohits == 0:
-            return self._build_csr_components(num_particles, num_calohits, np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64))
+            return self._empty_csr_components(num_particles, num_calohits)
 
         contrib_counts = ak.to_numpy(ak.num(calohits["contrib_particle_ids"], axis=1))
         if contrib_counts.sum() == 0:
-            return self._build_csr_components(num_particles, num_calohits, np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64))
+            return self._empty_csr_components(num_particles, num_calohits)
 
         flat_contrib_particle_ids = ak.to_numpy(ak.flatten(calohits["contrib_particle_ids"], axis=1))
         calohit_indices = np.repeat(np.arange(num_calohits, dtype=np.int64), contrib_counts)
@@ -337,7 +440,7 @@ class ODDDataset(Dataset):
         particle_ids_np = particle_ids.cpu().numpy()
         row_indices, matched = self._lookup_row_indices(particle_ids_np, flat_contrib_particle_ids)
         if row_indices.size == 0:
-            return self._build_csr_components(num_particles, num_calohits, np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64))
+            return self._empty_csr_components(num_particles, num_calohits)
 
         col_indices = calohit_indices[matched]
         return self._build_csr_components(num_particles, num_calohits, row_indices, col_indices)
@@ -345,11 +448,11 @@ class ODDDataset(Dataset):
     def _build_track_sihit_csr(self, track_hit_ids, num_sihits: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         num_tracks = int(len(track_hit_ids))
         if num_tracks == 0 or num_sihits == 0:
-            return self._build_csr_components(num_tracks, num_sihits, np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64))
+            return self._empty_csr_components(num_tracks, num_sihits)
 
         row_counts = ak.to_numpy(ak.num(track_hit_ids, axis=1))
         if row_counts.sum() == 0:
-            return self._build_csr_components(num_tracks, num_sihits, np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64))
+            return self._empty_csr_components(num_tracks, num_sihits)
 
         row_indices = np.repeat(np.arange(num_tracks, dtype=np.int64), row_counts)
         col_indices = ak.to_numpy(ak.flatten(track_hit_ids, axis=1)).astype(np.int64, copy=False)
@@ -440,6 +543,52 @@ class ODDDataset(Dataset):
             particle_valid = particle_valid & (~targets["particle_charged"])
         return particle_valid
 
+    def _build_particle_hit_cut_mask(
+        self,
+        targets: dict[str, torch.Tensor],
+        particle_num_sihits: torch.Tensor,
+        particle_num_calo_hit_fields: dict[str, torch.Tensor] | None,
+    ) -> torch.Tensor:
+        particle_valid = torch.ones_like(targets["particle_valid"], dtype=torch.bool)
+        num_ecalhits = (
+            particle_num_calo_hit_fields["particle_num_ecalhits"]
+            if particle_num_calo_hit_fields is not None
+            else torch.zeros_like(particle_num_sihits)
+        )
+        num_hcalhits = (
+            particle_num_calo_hit_fields["particle_num_hcalhits"]
+            if particle_num_calo_hit_fields is not None
+            else torch.zeros_like(particle_num_sihits)
+        )
+
+        for class_mask_key, cuts in self.particle_hit_cuts.items():
+            class_mask = targets[class_mask_key].to(torch.bool)
+            class_valid = torch.ones_like(class_mask)
+            for cut_key, counts in (
+                ("min_num_sihit", particle_num_sihits),
+                ("min_num_ecal", num_ecalhits),
+                ("min_num_hcal", num_hcalhits),
+            ):
+                threshold = cuts[cut_key]
+                if threshold > 0:
+                    class_valid &= counts >= threshold
+
+            particle_valid &= (~class_mask) | class_valid
+
+        return particle_valid
+
+    def _build_particle_sihit_fields(
+        self,
+        particle_ids: torch.Tensor,
+        sihit_particle_ids: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        indptr, indices, shape = self._build_particle_sihit_csr(
+            particle_ids,
+            sihit_particle_ids,
+        )
+        num_sihits = torch.diff(indptr).to(torch.float32)
+        return indptr, indices, shape, num_sihits
+
     def _build_sihit_inputs(self, sihits: ak.Record) -> dict[str, torch.Tensor]:
         inputs = self._record_to_tensors(
             sihits,
@@ -459,90 +608,111 @@ class ODDDataset(Dataset):
         self._debug(f"read calohits in {perf_counter() - t_calo_read:.3f}s")
         return calohits
 
-    def _build_particle_num_calohits(self, particle_ids: torch.Tensor, calohits: ak.Record) -> torch.Tensor:
-        particle_calohit_indptr, _, _ = self._build_particle_calohit_csr(particle_ids, calohits)
-        return torch.diff(particle_calohit_indptr).to(torch.float32)
+    def _build_particle_num_calo_hit_fields(self, particle_ids: torch.Tensor, calohits: ak.Record) -> dict[str, torch.Tensor]:
+        particle_calohit_indptr, particle_calohit_indices, _ = self._build_particle_calohit_csr(particle_ids, calohits)
+        num_calohits = torch.diff(particle_calohit_indptr).to(torch.float32)
+        num_particles = int(num_calohits.numel())
+        if num_particles == 0 or particle_calohit_indices.numel() == 0:
+            empty_counts = {
+                f"particle_num_{group_name}": torch.zeros(num_particles, dtype=torch.float32)
+                for group_name in self.CALO_GROUP_DETECTOR_IDS
+            }
+            return {
+                "particle_num_calohits": num_calohits,
+                **empty_counts,
+            }
+
+        indptr_np = particle_calohit_indptr.cpu().numpy().astype(np.int64, copy=False)
+        indices_np = particle_calohit_indices.cpu().numpy().astype(np.int64, copy=False)
+        row_indices = np.repeat(np.arange(num_particles, dtype=np.int64), np.diff(indptr_np))
+
+        linked_detector_ids = self._get_calohit_detector_ids(calohits)[indices_np]
+        grouped_counts = {
+            f"particle_num_{group_name}": torch.from_numpy(
+                self._float32_bincount(
+                    row_indices[np.isin(linked_detector_ids, detector_ids)],
+                    minlength=num_particles,
+                )
+            )
+            for group_name, detector_ids in self.CALO_GROUP_DETECTOR_IDS.items()
+        }
+
+        return {
+            "particle_num_calohits": num_calohits,
+            **grouped_counts,
+        }
+
+    def _build_particle_num_calo_hit_fields_if_available(
+        self,
+        particle_ids: torch.Tensor,
+        calohits: ak.Record | None,
+    ) -> tuple[dict[str, torch.Tensor] | None, torch.Tensor | None]:
+        if calohits is None:
+            return None, None
+
+        fields = self._build_particle_num_calo_hit_fields(particle_ids, calohits)
+        return fields, fields["particle_num_calohits"]
 
     def _build_particle_calo_energy_fields(self, particle_ids: torch.Tensor, calohits: ak.Record) -> dict[str, torch.Tensor]:
         num_particles = int(particle_ids.numel())
-        empty = torch.zeros(num_particles, dtype=torch.float32)
-        particle_energy_raw = {
-            "ecb": empty.clone(),
-            "ece": empty.clone(),
-            "hcb": empty.clone(),
-            "hce": empty.clone(),
-            "calo_sum": empty.clone(),
-        }
-        particle_energy_calib = {
-            "ecb_calib": empty.clone(),
-            "ece_calib": empty.clone(),
-            "hcb_calib": empty.clone(),
-            "hce_calib": empty.clone(),
-            "ecal_calib": empty.clone(),
-            "hcal_calib": empty.clone(),
-            "calo_calib": empty.clone(),
+        particle_energy_raw_np = {
+            key: np.zeros(num_particles, dtype=np.float32)
+            for key in (*self.CALO_SUBSYSTEMS, "calo_sum")
         }
 
         contrib_counts = ak.to_numpy(ak.num(calohits["contrib_particle_ids"], axis=1))
         if num_particles > 0 and contrib_counts.sum() > 0:
             flat_contrib_particle_ids = ak.to_numpy(ak.flatten(calohits["contrib_particle_ids"], axis=1))
             flat_contrib_energies = ak.to_numpy(ak.flatten(calohits["contrib_energies"], axis=1)).astype(np.float32, copy=False)
-            calohit_detector = np.asarray(ak.to_numpy(calohits["detector"]), dtype=np.int64).reshape(-1)
-            flat_contrib_detector = np.repeat(calohit_detector, contrib_counts)
+            flat_contrib_detector = np.repeat(self._get_calohit_detector_ids(calohits), contrib_counts)
 
             particle_ids_np = particle_ids.cpu().numpy()
             row_indices, matched = self._lookup_row_indices(particle_ids_np, flat_contrib_particle_ids)
             if row_indices.size > 0:
                 matched_energies = flat_contrib_energies[matched]
                 matched_detectors = flat_contrib_detector[matched]
-                contrib_cols = np.arange(row_indices.size, dtype=np.int64)
-                assignment = sp.coo_matrix(
-                    (
-                        np.ones(row_indices.size, dtype=np.float32),
-                        (row_indices, contrib_cols),
-                    ),
-                    shape=(num_particles, row_indices.size),
-                    dtype=np.float32,
-                ).tocsr()
-                assignment.sum_duplicates()
-
-                particle_energy_raw["calo_sum"] = torch.from_numpy(np.asarray(assignment @ matched_energies, dtype=np.float32))
-
+                particle_energy_raw_np["calo_sum"] = self._float32_bincount(
+                    row_indices,
+                    minlength=num_particles,
+                    weights=matched_energies,
+                )
                 for subsystem, detector_ids in self.CALO_SUBSYSTEM_DETECTOR_IDS.items():
                     subsystem_mask = np.isin(matched_detectors, detector_ids)
                     if not np.any(subsystem_mask):
                         continue
 
-                    weighted_subsystem = matched_energies * subsystem_mask.astype(np.float32, copy=False)
-                    particle_energy_raw[subsystem] = torch.from_numpy(
-                        np.asarray(assignment @ weighted_subsystem, dtype=np.float32)
+                    particle_energy_raw_np[subsystem] = self._float32_bincount(
+                        row_indices[subsystem_mask],
+                        minlength=num_particles,
+                        weights=matched_energies[subsystem_mask],
                     )
 
-        for subsystem, scale in self.CALO_SUBSYSTEM_CALIBRATION.items():
-            particle_energy_calib[f"{subsystem}_calib"] = particle_energy_raw[subsystem] * scale
-
+        particle_energy_raw = {key: torch.from_numpy(values) for key, values in particle_energy_raw_np.items()}
         particle_energy_raw["ecal"] = particle_energy_raw["ecb"] + particle_energy_raw["ece"]
         particle_energy_raw["hcal"] = particle_energy_raw["hcb"] + particle_energy_raw["hce"]
+
+        particle_energy_calib = {
+            f"{subsystem}_calib": particle_energy_raw[subsystem] * scale
+            for subsystem, scale in self.CALO_SUBSYSTEM_CALIBRATION.items()
+        }
         particle_energy_calib["ecal_calib"] = particle_energy_calib["ecb_calib"] + particle_energy_calib["ece_calib"]
         particle_energy_calib["hcal_calib"] = particle_energy_calib["hcb_calib"] + particle_energy_calib["hce_calib"]
         particle_energy_calib["calo_calib"] = particle_energy_calib["ecal_calib"] + particle_energy_calib["hcal_calib"]
 
-        return {
-            "particle_energy_ecb": particle_energy_raw["ecb"],
-            "particle_energy_ece": particle_energy_raw["ece"],
-            "particle_energy_hcb": particle_energy_raw["hcb"],
-            "particle_energy_hce": particle_energy_raw["hce"],
-            "particle_energy_ecal": particle_energy_raw["ecal"],
-            "particle_energy_hcal": particle_energy_raw["hcal"],
-            "particle_energy_calo_sum": particle_energy_raw["calo_sum"],
-            "particle_energy_ecb_calib": particle_energy_calib["ecb_calib"],
-            "particle_energy_ece_calib": particle_energy_calib["ece_calib"],
-            "particle_energy_hcb_calib": particle_energy_calib["hcb_calib"],
-            "particle_energy_hce_calib": particle_energy_calib["hce_calib"],
-            "particle_energy_ecal_calib": particle_energy_calib["ecal_calib"],
-            "particle_energy_hcal_calib": particle_energy_calib["hcal_calib"],
-            "particle_energy_calo_calib": particle_energy_calib["calo_calib"],
+        out = {
+            f"particle_energy_{subsystem}": particle_energy_raw[subsystem]
+            for subsystem in (*self.CALO_SUBSYSTEMS, "ecal", "hcal")
         }
+        out["particle_energy_calo_sum"] = particle_energy_raw["calo_sum"]
+        out.update({f"particle_energy_{name}": values for name, values in particle_energy_calib.items()})
+        return out
+
+    @staticmethod
+    def _build_calohit_contrib_energy_sum(calohits: ak.Record) -> torch.Tensor:
+        contrib_energy_sum = ak.to_numpy(
+            ak.sum(calohits["contrib_energies"], axis=1, mask_identity=False)
+        ).astype(np.float32, copy=False)
+        return torch.from_numpy(contrib_energy_sum)
 
     def _add_calohits(
         self,
@@ -564,9 +734,11 @@ class ODDDataset(Dataset):
             )
         )
         inputs["calohit_detector"] = ak.to_torch(calohits["detector"]).to(torch.int64)
+        inputs["calohit_contrib_energy_sum"] = self._build_calohit_contrib_energy_sum(calohits)
         self._scale_xyz_inplace(inputs, "calohit", scale=1e-3)
         inputs["calohit_valid"] = self._valid_mask_like(inputs["calohit_x"])
         targets["calohit_valid"] = inputs["calohit_valid"]
+        targets.update(self._build_particle_num_calo_hit_fields(targets["particle_particle_id"], calohits))
         targets.update(self._build_particle_calo_energy_fields(targets["particle_particle_id"], calohits))
 
         if not self.build_calohit_associations:
@@ -668,38 +840,40 @@ class ODDDataset(Dataset):
         targets["sihit_valid"] = inputs["sihit_valid"]
 
         t_assoc = perf_counter()
-        particle_sihit_indptr, particle_sihit_indices, particle_sihit_shape = self._build_particle_sihit_csr(
+        particle_sihit_indptr, particle_sihit_indices, particle_sihit_shape, particle_num_sihits = self._build_particle_sihit_fields(
             targets["particle_particle_id"],
             inputs["sihit_particle_id"],
         )
-        particle_num_sihits = torch.diff(particle_sihit_indptr).to(torch.float32)
 
-        # Apply constituent requirements per particle type:
-        # charged -> minimum sihits, neutral -> minimum calohits.
-        particle_valid = (~targets["particle_charged"]) | (particle_num_sihits >= self.particle_min_num_sihits)
-        calohits = None
-        particle_num_calohits = None
-        if self.particle_include_neutral and self.particle_min_num_calohits > 0:
-            calohits = self._read_calohits(particle_path, event_idx)
-            particle_num_calohits = self._build_particle_num_calohits(targets["particle_particle_id"], calohits)
-            neutral_valid = (~targets["particle_neutral"]) | (particle_num_calohits >= self.particle_min_num_calohits)
-            particle_valid = particle_valid & neutral_valid
+        calohits = self._read_calohits(particle_path, event_idx) if self.return_calohits or self._requires_calohits_for_hit_cuts else None
+        particle_num_calo_hit_fields, particle_num_calohits = self._build_particle_num_calo_hit_fields_if_available(
+            targets["particle_particle_id"],
+            calohits,
+        )
 
-        # Apply the constituent based particle cuts
+        # Apply constituent based particle cuts
+        particle_valid = self._build_particle_hit_cut_mask(
+            targets,
+            particle_num_sihits,
+            particle_num_calo_hit_fields,
+        )
+
         self._apply_mask_to_prefixed_keys(
             targets,
             "particle_",
             particle_valid,
             skip_prefixes=("particle_sihit_", "particle_calohit_"),
         )
-        particle_sihit_indptr, particle_sihit_indices, particle_sihit_shape = self._build_particle_sihit_csr(
+        particle_sihit_indptr, particle_sihit_indices, particle_sihit_shape, particle_num_sihits = self._build_particle_sihit_fields(
             targets["particle_particle_id"],
             inputs["sihit_particle_id"],
         )
-        particle_num_sihits = torch.diff(particle_sihit_indptr).to(torch.float32)
-        if calohits is not None:
-            particle_num_calohits = self._build_particle_num_calohits(targets["particle_particle_id"], calohits)
-            targets["particle_num_calohits"] = particle_num_calohits
+        particle_num_calo_hit_fields, particle_num_calohits = self._build_particle_num_calo_hit_fields_if_available(
+            targets["particle_particle_id"],
+            calohits,
+        )
+        if particle_num_calo_hit_fields is not None:
+            targets.update(particle_num_calo_hit_fields)
 
         constituent_debug = (
             f"after constituent cuts: n_particles={targets['particle_particle_id'].size(0)} "
@@ -707,9 +881,13 @@ class ODDDataset(Dataset):
         )
         if particle_num_calohits is not None:
             constituent_debug += (
-                f" n_calohits={int(particle_num_calohits.sum().item())} "
-                f"(neutral min={self.particle_min_num_calohits})"
+                f" n_calohits={int(particle_num_calohits.sum().item())}"
             )
+            if particle_num_calo_hit_fields is not None:
+                constituent_debug += (
+                    f" n_ecalhits={int(particle_num_calo_hit_fields['particle_num_ecalhits'].sum().item())}"
+                    f" n_hcalhits={int(particle_num_calo_hit_fields['particle_num_hcalhits'].sum().item())}"
+                )
         self._debug(
             constituent_debug
         )

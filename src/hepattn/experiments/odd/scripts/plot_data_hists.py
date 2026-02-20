@@ -22,6 +22,8 @@ PARTICLE_ALIASES = {
     "d0": r"$d_0$",
     "z0": r"$z_0$",
     "num_sihits": "Num. Si Hits",
+    "num_ecalhits": "Num. ECAL Hits",
+    "num_hcalhits": "Num. HCAL Hits",
     "num_calohits": "Num. Calo Hits",
 }
 
@@ -34,6 +36,8 @@ PARTICLE_SCALES = {
     "d0": "linear",
     "z0": "linear",
     "num_sihits": "linear",
+    "num_ecalhits": "linear",
+    "num_hcalhits": "linear",
     "num_calohits": "linear",
 }
 
@@ -46,6 +50,8 @@ PARTICLE_BINS = {
     "d0": np.linspace(-2.0, 2.0, 40),
     "z0": np.linspace(-100.0, 100.0, 40),
     "num_sihits": np.linspace(0.0, 32.0, 33),
+    "num_ecalhits": np.linspace(0.0, 128.0, 129),
+    "num_hcalhits": np.linspace(0.0, 128.0, 129),
     "num_calohits": np.linspace(0.0, 128.0, 129),
 }
 
@@ -87,11 +93,17 @@ SELECTION_COLOURS = {
     "is_tau": "tab:pink",
 }
 
-CALIBRATED_ENERGY_BINS = np.geomspace(1e-4, 2.5e2, 40)
+CALIBRATED_ENERGY_BINS = np.geomspace(1e-2, 1e1, 40)
 CALIBRATED_ENERGY_ALIASES = {
     "particle_energy_ecal_calib": "ECAL Calibrated Energy [GeV]",
     "particle_energy_hcal_calib": "HCAL Calibrated Energy [GeV]",
     "particle_energy_calo_calib": "Total Calibrated Energy [GeV]",
+}
+CALO_SUBSYSTEM_ALIASES = {
+    "ecb": "ECAL Barrel",
+    "ece": "ECAL Endcap",
+    "hcb": "HCAL Barrel",
+    "hce": "HCAL Endcap",
 }
 
 particle_hists = {
@@ -116,9 +128,10 @@ def _load_config():
 def _build_dataset_kwargs(config):
     dataset_kwargs = {
         "dirpath": config.get("test_dir", config["train_dir"]),
-        "num_events": 100,
+        "num_events": 10,
         "particle_min_pt": config["particle_min_pt"],
         "particle_max_abs_eta": config["particle_max_abs_eta"],
+        "particle_hit_cuts": config.get("particle_hit_cuts"),
         "particle_include_charged": config["particle_include_charged"],
         "particle_include_neutral": config["particle_include_neutral"],
         "event_type": config.get("event_type", "ttbar"),
@@ -127,11 +140,6 @@ def _build_dataset_kwargs(config):
         "return_tracks": False,
         "build_calohit_associations": True,
     }
-
-    if "particle_min_num_sihits" in config:
-        dataset_kwargs["particle_min_num_sihits"] = config["particle_min_num_sihits"]
-    if "particle_min_num_calohits" in config:
-        dataset_kwargs["particle_min_num_calohits"] = config["particle_min_num_calohits"]
 
     return dataset_kwargs
 
@@ -166,6 +174,22 @@ def _selected_hit_indices(indptr: np.ndarray, indices: np.ndarray, particle_mask
 
 
 def _fill_particle_hists(targets, selection_masks):
+    num_calohits = (
+        _to_numpy(targets["particle_num_calohits"][0])
+        if "particle_num_calohits" in targets
+        else np.diff(_to_numpy(targets["particle_calohit_indptr"][0]).astype(np.int64, copy=False))
+    )
+    num_ecalhits = (
+        _to_numpy(targets["particle_num_ecalhits"][0])
+        if "particle_num_ecalhits" in targets
+        else np.zeros_like(num_calohits, dtype=np.float32)
+    )
+    num_hcalhits = (
+        _to_numpy(targets["particle_num_hcalhits"][0])
+        if "particle_num_hcalhits" in targets
+        else np.zeros_like(num_calohits, dtype=np.float32)
+    )
+
     particle_values = {
         "pt": _to_numpy(targets["particle_pt"][0]),
         "energy": _to_numpy(targets["particle_energy"][0]),
@@ -175,7 +199,9 @@ def _fill_particle_hists(targets, selection_masks):
         "d0": _to_numpy(targets["particle_d0"][0]),
         "z0": _to_numpy(targets["particle_z0"][0]),
         "num_sihits": _to_numpy(targets["particle_num_sihits"][0]),
-        "num_calohits": np.diff(_to_numpy(targets["particle_calohit_indptr"][0]).astype(np.int64, copy=False)),
+        "num_ecalhits": num_ecalhits,
+        "num_hcalhits": num_hcalhits,
+        "num_calohits": num_calohits,
     }
 
     for field, selection_hists in particle_hists.items():
@@ -265,6 +291,105 @@ def _fill_hit_hists(inputs, targets, selection_masks):
                 hit_hists[hit_name][field][selection].fill(values[selected_hit_indices])
 
 
+def _accumulate_calohit_energy_pairs(inputs, calohit_energy_by_subsystem):
+    total_energy = _to_numpy(inputs["calohit_total_energy"][0]).astype(np.float32, copy=False)
+    contrib_energy_sum = _to_numpy(inputs["calohit_contrib_energy_sum"][0]).astype(np.float32, copy=False)
+    detector_id = _to_numpy(inputs["calohit_detector"][0]).astype(np.int64, copy=False)
+    valid_hits = _to_numpy(inputs["calohit_valid"][0]).astype(bool, copy=False)
+    valid_hits = valid_hits & np.isfinite(total_energy) & np.isfinite(contrib_energy_sum)
+
+    for subsystem, detector_ids in ODDDataset.CALO_SUBSYSTEM_DETECTOR_IDS.items():
+        subsystem_mask = valid_hits & np.isin(detector_id, detector_ids)
+        if not np.any(subsystem_mask):
+            continue
+        calohit_energy_by_subsystem[subsystem]["total"].append(total_energy[subsystem_mask])
+        calohit_energy_by_subsystem[subsystem]["contrib_sum"].append(contrib_energy_sum[subsystem_mask])
+
+
+def _concat_or_empty(chunks):
+    if not chunks:
+        return np.zeros(0, dtype=np.float32)
+    non_empty = [np.asarray(chunk, dtype=np.float32) for chunk in chunks if np.asarray(chunk).size > 0]
+    if not non_empty:
+        return np.zeros(0, dtype=np.float32)
+    return np.concatenate(non_empty)
+
+
+def _log_bins_from_positive(values: np.ndarray, num_bins: int = 45) -> np.ndarray:
+    positive_values = values[np.isfinite(values) & (values > 0.0)]
+    if positive_values.size == 0:
+        return np.geomspace(1e-8, 1.0, num_bins)
+
+    lower = max(float(positive_values.min()), 1e-12)
+    upper = float(positive_values.max())
+    if upper <= lower:
+        upper = lower * 1.001
+    return np.geomspace(lower, upper, num_bins)
+
+
+def _plot_calohit_total_vs_contrib_sum_2d(calohit_energy_by_subsystem, plot_path: Path) -> None:
+    subsystem_order = ["ecb", "ece", "hcb", "hce"]
+    subsystem_values = {}
+    all_total = []
+    all_contrib = []
+
+    for subsystem in subsystem_order:
+        total_energy = _concat_or_empty(calohit_energy_by_subsystem[subsystem]["total"])
+        contrib_energy_sum = _concat_or_empty(calohit_energy_by_subsystem[subsystem]["contrib_sum"])
+        subsystem_values[subsystem] = (total_energy, contrib_energy_sum)
+        if total_energy.size > 0:
+            all_total.append(total_energy)
+        if contrib_energy_sum.size > 0:
+            all_contrib.append(contrib_energy_sum)
+
+    total_bins = _log_bins_from_positive(_concat_or_empty(all_total))
+    contrib_bins = _log_bins_from_positive(_concat_or_empty(all_contrib))
+
+    fig, axes = plt.subplots(2, 2)
+    fig.set_size_inches(12, 10)
+    axes = axes.flatten()
+
+    for idx, subsystem in enumerate(subsystem_order):
+        total_energy, contrib_energy_sum = subsystem_values[subsystem]
+        valid = np.isfinite(total_energy) & np.isfinite(contrib_energy_sum) & (total_energy > 0.0) & (contrib_energy_sum > 0.0)
+
+        if np.any(valid):
+            hist = axes[idx].hist2d(
+                total_energy[valid],
+                contrib_energy_sum[valid],
+                bins=[total_bins, contrib_bins],
+                norm=LogNorm(),
+            )
+            cbar = fig.colorbar(hist[3], ax=axes[idx])
+            cbar.set_label("Count")
+
+            lower = max(total_bins[0], contrib_bins[0])
+            upper = min(total_bins[-1], contrib_bins[-1])
+            if upper > lower:
+                axes[idx].plot([lower, upper], [lower, upper], color="white", linestyle="--", linewidth=1.0, alpha=0.8)
+        else:
+            axes[idx].text(
+                0.5,
+                0.5,
+                "No positive entries",
+                ha="center",
+                va="center",
+                transform=axes[idx].transAxes,
+            )
+
+        axes[idx].set_xscale("log")
+        axes[idx].set_yscale("log")
+        axes[idx].set_title(CALO_SUBSYSTEM_ALIASES[subsystem])
+        axes[idx].set_xlabel("Calo Hit Total Energy [GeV]")
+        axes[idx].set_ylabel("Sum of Contribution Energies [GeV]")
+        axes[idx].grid(zorder=0, alpha=0.25, linestyle="--")
+
+    fig.suptitle("Calo Hit Energy vs Summed Particle Contribution Energy")
+    fig.tight_layout()
+    fig.savefig(plot_path / "odd_calohit_total_vs_contrib_sum_2d_by_subsystem.png")
+    plt.close(fig)
+
+
 def _plot_hist_group(hist_group, fields, scales, aliases, x_label_prefix, plot_path):
     fig, ax = plt.subplots(1, len(fields))
     fig.set_size_inches(4 * len(fields), 3)
@@ -296,17 +421,22 @@ def _plot_hist_group(hist_group, fields, scales, aliases, x_label_prefix, plot_p
 def main():
     config = _load_config()
     dataset = ODDDataset(**_build_dataset_kwargs(config))
-    num_events = min(100, len(dataset))
+    num_events = min(10, len(dataset))
     energy_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
     ecal_calib_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
     hcal_calib_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
     total_calib_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
+    calohit_energy_by_subsystem = {
+        subsystem: {"total": [], "contrib_sum": []}
+        for subsystem in ODDDataset.CALO_SUBSYSTEM_DETECTOR_IDS
+    }
 
     for event_idx in tqdm(range(num_events)):
         inputs, targets = dataset[event_idx]
         selection_masks = _selection_masks(targets)
         _fill_particle_hists(targets, selection_masks)
         _fill_hit_hists(inputs, targets, selection_masks)
+        _accumulate_calohit_energy_pairs(inputs, calohit_energy_by_subsystem)
 
         energy_true = _to_numpy(targets["particle_energy"][0])
         energy_ecal_calib = _to_numpy(targets["particle_energy_ecal_calib"][0])
@@ -328,7 +458,7 @@ def main():
         "odd_particle_kinematics": ["pt", "eta", "phi"],
         "odd_particle_energy": ["energy", "energy_calo_sum"],
         "odd_particle_impact_params": ["d0", "z0"],
-        "odd_particle_hit_multiplicity": ["num_sihits", "num_calohits"],
+        "odd_particle_hit_multiplicity": ["num_sihits", "num_ecalhits", "num_hcalhits"],
     }
 
     for plot_name, fields in particle_plots.items():
@@ -381,6 +511,11 @@ def main():
             energy_total_calib=energy_total_calib,
             plot_path=plot_dir,
         )
+
+    _plot_calohit_total_vs_contrib_sum_2d(
+        calohit_energy_by_subsystem=calohit_energy_by_subsystem,
+        plot_path=plot_dir,
+    )
 
 
 if __name__ == "__main__":

@@ -20,16 +20,12 @@ def _build_dataset_kwargs(config):
         "num_events": config.get("num_test", -1),
         "particle_min_pt": config["particle_min_pt"],
         "particle_max_abs_eta": config["particle_max_abs_eta"],
+        "particle_hit_cuts": config.get("particle_hit_cuts"),
         "particle_include_charged": config["particle_include_charged"],
         "particle_include_neutral": config["particle_include_neutral"],
         "event_type": config.get("event_type", "ttbar"),
         "debug": config.get("plot_debug", False),
     }
-
-    if "particle_min_num_sihits" in config:
-        dataset_kwargs["particle_min_num_sihits"] = config["particle_min_num_sihits"]
-    if "particle_min_num_calohits" in config:
-        dataset_kwargs["particle_min_num_calohits"] = config["particle_min_num_calohits"]
 
     return dataset_kwargs
 
@@ -72,7 +68,7 @@ def _print_tensor_summary(tensors: dict[str, torch.Tensor]) -> None:
 def _run_plot_round(
     event_data: dict[str, torch.Tensor],
     plot_save_dir: Path,
-    plot_configs: list[tuple[str, str, dict[str, bool]]],
+    plot_configs: list[tuple[str, str, dict[str, object]]],
     top_n_particles_by_pt: int | None = None,
 ) -> None:
     plot_save_dir.mkdir(exist_ok=True, parents=True)
@@ -102,7 +98,10 @@ _print_tensor_summary(event_data)
 
 plot_base_dir = Path(__file__).resolve().parents[1] / "plots" / "event_displays"
 plot_all_particles_dir = plot_base_dir / "all_particles"
-plot_top_particles_dir = plot_base_dir / "top100_particles"
+top_n_particles_by_pt = 100
+plot_top_particles_dir = plot_base_dir / f"top{top_n_particles_by_pt}_particles"
+plot_all_particles_round = bool(config.get("plot_all_particles_round", False))
+plot_top_particles_round = bool(config.get("plot_top_particles_round", True))
 
 particle_plot_configs = [
     (
@@ -148,6 +147,15 @@ particle_plot_configs = [
             "plot_particles": True,
         },
     ),
+    (
+        "particles_tracker_hits_and_helix.png",
+        "Plotting particle tracker hits + helices",
+        {
+            "plot_particle_sihits": True,
+            "plot_particles": True,
+            "particle_helix_linestyle": "--",
+        },
+    ),
 ]
 
 track_plot_configs = [
@@ -169,15 +177,21 @@ track_plot_configs = [
     ),
 ]
 
-_run_plot_round(
-    event_data,
-    plot_all_particles_dir,
-    particle_plot_configs + track_plot_configs,
-)
+if plot_all_particles_round:
+    _run_plot_round(
+        event_data,
+        plot_all_particles_dir,
+        particle_plot_configs + track_plot_configs,
+    )
+else:
+    print("Skipping all-particles plot round (plot_all_particles_round=False)", flush=True)
 
-_run_plot_round(
-    event_data,
-    plot_top_particles_dir,
-    particle_plot_configs,
-    top_n_particles_by_pt=100,
-)
+if plot_top_particles_round:
+    _run_plot_round(
+        event_data,
+        plot_top_particles_dir,
+        particle_plot_configs,
+        top_n_particles_by_pt=top_n_particles_by_pt,
+    )
+else:
+    print("Skipping top-particles plot round (plot_top_particles_round=False)", flush=True)

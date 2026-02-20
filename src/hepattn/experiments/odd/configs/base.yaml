@@ -19,6 +19,27 @@ data:
   particle_min_pt: 0.5
   particle_max_abs_eta: 4.0
 
+  # Optional per-particle-type hit-content cuts.
+  # When non-empty, these override the legacy global hit cuts.
+  # Supported particle keys: all, charged_hadron, neutral_hadron,
+  # electron, photon, muon, tau, neutrino, other
+  # Supported cut keys: min_num_sihit, min_num_ecal, min_num_hcal
+  particle_hit_cuts:
+    charged_hadron:
+      min_num_sihit: 3
+      min_num_hcal: 0
+    neutral_hadron:
+      min_num_hcal: 0
+    electron:
+      min_num_sihit: 3
+      min_num_ecal: 0
+    photon:
+      min_num_ecal: 0
+    muon:
+      min_num_sihit: 3
+    tau:
+      min_num_sihit: 3
+
   # Whether to include charged / neutral particles as targets
   particle_include_charged: true
   particle_include_neutral: true

@@ -157,9 +157,18 @@ def _build_helix_path(
     magnetic_field_t: float,
     helix_radius_m: float,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    omega = charge_sign * ((0.3 * magnetic_field_t) / pt.clamp_min(1e-6))
-    curvature_radius = pt / (0.3 * magnetic_field_t)
-    max_transverse_len = min(2.0 * helix_radius_m, float((4.0 * torch.pi * curvature_radius).item()))
+    b_field = float(magnetic_field_t)
+    b_abs = abs(b_field)
+
+    # Use the right-handed convention for +z B-field:
+    # omega = -(q * 0.3 * B) / pT
+    if b_abs < 1e-6:
+        omega = torch.zeros_like(pt)
+        max_transverse_len = 2.0 * helix_radius_m
+    else:
+        omega = -charge_sign * ((0.3 * b_field) / pt.clamp_min(1e-6))
+        curvature_radius = pt / (0.3 * b_abs)
+        max_transverse_len = min(2.0 * helix_radius_m, float((4.0 * torch.pi * curvature_radius).item()))
     max_transverse_len = max(max_transverse_len, 0.05)
     path_s = torch.linspace(0.0, max_transverse_len, 256, dtype=torch.float32, device=phi.device)
 
@@ -283,6 +292,7 @@ def plot_odd_event(
     magnetic_field_t: float = 3.0,
     helix_radius_m: float = 1.0,
     top_n_particles_by_pt: int | None = None,
+    particle_helix_linestyle: str = "-",
 ):
     if not any(
         [
@@ -420,7 +430,14 @@ def plot_odd_event(
             coords = {"x": x_path, "y": y_path, "z": z_path}
             if x_field == "z" and y_field == "y":
                 coords["y"] = y_linear_path
-            ax[ax_idx].plot(coords[x_field], coords[y_field], color=color, linewidth=1.25, alpha=0.95)
+            ax[ax_idx].plot(
+                coords[x_field],
+                coords[y_field],
+                color=color,
+                linewidth=1.25,
+                alpha=0.95,
+                linestyle=particle_helix_linestyle,
+            )
 
         for x_path, y_path, z_path, y_linear_path, color in track_helices:
             x_path, y_path, z_path, y_linear_path = _clip_helix_to_z_extent(x_path, y_path, z_path, y_linear_path, z_extent)
