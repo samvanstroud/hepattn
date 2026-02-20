@@ -54,14 +54,14 @@ class ColliderMLModel(ModelWrapper):
                 both_valid = true_valid & pred_valid
 
                 # Whether a truth object is efficient
-                effs = ((hit_tp / hit_t) >= wp) & both_valid
+                effs = ((hit_tp / (hit_t + 1e-8)) >= wp) & both_valid
 
                 # Whether a pred object is pure / not fake
-                purs = ((hit_tp / hit_p) >= wp) & both_valid
+                purs = ((hit_tp / (hit_p + 1e-8)) >= wp) & both_valid
 
                 # Calculate the event efficiency / purity
-                eff = effs.float().sum(-1) / true_valid.float().sum(-1)
-                pur = purs.float().sum(-1) / pred_valid.float().sum(-1)
+                eff = effs.float().sum(-1) / (true_valid.float().sum(-1) + 1e-8)
+                pur = purs.float().sum(-1) / (pred_valid.float().sum(-1) + 1e-8)
 
                 self.log(f"{stage}/p{wp}_{hit}_eff", eff.mean())
                 self.log(f"{stage}/p{wp}_{hit}_pur", pur.mean())
