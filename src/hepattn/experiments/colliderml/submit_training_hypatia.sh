@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=odd-training
+#SBATCH --job-name=colliderml-training
 #SBATCH -p GPU
 #SBATCH --nodes=1
 #SBATCH --export=ALL
@@ -8,7 +8,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=24G
-#SBATCH --output=/share/rcifdata/maxhart/hepattn/src/hepattn/experiments/odd/slurm_logs/slurm-%j.%x.out
+#SBATCH --output=/share/rcifdata/maxhart/hepattn/src/hepattn/experiments/colliderml/slurm_logs/slurm-%j.%x.out
 
 
 # Comet variables
@@ -37,7 +37,7 @@ export TMPDIR=/share/rcifdata/maxhart/tmp/
 echo "Running training script..."
 
 # Python command that will be run
-PYTORCH_CMD="python src/hepattn/experiments/odd/main.py fit --config src/hepattn/experiments/odd/configs/base.yaml "
+PYTORCH_CMD="python src/hepattn/experiments/colliderml/main.py fit --config src/hepattn/experiments/colliderml/configs/base.yaml "
 
 # Pixi commnand that runs the python command inside the pixi env
 PIXI_CMD="pixi run $PYTORCH_CMD"

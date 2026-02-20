@@ -17,7 +17,7 @@ model:
                   object_bce: 0.1
                 costs:
                   object_bce: 10.0
-                dim: *dim
+                dim: 256
                 null_weight: 1.0
                 mask_queries: false
 
@@ -36,7 +36,7 @@ model:
                   mask_bce: 10.0
                   #mask_dice: 2.0
                   #mask_focal: 50.0
-                dim: *dim
+                dim: 256
                 null_weight: 1.0
 
             - class_path: hepattn.models.task.ObjectHitMaskTask
@@ -54,7 +54,7 @@ model:
                   mask_bce: 10.0
                   #mask_dice: 2.0
                   #mask_focal: 50.0
-                dim: *dim
+                dim: 256
                 null_weight: 1.0
 
             - class_path: hepattn.models.task.ObjectHitMaskTask
@@ -72,7 +72,7 @@ model:
                   mask_bce: 0.1
                   #mask_dice: 2.0
                   #mask_focal: 50.0
-                dim: *dim
+                dim: 256
                 null_weight: 1.0
 
             - class_path: hepattn.models.task.ObjectHitMaskTask
@@ -90,7 +90,7 @@ model:
                   mask_bce: 0.5
                   #mask_dice: 2.0
                   #mask_focal: 50.0
-                dim: *dim
+                dim: 256
                 null_weight: 1.0
 
             - class_path: hepattn.models.task.ObjectRegressionTask
@@ -99,7 +99,7 @@ model:
                 input_object: query
                 output_object: flow
                 target_object: particle
-                dim: *dim
+                dim: 256
                 loss_weight: 1.0
                 cost_weight: 1.0
                 fields:
@@ -117,7 +117,7 @@ model:
                 input_object: query
                 output_object: flow_vtxd
                 target_object: particle_vtxd
-                dim: *dim
+                dim: 256
                 loss_weight: 0.01
                 cost_weight: 0.01
                 fields:
@@ -132,7 +132,7 @@ model:
                 input_object: query
                 output_object: flow_trkr
                 target_object: particle_trkr
-                dim: *dim
+                dim: 256
                 loss_weight: 0.01
                 cost_weight: 0.01
                 fields:

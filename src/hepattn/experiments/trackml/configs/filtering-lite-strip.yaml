@@ -2,9 +2,9 @@ seed_everything: 42
 name: HC-v3-lite-strips-separate-encoders
 
 data:
-  train_dir:  
-  val_dir: 
-  test_dir: 
+  train_dir:
+  val_dir:
+  test_dir:
 
   num_workers: 10
   num_train: -1

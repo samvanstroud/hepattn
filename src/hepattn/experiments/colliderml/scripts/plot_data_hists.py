@@ -6,7 +6,7 @@ import yaml
 from matplotlib.colors import LogNorm
 from tqdm import tqdm
 
-from hepattn.experiments.odd.data import ODDDataset
+from hepattn.experiments.colliderml.data import ColliderMLDataset
 from hepattn.utils.histogram import CountingHistogram
 from hepattn.utils.plotting import plot_hist_to_ax
 
@@ -245,7 +245,7 @@ def _plot_calibrated_energy_vs_true_2d(
 
     fig.suptitle(f"{class_label}")
     fig.tight_layout()
-    fig.savefig(plot_path / f"odd_particle_energy_calib_vs_true_2d_{class_name}.png")
+    fig.savefig(plot_path / f"colliderml_particle_energy_calib_vs_true_2d_{class_name}.png")
     plt.close(fig)
 
 
@@ -286,7 +286,7 @@ def _accumulate_calohit_energy_pairs(inputs, calohit_energy_by_subsystem):
     valid_hits = _to_numpy(inputs["calohit_valid"][0]).astype(bool, copy=False)
     valid_hits = valid_hits & np.isfinite(total_energy) & np.isfinite(contrib_energy_sum)
 
-    for subsystem, detector_ids in ODDDataset.CALO_SUBSYSTEM_DETECTOR_IDS.items():
+    for subsystem, detector_ids in ColliderMLDataset.CALO_SUBSYSTEM_DETECTOR_IDS.items():
         subsystem_mask = valid_hits & np.isin(detector_id, detector_ids)
         if not np.any(subsystem_mask):
             continue
@@ -374,7 +374,7 @@ def _plot_calohit_total_vs_contrib_sum_2d(calohit_energy_by_subsystem, plot_path
 
     fig.suptitle("Calo Hit Energy vs Summed Particle Contribution Energy")
     fig.tight_layout()
-    fig.savefig(plot_path / "odd_calohit_total_vs_contrib_sum_2d_by_subsystem.png")
+    fig.savefig(plot_path / "colliderml_calohit_total_vs_contrib_sum_2d_by_subsystem.png")
     plt.close(fig)
 
 
@@ -408,13 +408,13 @@ def _plot_hist_group(hist_group, fields, scales, aliases, x_label_prefix, plot_p
 
 def main():
     config = _load_config()
-    dataset = ODDDataset(**_build_dataset_kwargs(config))
+    dataset = ColliderMLDataset(**_build_dataset_kwargs(config))
     num_events = min(10, len(dataset))
     energy_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
     ecal_calib_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
     hcal_calib_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
     total_calib_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
-    calohit_energy_by_subsystem = {subsystem: {"total": [], "contrib_sum": []} for subsystem in ODDDataset.CALO_SUBSYSTEM_DETECTOR_IDS}
+    calohit_energy_by_subsystem = {subsystem: {"total": [], "contrib_sum": []} for subsystem in ColliderMLDataset.CALO_SUBSYSTEM_DETECTOR_IDS}
 
     for event_idx in tqdm(range(num_events)):
         inputs, targets = dataset[event_idx]
@@ -440,10 +440,10 @@ def main():
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     particle_plots = {
-        "odd_particle_kinematics": ["pt", "eta", "phi"],
-        "odd_particle_energy": ["energy", "energy_calo_sum"],
-        "odd_particle_impact_params": ["d0", "z0"],
-        "odd_particle_hit_multiplicity": ["num_sihits", "num_ecalhits", "num_hcalhits"],
+        "colliderml_particle_kinematics": ["pt", "eta", "phi"],
+        "colliderml_particle_energy": ["energy", "energy_calo_sum"],
+        "colliderml_particle_impact_params": ["d0", "z0"],
+        "colliderml_particle_hit_multiplicity": ["num_sihits", "num_ecalhits", "num_hcalhits"],
     }
 
     for plot_name, fields in particle_plots.items():
@@ -462,7 +462,7 @@ def main():
         scales=HIT_SCALES,
         aliases=HIT_ALIASES,
         x_label_prefix="Si Hit",
-        plot_path=plot_dir / "odd_sihit_xyz.png",
+        plot_path=plot_dir / "colliderml_sihit_xyz.png",
     )
 
     _plot_hist_group(
@@ -471,7 +471,7 @@ def main():
         scales=HIT_SCALES,
         aliases=HIT_ALIASES,
         x_label_prefix="Calo Hit",
-        plot_path=plot_dir / "odd_calohit_xyz.png",
+        plot_path=plot_dir / "colliderml_calohit_xyz.png",
     )
 
     for selection, class_label in SELECTION_ALIASES.items():

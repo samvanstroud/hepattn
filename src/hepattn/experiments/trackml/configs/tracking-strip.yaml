@@ -6,10 +6,10 @@ data:
   val_dir:
   test_dir:
 
-  hit_eval_train: 
-  hit_eval_val: 
-  hit_eval_test: 
-  
+  hit_eval_train:
+  hit_eval_val:
+  hit_eval_test:
+
   num_workers: 10
   num_train: -1
   num_test: -1

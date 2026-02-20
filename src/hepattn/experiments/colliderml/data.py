@@ -12,7 +12,7 @@ from lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 
 
-class ODDDataset(Dataset):
+class ColliderMLDataset(Dataset):
     CALO_SUBSYSTEMS = ("ecb", "ece", "hcb", "hce")
     CALO_SUBSYSTEM_DETECTOR_IDS: ClassVar[dict[str, np.ndarray]] = {
         "ecb": np.array([10], dtype=np.int64),
@@ -262,7 +262,7 @@ class ODDDataset(Dataset):
 
     def _debug(self, message: str) -> None:
         if self.debug:
-            print(f"[ODDDataset] {message}", flush=True)
+            print(f"[ColliderMLDataset] {message}", flush=True)
 
     @staticmethod
     def _record_to_tensors(
@@ -379,7 +379,7 @@ class ODDDataset(Dataset):
     @staticmethod
     def _empty_csr_components(num_rows: int, num_cols: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         empty = np.zeros(0, dtype=np.int64)
-        return ODDDataset._build_csr_components(num_rows, num_cols, empty, empty)
+        return ColliderMLDataset._build_csr_components(num_rows, num_cols, empty, empty)
 
     @staticmethod
     def _float32_bincount(
@@ -909,7 +909,7 @@ class ODDDataset(Dataset):
         return inputs_out, targets_out
 
 
-class ODDDataModule(LightningDataModule):
+class ColliderMLDataModule(LightningDataModule):
     def __init__(
         self,
         train_dir: str,
@@ -936,10 +936,10 @@ class ODDDataModule(LightningDataModule):
 
     def setup(self, stage: str):
         if stage in {"fit", "test"}:
-            self.train_dset = ODDDataset(dirpath=self.train_dir, num_events=self.num_train, **self.kwargs)
+            self.train_dset = ColliderMLDataset(dirpath=self.train_dir, num_events=self.num_train, **self.kwargs)
 
         if stage == "fit":
-            self.val_dset = ODDDataset(dirpath=self.val_dir, num_events=self.num_val, **self.kwargs)
+            self.val_dset = ColliderMLDataset(dirpath=self.val_dir, num_events=self.num_val, **self.kwargs)
 
         # Only print train/val dataset details when actually training
         if stage == "fit" and self.trainer.is_global_zero:
@@ -948,10 +948,10 @@ class ODDDataModule(LightningDataModule):
 
         if stage == "test":
             assert self.test_dir is not None, "No test file specified, see --data.test_dir"
-            self.test_dset = ODDDataset(dirpath=self.test_dir, num_events=self.num_test, **self.kwargs)
+            self.test_dset = ColliderMLDataset(dirpath=self.test_dir, num_events=self.num_test, **self.kwargs)
             print(f"Created test dataset with {len(self.test_dset):,} events")
 
-    def get_dataloader(self, stage: str, dataset: ODDDataset, shuffle: bool):
+    def get_dataloader(self, stage: str, dataset: ColliderMLDataset, shuffle: bool):
         return DataLoader(
             dataset=dataset,
             batch_size=None,

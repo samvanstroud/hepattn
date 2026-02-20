@@ -1,4 +1,4 @@
-name: ODD_Tracking_Example
+name: ColliderML_Tracking_Example
 
 data:
   # Paths to preprocessed data directories
@@ -62,7 +62,7 @@ trainer:
   logger:
     class_path: hepattn.utils.loggers.MyCometLogger
     init_args:
-      project: odd
+      project: colliderml
 
   callbacks:
     # - class_path: hepattn.callbacks.Compile

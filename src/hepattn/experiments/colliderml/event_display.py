@@ -229,7 +229,7 @@ def _build_object_helices(
         charge_sign = torch.where(charge_sign == 0, torch.ones_like(charge_sign), charge_sign)
 
     pt = pt.abs().clamp_min(1e-6)
-    # ODD impact parameters are provided in mm; convert to m for helix geometry.
+    # ColliderML impact parameters are provided in mm; convert to m for helix geometry.
     d0 = 1e-3 * data[f"{object_name}_d0"][batch_idx].to(torch.float32)
     z0 = 1e-3 * data[f"{object_name}_z0"][batch_idx].to(torch.float32)
     valid = data[f"{object_name}_valid"][batch_idx].to(torch.bool)
@@ -278,7 +278,7 @@ def _clip_helix_to_z_extent(
     )
 
 
-def plot_odd_event(
+def plot_colliderml_event(
     data,
     batch_idx: int = 0,
     plot_sihits: bool = False,
@@ -331,14 +331,8 @@ def plot_odd_event(
         )
 
     selected_particle_calohit_mask = None
-    has_particle_calohit_assoc = (
-        "particle_calohit_indptr" in data and "particle_calohit_indices" in data and "calohit_valid" in data
-    )
-    if (
-        particle_indices is not None
-        and (plot_calohits or plot_calohits_by_detector or plot_particle_calohits)
-        and has_particle_calohit_assoc
-    ):
+    has_particle_calohit_assoc = "particle_calohit_indptr" in data and "particle_calohit_indices" in data and "calohit_valid" in data
+    if particle_indices is not None and (plot_calohits or plot_calohits_by_detector or plot_particle_calohits) and has_particle_calohit_assoc:
         selected_particle_calohit_mask = _build_csr_selected_hit_mask(
             data["particle_calohit_indptr"][batch_idx],
             data["particle_calohit_indices"][batch_idx],

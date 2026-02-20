@@ -16,7 +16,7 @@ data:
   hit_eval_train: /projects/u5du/pduckett/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_train_eval.h5
   hit_eval_val: /projects/u5du/pduckett/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_val_eval.h5
   hit_eval_test: /projects/u5du/pduckett/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_test_eval.h5
-  
+
   num_workers: 10
   num_train: -1
   num_test: -1

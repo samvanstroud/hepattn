@@ -2,7 +2,7 @@ seed_everything: 42
 name: TRK-v1-queryPE-phionly-lite
 
 data:
-  train_dir:  /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/train/
+  train_dir: /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/train/
   val_dir: /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/val/
   test_dir: /share/rcifdata/pduckett/hepattn-main/data/trackml/prepped/test/
 

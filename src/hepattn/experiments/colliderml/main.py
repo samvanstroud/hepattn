@@ -1,14 +1,14 @@
 from lightning.pytorch.cli import ArgsType
 
-from hepattn.experiments.odd.data import ODDDataModule
-from hepattn.experiments.odd.model import ODDModel
+from hepattn.experiments.colliderml.data import ColliderMLDataModule
+from hepattn.experiments.colliderml.model import ColliderMLModel
 from hepattn.utils.cli import CLI
 
 
 def main(args: ArgsType = None) -> None:
     CLI(
-        model_class=ODDModel,
-        datamodule_class=ODDDataModule,
+        model_class=ColliderMLModel,
+        datamodule_class=ColliderMLDataModule,
         args=args,
         parser_kwargs={"default_env": True},
     )

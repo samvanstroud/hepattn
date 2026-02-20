@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import torch
 import yaml
 
-from hepattn.experiments.odd.data import ODDDataset
-from hepattn.experiments.odd.event_display import plot_odd_event
+from hepattn.experiments.colliderml.data import ColliderMLDataset
+from hepattn.experiments.colliderml.event_display import plot_colliderml_event
 
 
 def _load_config():
@@ -76,7 +76,7 @@ def _run_plot_round(
     for filename, label, kwargs in plot_configs:
         t0 = perf_counter()
         print(f"{label} [{round_label}]...", flush=True)
-        fig = plot_odd_event(
+        fig = plot_colliderml_event(
             event_data,
             top_n_particles_by_pt=top_n_particles_by_pt,
             **kwargs,
@@ -90,7 +90,7 @@ config = _load_config()
 dataset_kwargs = _build_dataset_kwargs(config)
 
 print("Loading event (sihits + calohits + tracks)...")
-event_dataset = ODDDataset(**dataset_kwargs, return_calohits=True, return_tracks=True)
+event_dataset = ColliderMLDataset(**dataset_kwargs, return_calohits=True, return_tracks=True)
 event_data = _load_first_event(event_dataset)
 _print_tensor_summary(event_data)
 
