@@ -224,7 +224,7 @@ class Attention(nn.Module):
         if attn_type in FLASH_ATTN_TYPES:
             # TODO: Will need to change when supporting window with flex
             self.window_size = (window_size // 2, window_size // 2) if window_size is not None else (-1, -1)
-        if torch_compile or attn_type == "flex":
+        if torch_compile:
             self.attn = torch.compile(self.attn, dynamic=True)
         return self.attn_type
 
@@ -377,7 +377,9 @@ class Attention(nn.Module):
         if self.attn_type == "flex":
             assert isinstance(attn_mask, BlockMask) or attn_mask is None, "Flex attention requires a BlockMask for attention masking."
             assert not kv_mask, "Flex attention with key/value padding masks is not supported yet."
-            assert q.shape[0] == 1, "Flex attention currently only supports batch size of 1."
+            # Batch size > 1 only supported when no block_mask is provided
+            if attn_mask is not None:
+                assert q.shape[0] == 1, "Flex attention with block_mask currently only supports batch size of 1."
             # TODO: Should block_mask be an argument separate from attn_mask to simplify things?
             out = self.attn(q, k, v, block_mask=attn_mask, score_mod=score_mod)
 

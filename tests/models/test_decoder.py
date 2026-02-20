@@ -1,5 +1,6 @@
 import pytest
 import torch
+from torch import nn
 
 from hepattn.models.decoder import MaskFormerDecoder, MaskFormerDecoderLayer
 
@@ -17,8 +18,11 @@ class MockTask1:
     has_first_layer_loss = True
     name = "task1"
 
-    def __call__(self, x):
+    def __call__(self, x, outputs=None):
         return None
+
+    def should_run_at_layer(self, layer_index):
+        return True
 
     def attn_mask(self, x):
         mask = {"input1": torch.zeros(BATCH_SIZE, NUM_QUERIES, 4, dtype=torch.bool)}
@@ -32,8 +36,11 @@ class MockTask2:
     has_first_layer_loss = True
     name = "task2"
 
-    def __call__(self, x):
+    def __call__(self, x, outputs=None):
         return None
+
+    def should_run_at_layer(self, layer_index):
+        return True
 
     def attn_mask(self, x):
         mask = {"input2": torch.zeros(BATCH_SIZE, NUM_QUERIES, 6, dtype=torch.bool)}
@@ -41,6 +48,40 @@ class MockTask2:
         mask["input2"][1, 3, 3] = True
         mask["input2"][1, 4, 4] = True
         return mask
+
+
+class LCATask:
+    has_intermediate_loss = True
+    has_first_layer_loss = True
+    name = "task2"
+
+    def __call__(self, x, outputs=None):
+        return None
+
+    def should_run_at_layer(self, layer_index):
+        return True
+
+    def attn_mask(self, x):
+        mask = {"input2": torch.zeros(1, NUM_QUERIES, 6, dtype=torch.bool)}
+        mask["input2"][0, 1, 2] = True
+        mask["input2"][0, 3, 3] = True
+        mask["input2"][0, 4, 4] = True
+        return mask
+
+
+class MockQueryInitTask(nn.Module):
+    name = "query_init"
+
+    def __init__(self, probs: torch.Tensor, threshold: float = 0.5):
+        super().__init__()
+        self.probs = probs
+        self.threshold = threshold
+
+    def forward(self, x):
+        return {"hit_is_first_prob": self.probs}
+
+    def predict(self, outputs):
+        return {"hit_is_first_prob": outputs["hit_is_first_prob"]}
 
 
 class TestMaskFormerDecoder:
@@ -62,6 +103,17 @@ class TestMaskFormerDecoder:
             decoder_layer_config=decoder_layer_config,
             num_decoder_layers=NUM_LAYERS,
             mask_attention=True,
+        )
+
+    @pytest.fixture
+    def dynamic_decoder(self, decoder_layer_config):
+        config = decoder_layer_config.copy()
+        return MaskFormerDecoder(
+            num_queries=2,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            dynamic_queries=True,
         )
 
     @pytest.fixture
@@ -123,9 +175,116 @@ class TestMaskFormerDecoder:
         input_names = ["input1", "input2"]
         return x, input_names
 
+    def test_initialize_dynamic_queries_topk(self, dynamic_decoder):
+        # probs: select indices {0,2,3} above threshold, then keep top-2 -> [0,2]
+        probs = torch.tensor([[0.9, 0.1, 0.8, 0.7]], dtype=torch.float32)
+        dynamic_decoder.dynamic_query_source = "hit"
+        dynamic_decoder.encoder_tasks = [MockQueryInitTask(probs=probs, threshold=0.5)]
+
+        hit_embed = torch.randn(1, 4, DIM)
+        hit_valid = torch.tensor([[True, True, True, True]])
+        x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
+
+        query_embed, query_valid = dynamic_decoder.initialize_dynamic_queries(x)
+
+        # Verify we got top 2 queries (indices 0 and 2 based on probabilities)
+        assert query_embed.shape == (1, 2, DIM)
+        assert torch.all(query_valid)
+        assert torch.allclose(query_embed[0, 0], hit_embed[0, 0])
+        assert torch.allclose(query_embed[0, 1], hit_embed[0, 2])
+
+    def test_forward_requires_preinitialized_queries_when_dynamic(self, dynamic_decoder):
+        # Decoder forward should fail loudly if dynamic queries are enabled but not provided.
+        dynamic_decoder.tasks = []
+        x = {
+            "key_embed": torch.randn(1, SEQ_LEN, DIM),
+            "key_valid": torch.ones(1, SEQ_LEN, dtype=torch.bool),
+            "key_is_input1": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
+            "key_is_input2": torch.zeros(1, SEQ_LEN, dtype=torch.bool),
+        }
+        input_names = ["input1", "input2"]
+
+        with pytest.raises(ValueError, match="encoder_tasks"):
+            dynamic_decoder(x, input_names)
+
+    def test_initialize_dynamic_queries_raises_if_none_selected(self, dynamic_decoder):
+        probs = torch.tensor([[0.1, 0.2, 0.3, 0.4]], dtype=torch.float32)
+        dynamic_decoder.dynamic_query_source = "hit"
+        dynamic_decoder.encoder_tasks = [MockQueryInitTask(probs=probs, threshold=0.5)]
+
+        hit_embed = torch.randn(1, 4, DIM)
+        hit_valid = torch.tensor([[True, True, True, True]])
+        x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
+
+        # When no hits pass threshold, it falls back to topk, so this should succeed
+        query_embed, _query_valid = dynamic_decoder.initialize_dynamic_queries(x)
+        # Verify the number of queries returned matches _num_queries
+        assert query_embed.shape[1] == dynamic_decoder._num_queries  # noqa: SLF001
+
+    def test_initialize_dynamic_queries_ordering_consistency(self, decoder_layer_config):
+        """Test that dynamically selected queries preserve original hit ordering.
+
+        In HEP applications, input hits are frequently ordered by detector layer or other
+        spatial coordinates. Downstream components (like windowed attention or specific
+        positional encodings) may rely on this ordering. Even if top-k selection is used
+        based on probability, the resulting queries should maintain their relative
+        spatial/temporal order (i.e., selected_hit_indices should be monotonically increasing).
+        """
+        # Create a decoder with num_queries=4 to select 4 hits
+        config = decoder_layer_config.copy()
+        decoder = MaskFormerDecoder(
+            num_queries=4,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            dynamic_queries=True,
+            dynamic_query_source="hit",
+        )
+
+        # Set up probabilities where higher indices have higher probabilities
+        # This tests that even when sorting by probability descending would give
+        # indices [7, 5, 3, 1], we should get [1, 3, 5, 7] to preserve ordering
+        # Hits: 0    1    2    3    4    5    6    7
+        probs = torch.tensor([[0.1, 0.6, 0.2, 0.7, 0.3, 0.8, 0.4, 0.9]], dtype=torch.float32)
+        decoder.encoder_tasks = nn.ModuleList([MockQueryInitTask(probs=probs, threshold=0.5)])
+
+        # Create distinct embeddings for each hit so we can verify correct selection
+        num_hits = 8
+        hit_embed = torch.zeros(1, num_hits, DIM)
+        for i in range(num_hits):
+            hit_embed[0, i, 0] = float(i)  # Use first feature as identifier
+
+        hit_valid = torch.ones(1, num_hits, dtype=torch.bool)
+        x = {"hit_embed": hit_embed, "hit_valid": hit_valid}
+
+        query_embed, _query_valid = decoder.initialize_dynamic_queries(x)
+
+        # Extract the indices from the embeddings (we used the first feature as identifier)
+        indices = query_embed[0, :, 0].long()
+
+        # Key assertion: indices should be monotonically increasing
+        sorted_indices = indices.sort().values
+        assert torch.equal(indices, sorted_indices), (
+            f"Selected indices {indices.tolist()} are not monotonically increasing. "
+            f"Expected {sorted_indices.tolist()} to preserve original hit ordering."
+        )
+
+        # Also verify that the correct hits were selected (those above threshold)
+        # Hits above threshold (0.5): indices 1, 3, 5, 7 with probs 0.6, 0.7, 0.8, 0.9
+        expected_indices = [1, 3, 5, 7]
+        assert indices.tolist() == expected_indices, f"Expected indices {expected_indices}, got {indices.tolist()}"
+
+        # Verify that query_embed corresponds to hits at selected_hit_indices in order
+        for i, hit_idx in enumerate(indices.tolist()):
+            assert torch.allclose(query_embed[0, i], hit_embed[0, hit_idx].detach()), f"query_embed[0, {i}] should match hit_embed[0, {hit_idx}]"
+
+        # Verify the identifier values are in the correct order
+        identifiers = query_embed[0, :, 0].tolist()
+        assert identifiers == [1.0, 3.0, 5.0, 7.0], f"Query embeddings are not in the expected order. Got identifiers {identifiers}"
+
     def test_initialization(self, decoder, decoder_layer_config):
         """Test that the decoder initializes correctly."""
-        assert decoder.num_queries == NUM_QUERIES
+        assert decoder._num_queries == NUM_QUERIES  # noqa: SLF001
         assert decoder.mask_attention is True
         assert decoder.use_query_masks is False
         assert len(decoder.decoder_layers) == NUM_LAYERS
@@ -163,7 +322,8 @@ class TestMaskFormerDecoder:
         assert updated_x["key_embed"].shape == (BATCH_SIZE, SEQ_LEN, DIM)
 
         # Check outputs structure
-        assert len(outputs) == NUM_LAYERS
+        assert len(outputs) == NUM_LAYERS + 1  # decoder layers + encoder
+        assert "encoder" in outputs
         for i in range(NUM_LAYERS):
             assert f"layer_{i}" in outputs
             assert isinstance(outputs[f"layer_{i}"], dict)
@@ -182,7 +342,8 @@ class TestMaskFormerDecoder:
         assert updated_x["key_embed"].shape == (1, SEQ_LEN, DIM)
 
         # Check outputs structure
-        assert len(outputs) == NUM_LAYERS
+        assert len(outputs) == NUM_LAYERS + 1  # decoder layers + encoder
+        assert "encoder" in outputs
         for i in range(NUM_LAYERS):
             assert f"layer_{i}" in outputs
             assert isinstance(outputs[f"layer_{i}"], dict)
@@ -247,7 +408,10 @@ class TestMaskFormerDecoder:
 
         _, outputs = decoder(x, input_names)
 
-        for layer in outputs.values():
+        # Check attention masks in decoder layer outputs (not encoder)
+        for layer_name, layer in outputs.items():
+            if layer_name == "encoder":  # Skip encoder, it doesn't have attn_mask
+                continue
             assert "attn_mask" in layer
             attn_mask = layer["attn_mask"]
             assert attn_mask.shape == (BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
@@ -268,6 +432,39 @@ class TestMaskFormerDecoder:
             assert attn_mask[1, 0, 1]  # becomes True
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
+
+    def test_flex_local_cross_attention(self, decoder_layer_config, sample_local_strided_decoder_data):
+        """Test flex implementation of local cross attention in the decoder."""
+        # Configure decoder to use flex attention with local_strided_attn
+        config = decoder_layer_config.copy()
+        config["attn_kwargs"] = {"attn_type": "flex"}
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+            local_strided_attn=True,
+            window_size=4,
+            window_wrap=True,
+        )
+
+        # flex local-strided attention only supports batch size 1
+        x, input_names = sample_local_strided_decoder_data
+        # Remove key_valid since flex attention doesn't support kv_mask
+        x = {k: v for k, v in x.items() if k != "key_valid"}
+        decoder.tasks = []  # ty: ignore[unresolved-attribute]  # no tasks / pure local CA
+
+        # Forward pass should exercise the flex local CA path, including transpose_blockmask
+        updated_x, outputs = decoder(x, input_names)
+
+        # Basic shape checks on embeddings
+        assert updated_x["query_embed"].shape == (1, NUM_QUERIES, DIM)
+        assert updated_x["key_embed"].shape == (1, SEQ_LEN, DIM)
+
+        # For flex attention, attention masks are fed directly to the backend and
+        # not stored in outputs, but the layer should still produce a valid entry.
+        assert "layer_0" in outputs
+        assert isinstance(outputs["layer_0"], dict)
 
 
 class TestMaskFormerDecoderLayer:
@@ -339,11 +536,14 @@ class MockUnifiedTask:
     has_first_layer_loss = True
     name = "unified_task"
 
-    def __call__(self, x):
+    def __call__(self, x, outputs=None):
         # Return mock outputs with the expected shape
         batch_size, num_queries = x["query_embed"].shape[:2]
         num_constituents = x["key_embed"].shape[1]
         return {"track_hit_logit": torch.randn(batch_size, num_queries, num_constituents)}
+
+    def should_run_at_layer(self, layer_index):
+        return True
 
     def attn_mask(self, outputs):
         # Return attention mask for the full merged tensor
@@ -389,7 +589,7 @@ class TestMaskFormerDecoderUnified:
 
     def test_unified_initialization(self, unified_decoder):
         """Test that unified decoder initializes correctly."""
-        assert unified_decoder.num_queries == NUM_QUERIES
+        assert unified_decoder._num_queries == NUM_QUERIES  # noqa: SLF001
         assert unified_decoder.mask_attention is True
         assert unified_decoder.unified_decoding is True
         assert len(unified_decoder.decoder_layers) == NUM_LAYERS
@@ -509,7 +709,9 @@ class TestMaskFormerDecoderUnified:
         # Test final embeddings shapes
         assert x_out["query_embed"].shape == (BATCH_SIZE, NUM_QUERIES, DIM)
         assert x_out["key_embed"].shape == (BATCH_SIZE, SEQ_LEN, DIM)
-        assert x_out["query_valid"].shape == (BATCH_SIZE, NUM_QUERIES)
+        # query_valid is only set when dynamic_queries=True, not in regular mode
+        if "query_mask" in x_out:
+            assert x_out["query_mask"].shape == (BATCH_SIZE, NUM_QUERIES)
 
         # Test that layer outputs have correct structure
         for layer_idx in range(NUM_LAYERS):

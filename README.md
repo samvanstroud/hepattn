@@ -12,12 +12,14 @@ Our method has been successfully applied to various reconstruction tasks and det
 - **Secondary vertexing** - Delphes [[EPJC][vertexing]]
 - **Particle flow** - CLIC [[arXiv][glow]]
 - **End-to-end reconstruction** - CLD [[ML4Jets][ml4jets]]
+- **Muon Tracking** - ATLAS [[ConnectingTheDots][ctd]]
 
 [tide]: https://atlas.web.cern.ch/Atlas/GROUPS/PHYSICS/PUBNOTES/ATL-PHYS-PUB-2025-045/
 [trackml]: https://arxiv.org/abs/2411.07149
 [vertexing]: https://link.springer.com/article/10.1140/epjc/s10052-024-13374-5
 [glow]: https://arxiv.org/abs/2508.20092
 [ml4jets]: https://indico.cern.ch/event/1526677/contributions/6530938/
+[ctd]: https://indico.cern.ch/event/1499357/contributions/6621917/
 
 ## ✨ Key Features
 

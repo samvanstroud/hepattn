@@ -1,0 +1,177 @@
+seed_everything: 42
+name: TRK-ATLAS-Muon-Filtering
+# ckpt_path: 
+
+data: 
+  train_dir: /scratch/ml_training_data_2694000_hdf5
+  val_dir: /scratch/ml_validation_data_144000_hdf5
+  test_dir: /scratch/ml_test_data_156000_hdf5
+
+  num_workers: 48
+  num_train: -1
+  num_val: -1
+  num_test: -1
+  batch_size: 50 # Calibrated for 95 GB of NVIDIA H100 GPU memory
+
+  # ATLAS muon data parameters
+  event_max_num_particles: 10  
+
+  # Define which inputs will be available to the model
+  inputs:
+    hit:
+      # Global hit coordinates
+      - spacePoint_globEdgeHighX
+      - spacePoint_globEdgeHighY
+      - spacePoint_globEdgeHighZ
+      - spacePoint_globEdgeLowX
+      - spacePoint_globEdgeLowY
+      - spacePoint_globEdgeLowZ
+      - spacePoint_driftR
+      # Add detector information
+      - spacePoint_channel
+      - spacePoint_layer
+      - spacePoint_stationPhi
+      - spacePoint_stationEta
+      - spacePoint_stationIndex
+      - spacePoint_technology
+      # Add derived hit fields
+      - r  # Radial distance
+      - s  # 3D distance
+      - theta  # Polar angle
+      - phi  # Azimuthal angle
+      - eta  # Pseudorapidity
+  targets:
+    hit:
+      - on_valid_particle
+
+trainer:
+  # Training configuration
+  max_epochs: 50
+  num_sanity_val_steps: 1
+  accelerator: gpu
+  devices: -1
+  precision: bf16-mixed
+  log_every_n_steps: 50
+  default_root_dir: logs
+  gradient_clip_val: 0.1
+  enable_progress_bar: True
+
+  # Specify loggers here
+  logger:
+    class_path: hepattn.utils.loggers.MyCometLogger
+    init_args:
+      name: TRK-ATLAS-Muon-Filtering
+
+  callbacks:
+    - class_path: hepattn.callbacks.Compile
+    - class_path: hepattn.callbacks.InferenceTimer
+    - class_path: hepattn.callbacks.SaveConfig
+    - class_path: hepattn.callbacks.Checkpoint
+      init_args:
+        monitor: val/loss
+        mode: min
+    - class_path: hepattn.callbacks.PredictionWriter
+      init_args:
+        write_inputs: false
+        write_outputs: True
+        write_preds: True
+        write_targets: false
+        write_losses: false
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    - class_path: lightning.pytorch.callbacks.TQDMProgressBar
+      init_args:
+        refresh_rate: 50
+    - class_path: lightning.pytorch.callbacks.EarlyStopping
+      init_args:
+        monitor: val/loss
+        patience: 15
+        min_delta: 0.0
+        mode: min
+        verbose: True 
+
+model:
+  optimizer: Lion
+
+  lrs_config:
+    initial: 1e-5
+    max: 5e-5
+    end: 1e-6
+    pct_start: 0.05
+    weight_decay: 1e-5
+
+  model:
+    class_path: hepattn.models.HitFilter
+    init_args:
+      input_sort_field: phi
+      input_nets:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: hit
+                fields:
+                  # Global hit coordinates
+                  - spacePoint_globEdgeHighX
+                  - spacePoint_globEdgeHighY
+                  - spacePoint_globEdgeHighZ
+                  - spacePoint_globEdgeLowX
+                  - spacePoint_globEdgeLowY
+                  - spacePoint_globEdgeLowZ
+                  - spacePoint_driftR
+                  # Add detector information
+                  - spacePoint_channel
+                  - spacePoint_layer
+                  - spacePoint_stationPhi
+                  - spacePoint_stationEta
+                  - spacePoint_stationIndex
+                  - spacePoint_technology
+                  # Add derived hit fields
+                  - r  # Radial distance
+                  - s  # 3D distance
+                  - theta  # Polar angle
+                  - phi  # Azimuthal angle
+                  - eta  # Pseudorapidity
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 18  
+                    output_size: &dim 128
+                posenc:
+                  class_path: hepattn.models.posenc.PositionEncoder
+                  init_args:
+                    input_name: hit
+                    dim: *dim
+                    fields:
+                      - r
+                      - theta
+                      - phi
+                    dim: *dim
+                    sym_fields:
+                      - phi
+
+      encoder:
+        class_path: hepattn.models.Encoder
+        init_args:
+          num_layers: 8 
+          dim: *dim
+          attn_type: flash
+          window_size: 512  
+          window_wrap: true
+          hybrid_norm: true
+          norm: RMSNorm
+          dense_kwargs: {activation: SwiGLU}
+          attn_kwargs: {bias: false, num_heads: 8}
+
+      tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.HitFilterTaskBatched
+              init_args:
+                name: hit_filter
+                input_object: hit
+                target_field: on_valid_particle
+                dim: *dim
+                threshold: 0.01
+                loss_fn: bce

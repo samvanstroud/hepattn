@@ -1,0 +1,240 @@
+seed_everything: 42
+name: TRK-ATLAS-Muon-Tracking
+# ckpt_path: 
+
+data:
+
+  train_dir: /scratch/ml_training_data_2694000_hdf5_filtered_wp0990_maxtrk2_maxhit600
+  val_dir: /scratch/ml_validation_data_144000_hdf5_filtered_wp0990_maxtrk2_maxhit600
+  test_dir: /scratch/ml_test_data_156000_hdf5_filtered_wp0990_maxtrk2_maxhit600
+
+  num_workers: 8
+  num_train: -1
+  num_test: -1
+  num_val: -1
+  batch_size: 200
+
+
+  # ATLAS muon data parameters
+  event_max_num_particles: &num_objects 2  # Typically fewer particles per event in muon data
+
+  inputs:
+    hit:
+      # Global hit coordinates
+      - spacePoint_globEdgeHighX
+      - spacePoint_globEdgeHighY
+      - spacePoint_globEdgeHighZ
+      - spacePoint_globEdgeLowX
+      - spacePoint_globEdgeLowY
+      - spacePoint_globEdgeLowZ
+      - spacePoint_driftR
+      # Add detector information
+      - spacePoint_channel
+      - spacePoint_layer
+      - spacePoint_stationPhi
+      - spacePoint_stationEta
+      - spacePoint_stationIndex
+      - spacePoint_technology
+      # Add derived hit fields
+      - r  # Radial distance
+      - s  # 3D distance
+      - theta  # Polar angle
+      - phi  # Azimuthal angle
+      - eta # Pseudorapidity
+  targets:
+    particle:
+      - truthMuon_pt
+      - truthMuon_q
+      - truthMuon_eta
+      - truthMuon_phi
+
+trainer:
+  max_epochs: 50
+  num_sanity_val_steps: 1
+  accelerator: gpu
+  devices: [1]
+
+  precision: bf16-mixed
+  log_every_n_steps: 50 
+  default_root_dir: logs
+  gradient_clip_val: 0.1
+  enable_progress_bar: true
+
+  # Specify loggers here
+  logger:
+    class_path: hepattn.utils.loggers.MyCometLogger
+    init_args:
+      name: TRK-ATLAS-Muon-Tracking
+      offline_directory: logs/comet_offline
+
+  callbacks:
+    # - class_path: hepattn.callbacks.Compile # Does not work with 
+    - class_path: hepattn.callbacks.InferenceTimer
+    - class_path: hepattn.callbacks.SaveConfig
+    - class_path: hepattn.callbacks.Checkpoint
+      init_args:
+        monitor: val/loss
+        mode: min
+    - class_path: hepattn.callbacks.PredictionWriter
+      init_args:
+        write_inputs: false
+        write_outputs: true
+        write_preds: true
+        write_targets: false
+        write_losses: false
+    - class_path: lightning.pytorch.callbacks.ModelSummary
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    - class_path: lightning.pytorch.callbacks.TQDMProgressBar
+      init_args:
+        refresh_rate: 50
+    - class_path: lightning.pytorch.callbacks.EarlyStopping
+      init_args:
+        monitor: val/loss
+        patience: 5
+        min_delta: 0.0
+        mode: min
+        verbose: True
+
+model:
+  optimizer: Lion
+
+  lrs_config:
+    initial: 1e-5
+    max: 5e-5
+    end: 1e-5
+    pct_start: 0.05
+    skip_scheduler: false
+    weight_decay: 1e-5
+
+
+  # Whether to use multi task learning or not
+  mtl: false
+
+  model:
+    class_path: hepattn.models.MaskFormer
+    init_args:
+      dim: &dim 32
+      input_sort_field: phi
+      input_nets:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.InputNet
+              init_args:
+                input_name: hit
+                fields:
+                  # Global hit coordinates
+                  - spacePoint_globEdgeHighX
+                  - spacePoint_globEdgeHighY
+                  - spacePoint_globEdgeHighZ
+                  - spacePoint_globEdgeLowX
+                  - spacePoint_globEdgeLowY
+                  - spacePoint_globEdgeLowZ
+                  - spacePoint_driftR
+                  # Add detector information
+                  - spacePoint_channel
+                  - spacePoint_layer
+                  - spacePoint_stationPhi
+                  - spacePoint_stationEta
+                  - spacePoint_technology
+                  - spacePoint_stationIndex
+                  # # Add derived hit fields
+                  - r  # Radial distance
+                  - s  # 3D distance
+                  - theta  # Polar angle
+                  - phi  # Azimuthal angle
+                  - eta # Pseudorapidity
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: 18
+                    output_size: *dim
+                posenc:
+                  class_path: hepattn.models.posenc.PositionEncoder
+                  init_args:
+                    input_name: hit
+                    dim: *dim
+                    fields:
+                      - r
+                      - theta
+                      - phi
+                    dim: *dim
+                    sym_fields:
+                      - phi
+
+      encoder:
+        class_path: hepattn.models.Encoder
+        init_args:
+          num_layers: 2
+          dim: *dim
+          attn_type: flash
+          hybrid_norm: true
+          value_residual: true
+          norm: RMSNorm
+          attn_kwargs: {bias: false, num_heads: 8}
+
+      decoder:
+        num_decoder_layers: 2
+        num_queries: *num_objects
+        mask_attention: true
+        use_query_masks: false
+        decoder_layer_config:
+          dim: *dim
+          norm: RMSNorm
+          attn_kwargs: {bias: false, num_heads: 8}
+
+      matcher:
+        class_path: hepattn.models.matcher.Matcher
+        init_args:
+          default_solver: scipy
+          adaptive_solver: false
+          adaptive_check_interval: 1000
+          parallel_solver: true
+          n_jobs: 16
+
+      tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.ObjectClassificationTask
+              init_args:
+                name: track_valid
+                input_object: query
+                output_object: track
+                target_object: particle
+                losses:
+                  object_bce: 1.0
+                costs:
+                  object_bce: 10.0
+                dim: *dim
+                null_weight: 1.0
+                mask_queries: false
+            - class_path: hepattn.models.task.ObjectHitMaskTask
+              init_args:
+                name: track_hit_valid
+                input_constituent: hit
+                input_object: query
+                output_object: track
+                target_object: particle
+                losses:
+                  mask_bce: 1.0
+                costs:
+                  mask_bce: 1.0
+                dim: *dim
+                null_weight: 1.0
+                mask_attn: true
+
+            - class_path: hepattn.models.task.ObjectRegressionTask
+              init_args:
+                name: parameter_regression
+                input_object: query
+                output_object: track
+                target_object: particle
+                fields:
+                - truthMuon_eta
+                - truthMuon_phi
+                - truthMuon_pt
+                - truthMuon_q
+                loss_weight: 1.0
+                cost_weight: 1.0
+                dim: *dim

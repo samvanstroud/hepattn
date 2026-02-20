@@ -116,7 +116,11 @@ def check_valid(f, idx, parts, tracks, key_mode=None, iou_threshold=0.0, track_v
 
     # Load and apply IoU threshold
     if iou_threshold > 0:
-        tracks["track_iou"] = np.array(f[idx]["preds"]["final"]["track_hit_valid"]["track_iou"][:][0])
+        # Try new location in encoder_tasks first, then fall back to old location in track_hit_valid
+        try:
+            tracks["track_iou"] = np.array(f[idx]["preds"]["final"]["track_iou"]["query_iou"][:][0])
+        except (KeyError, AttributeError):
+            tracks["track_iou"] = np.array(f[idx]["preds"]["final"]["track_hit_valid"]["track_iou"][:][0])
         tracks["valid"] = tracks["valid"] & (tracks["track_iou"] >= iou_threshold)
 
 
@@ -190,7 +194,6 @@ def get_masks(f, idx, tracks, parts, key_mode=None):
         The DataFrame for particles, count true hits for each particle
     key_mode: str
         specify if output file structure type
-
     """
     # extract hit mask and its target
     if key_mode == "old":
@@ -505,6 +508,7 @@ def load_events(
             tracks, parts = load_event(f, idx, eta_cut, pt_cut, particle_targets, regression, key_mode, iou_threshold, track_valid_threshold)
             tracks_list.append(tracks)
             parts_list.append(parts)
+
         tracks = pd.concat(tracks_list, ignore_index=True)
         parts = pd.concat(parts_list, ignore_index=True)
 

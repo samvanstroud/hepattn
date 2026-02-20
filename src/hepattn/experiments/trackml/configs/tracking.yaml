@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v6
+name: TRK-v8-3l-fast-fix-vec
 data:
   # hypatia
   #train_dir: data/trackml/prepped/
@@ -37,7 +37,7 @@ data:
   particle_min_num_hits: 3
 
   # Maximum number of reconstructable particles allowed in an event
-  event_max_num_particles: &num_objects 2100
+  event_max_num_particles: &num_objects 2200
   strict_max_objects: false
 
   # Define which inputs will be available to the model
@@ -65,6 +65,8 @@ data:
       - gphi
 
   targets:
+    hit:
+      - is_first
     particle:
       - pt
       - eta
@@ -72,12 +74,12 @@ data:
 
 trainer:
   # Training stuff here
-  max_epochs: 30
+  max_epochs: 10
   accelerator: gpu
   devices: 2
   precision: bf16-mixed
   log_every_n_steps: 50
-  default_root_dir: logs
+  default_root_dir: /projects/u5du/svanstroud/logs/
   gradient_clip_val: 0.1
   enable_progress_bar: true
 
@@ -86,6 +88,8 @@ trainer:
   #  init_args:
   #    dirpath: ./profile_logs/
   #    filename: profile.json
+  #    row_limit: 100
+  #    sort_by_key: cpu_time_total
 
   logger:
     class_path: hepattn.utils.loggers.MyCometLogger
@@ -93,7 +97,10 @@ trainer:
       project: trackml_tracking
 
   callbacks:
-    #- class_path: hepattn.callbacks.Compile
+    - class_path: hepattn.callbacks.Compile
+      init_args:
+        skip_dynamic_cudagraphs: true
+        #mode: max-autotune # use for fastest inference
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint
@@ -116,10 +123,10 @@ model:
 
   # Learning rate scheduler config
   lrs_config:
-    initial: 1e-5
+    initial: 1e-7
     max: 5e-5
     end: 1e-5
-    pct_start: 0.05
+    pct_start: 0.02
     skip_scheduler: false
     weight_decay: 1e-5
 
@@ -182,21 +189,43 @@ model:
           window_size: 512
           window_wrap: true
           hybrid_norm: true
-          norm: LayerNorm
+          norm: CustomLayerNorm
           dense_kwargs: {activation: SwiGLU}
           attn_kwargs: {bias: false}
-
       decoder:
-        num_decoder_layers: 4
+        dynamic_queries: true
+        dynamic_query_source: hit
+        num_decoder_layers: &num_dec_layers 3
         num_queries: *num_objects
         mask_attention: true
         use_query_masks: false
+        unmask_all_false: false
         decoder_layer_config:
           dim: *dim
-          norm: LayerNorm
+          norm: CustomLayerNorm
           hybrid_norm: true
           dense_kwargs: {activation: SwiGLU}
           attn_kwargs: {bias: false}
+          bidirectional_ca: false
+
+      encoder_tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.ClassificationTask
+              init_args:
+                name: query_init
+                input_object: hit
+                classes: ["is_first"]
+                loss_weight: 1.0
+                threshold: 0.05
+                permute_loss: false
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: *dim
+                    hidden_layers: [256]
+                    output_size: 1
 
       tasks:
         class_path: torch.nn.ModuleList
@@ -216,6 +245,7 @@ model:
                 costs:
                   object_bce: 0.1
                 null_weight: 1.0
+
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: track_hit_valid
@@ -223,7 +253,6 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
-                predict_iou: true
                 dim: *dim
                 losses:
                   mask_dice: 2.0
@@ -233,8 +262,21 @@ model:
                   mask_focal: 100.0
                 null_weight: 1.0
 
+            - class_path: hepattn.models.task.IoUPredictionTask
+              init_args:
+                name: track_iou
+                input_object: query
+                mask_task_name: track_hit_valid
+                mask_logit_key: track_hit_logit
+                target_mask_key: particle_hit
+                dim: *dim
+                loss_weight: 1.0
+
       matcher:
         class_path: hepattn.models.matcher.Matcher
         init_args:
           default_solver: scipy
           adaptive_solver: true
+          n_jobs: *num_dec_layers
+          parallel_solver: true
+          parallel_backend: process

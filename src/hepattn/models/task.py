@@ -34,17 +34,47 @@ class Task(nn.Module, ABC):
         self.has_first_layer_loss = has_first_layer_loss if has_first_layer_loss is not None else has_intermediate_loss
         self.permute_loss = permute_loss
 
+    def should_run_at_layer(self, layer_index: int) -> bool:
+        """Check if the task should run at the given decoder layer index."""
+        if not self.has_intermediate_loss:
+            return False
+        return not (layer_index == 0 and not self.has_first_layer_loss)
+
+    def should_permute_outputs(self, layer_name: str, layer_outputs: dict) -> bool:
+        """Check if the task outputs should be permuted for matching at this layer."""
+        if not self.permute_loss:
+            return False
+        return self.name in layer_outputs
+
     @abstractmethod
-    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
-        """Compute the forward pass of the task."""
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
+        """Compute the forward pass of the task.
+
+        Args:
+            x: Dictionary of embeddings and features.
+            outputs: Optional dictionary of outputs from other tasks at the current layer.
+                     Allows tasks to read outputs from previously executed tasks.
+        """
 
     @abstractmethod
     def predict(self, outputs: dict[str, Tensor], **kwargs) -> dict[str, Tensor]:
         """Return predictions from model outputs."""
 
     @abstractmethod
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        """Compute loss between outputs and targets."""
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
+        """Compute loss between outputs and targets.
+
+        Args:
+            outputs: This task's outputs.
+            targets: Target tensors.
+            layer_outputs: Optional dict of all task outputs at this layer,
+                keyed by task name. Useful for tasks that need outputs from other tasks.
+        """
 
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor], **kwargs) -> dict[str, Tensor]:
         return {}
@@ -57,6 +87,9 @@ class Task(nn.Module, ABC):
 
     def query_mask(self, outputs: dict[str, Tensor], **kwargs) -> Tensor | None:
         return None
+
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        return {}
 
 
 class ObjectClassificationTask(Task):
@@ -165,7 +198,7 @@ class ObjectClassificationTask(Task):
         self.inputs = [input_object + "_embed"]
         self.outputs = [self.logits_key, self.probs_key]
 
-    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
         # Output both logits and class probabilities
         x_logits = self.net(x[self.input_object + "_embed"])
 
@@ -183,7 +216,7 @@ class ObjectClassificationTask(Task):
             self.probs_key: x_probs,
         }
 
-    def predict(self, outputs: dict[str, Tensor], threshold: float = 0.5) -> dict[str, Tensor]:
+    def predict(self, outputs: dict[str, Tensor], threshold: float = 0.5, query_mask: Tensor | None = None) -> dict[str, Tensor]:
         class_probs = outputs[self.output_object + "_class_prob"].detach()
 
         # The null class is always the LAST class (index = num_classes)
@@ -192,6 +225,10 @@ class ObjectClassificationTask(Task):
         valid_prob = 1 - class_probs[..., -1]
         classes = class_probs.argmax(-1)
         valid = classes < self.num_classes
+
+        # Apply query_mask to mark padded queries as invalid
+        if query_mask is not None:
+            valid = valid & query_mask
 
         return {
             f"{self.output_object}_class": classes,
@@ -215,14 +252,26 @@ class ObjectClassificationTask(Task):
             costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target)
         return costs
 
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
         losses = {}
+
+        # Get query_mask if present (for masking padded query losses)
+        query_mask = targets.get("query_mask")
 
         if self.num_classes == 1:
             # Binary detection case - use logits for loss computation
             output = outputs[self.output_object + "_logit"]
             target = targets[self.target_object + "_valid"].float()
             sample_weight = target + self.loss_weights[-1] * (1 - target)
+
+            # Mask out padded queries
+            if query_mask is not None:
+                sample_weight = sample_weight * query_mask.float()
 
             for loss_fn, loss_weight in self.losses.items():
                 losses[loss_fn] = loss_weight * loss_fns[loss_fn](output, target, sample_weight=sample_weight)
@@ -232,7 +281,7 @@ class ObjectClassificationTask(Task):
             target = targets[self.target_object + "_class"].long()
 
             for loss_fn, loss_weight in self.losses.items():
-                losses[loss_fn] = loss_weight * loss_fns[loss_fn](output, target, mask=None, weight=self.loss_weights)
+                losses[loss_fn] = loss_weight * loss_fns[loss_fn](output, target, mask=query_mask, weight=self.loss_weights)
 
         return losses
 
@@ -242,6 +291,33 @@ class ObjectClassificationTask(Task):
 
         class_probs = outputs[self.output_object + "_class_prob"].detach()
         return class_probs[..., -1] <= (1 - threshold)
+
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        pred_valid = preds[f"{self.output_object}_valid"].bool()
+        true_valid = targets[f"{self.target_object}_valid"].bool()
+
+        # If query_mask is present (dynamic query padding), exclude padded query slots from metrics
+        query_mask = targets.get("query_mask")
+        if query_mask is not None:
+            pred_valid = pred_valid & query_mask
+            true_valid = true_valid & query_mask
+
+        tp = (pred_valid & true_valid).sum()
+        fp = (pred_valid & ~true_valid).sum()
+
+        true_pos = true_valid.sum()
+        total_pred = pred_valid.sum()
+
+        eps = torch.tensor(1e-12, device=pred_valid.device)
+        eff = tp / torch.maximum(true_pos, eps)  # recall
+        fr = fp / torch.maximum(total_pred, eps)  # fake rate
+
+        return {
+            "num_queries": float(pred_valid.shape[1]) if query_mask is None else float(query_mask.sum()),
+            "query_frac_pred_valid": pred_valid.float().mean() if query_mask is None else pred_valid[query_mask].float().mean(),
+            "query_eff": eff,
+            "query_fr": fr,
+        }
 
 
 class HitFilterTask(Task):
@@ -282,7 +358,7 @@ class HitFilterTask(Task):
         self.input_objects = [f"{input_object}_embed"]
         self.net = Dense(dim, 1)
 
-    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
         x_logit = self.net(x[f"{self.input_object}_embed"])
         return {f"{self.input_object}_logit": x_logit.squeeze(-1)}
 
@@ -293,7 +369,12 @@ class HitFilterTask(Task):
             f"{self.input_object}_{self.target_field}": probs >= self.threshold,
         }
 
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
         # Pick out the field that denotes whether a hit is on a reconstructable object or not
         output = outputs[f"{self.input_object}_logit"]
         target = targets[f"{self.input_object}_{self.target_field}"].type_as(output)
@@ -322,6 +403,78 @@ class HitFilterTask(Task):
 
         return {self.input_object: outputs[f"{self.input_object}_logit"].detach().sigmoid() >= threshold}
 
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        expected_key = f"{self.input_object}_{self.target_field}"
+        pred = preds[expected_key]
+        true = targets[expected_key]
+
+        tp = (pred * true).sum()
+        tn = ((~pred) * (~true)).sum()
+
+        return {
+            # Log quantities based on the number of hits
+            "nh_total_pre": float(pred.shape[1]),
+            "nh_total_post": float(pred.sum()),
+            "nh_pred_true": pred.float().sum(),
+            "nh_pred_false": (~pred).float().sum(),
+            "nh_valid_pre": true.float().sum(),
+            "nh_valid_post": (pred & true).float().sum(),
+            "nh_noise_pre": (~true).float().sum(),
+            "nh_noise_post": (pred & ~true).float().sum(),
+            # Standard binary classification metrics
+            "acc": (pred == true).half().mean(),
+            "valid_recall": tp / true.sum(),
+            "valid_precision": tp / pred.sum(),
+            "noise_recall": tn / (~true).sum(),
+            "noise_precision": tn / (~pred).sum(),
+        }
+
+
+class HitFilterTaskBatched(HitFilterTask):
+    """Batched variant of `HitFilterTask`.
+
+    This subclass overrides the `loss` method to support batched inputs where
+    hit tensors are padded to a common length. It uses a provided valid mask
+    in `targets` (key: `{input_object}_valid`) to ignore padded positions
+    when computing losses.
+    """
+
+    def loss(self, outputs: dict, targets: dict) -> dict:
+        # Pick out the field that denotes whether a hit is on a reconstructable object or not
+        output = outputs[f"{self.input_object}_logit"]
+        target = targets[f"{self.input_object}_{self.target_field}"].type_as(output)
+
+        # Get the valid mask to exclude padded positions from loss calculation
+        # This is important when batching events with different numbers of hits
+        valid_mask = targets.get(f"{self.input_object}_valid", None)
+
+        if valid_mask is not None:
+            # Apply mask to select only valid (non-padded) positions
+            output = output[valid_mask]
+            target = target[valid_mask]
+
+        # Calculate the BCE loss with class weighting
+        if self.loss_fn == "bce":
+            # Guard against edge case where all targets are 0 (or mean is 0)
+            target_mean = target.float().mean()
+            weight = 1 / target_mean if target_mean > 0 else torch.tensor(1.0, device=output.device)
+            loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=weight)
+            return {f"{self.input_object}_{self.loss_fn}": loss}
+        if self.loss_fn == "focal":
+            # Use the mask-aware focal loss implementation available in loss.py
+            loss = mask_focal_loss(output, target)
+            return {f"{self.input_object}_{self.loss_fn}": loss}
+        if self.loss_fn == "both":
+            target_mean = target.float().mean()
+            weight = 1 / target_mean if target_mean > 0 else torch.tensor(1.0, device=output.device)
+            bce_loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=weight)
+            focal_loss_value = mask_focal_loss(output, target)
+            return {
+                f"{self.input_object}_bce": bce_loss,
+                f"{self.input_object}_focal": focal_loss_value,
+            }
+        raise ValueError(f"Unknown loss function: {self.loss_fn}")
+
 
 class ObjectHitMaskTask(Task):
     def __init__(
@@ -342,8 +495,6 @@ class ObjectHitMaskTask(Task):
         logit_scale: float = 1.0,
         pred_threshold: float = 0.5,
         mask_attention_threshold: float | None = None,
-        predict_iou: bool = False,
-        iou_loss_weight: float = 1.0,
         has_intermediate_loss: bool = True,
     ):
         """Task for predicting associations between objects and hits.
@@ -367,8 +518,6 @@ class ObjectHitMaskTask(Task):
             logit_scale: Scale for logits.
             pred_threshold: Prediction threshold.
             mask_attention_threshold: Threshold for attention masking. Defaults to pred_threshold if None.
-            predict_iou: Whether to predict the IoU of the predicted mask.
-            iou_loss_weight: Weight for the IoU loss.
             has_intermediate_loss: Whether the task has intermediate loss.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss)
@@ -390,22 +539,14 @@ class ObjectHitMaskTask(Task):
         self.logit_scale = logit_scale
         self.pred_threshold = pred_threshold
         self.mask_attention_threshold = mask_attention_threshold if mask_attention_threshold is not None else pred_threshold
-        self.predict_iou = predict_iou
-        self.iou_loss_weight = iou_loss_weight
-        self.has_intermediate_loss = mask_attn or predict_iou
-
-        if self.predict_iou:
-            self.iou_net = Dense(dim, 1)
 
         self.output_object_hit = output_object + "_" + input_constituent
         self.target_object_hit = target_object + "_" + input_constituent
 
         self.inputs = [input_object + "_embed", input_constituent + "_embed"]
         self.outputs = [self.output_object_hit + "_logit"]
-        if self.predict_iou:
-            self.outputs.append(self.output_object + "_iou_logit")
 
-    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
         # Produce mask tokens
         mask_tokens = self.object_net(x[self.input_object + "_embed"])
         xs = x[self.input_constituent + "_embed"]
@@ -420,12 +561,7 @@ class ObjectHitMaskTask(Task):
             valid_mask = valid_mask.unsqueeze(-2).expand_as(object_hit_logit)
             object_hit_logit[~valid_mask] = torch.finfo(object_hit_logit.dtype).min
 
-        outputs = {self.output_object_hit + "_logit": object_hit_logit}
-
-        if self.predict_iou:
-            outputs[self.output_object + "_iou_logit"] = self.iou_net(x[self.input_object + "_embed"]).squeeze(-1)
-
-        return outputs
+        return {self.output_object_hit + "_logit": object_hit_logit}
 
     def attn_mask(self, outputs: dict[str, Tensor], threshold: float | None = None) -> dict[str, Tensor]:
         if not self.mask_attn:
@@ -435,14 +571,17 @@ class ObjectHitMaskTask(Task):
         attn_mask = outputs[self.output_object_hit + "_logit"].detach().sigmoid() >= thresh
         return {self.input_constituent: attn_mask}
 
-    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    def predict(self, outputs: dict[str, Tensor], query_mask: Tensor | None = None) -> dict[str, Tensor]:
         output = {}
         probs = outputs[self.output_object_hit + "_logit"].sigmoid().detach()
-        output[self.output_object_hit + "_valid_prob"] = probs
-        output[self.output_object_hit + "_valid"] = probs >= self.pred_threshold
+        valid = probs >= self.pred_threshold
 
-        if self.predict_iou:
-            output[self.output_object + "_iou"] = outputs[self.output_object + "_iou_logit"].detach().sigmoid()
+        # Apply query_mask to mark padded query rows as invalid
+        if query_mask is not None:
+            valid = valid & query_mask.unsqueeze(-1)
+
+        output[self.output_object_hit + "_valid_prob"] = probs
+        output[self.output_object_hit + "_valid"] = valid
 
         return output
 
@@ -457,6 +596,109 @@ class ObjectHitMaskTask(Task):
         for cost_fn, cost_weight in self.costs.items():
             costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target, input_pad_mask=hit_pad)
         return costs
+
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
+        output = outputs[self.output_object_hit + "_logit"]
+        target = targets[self.target_object_hit + "_" + self.target_field].type_as(output)
+
+        hit_pad = targets[self.input_constituent + "_valid"]
+        object_pad = targets[self.target_object + "_valid"]
+
+        # Combine object validity with query_mask if present (for masking padded query losses)
+        query_mask = targets.get("query_mask")
+        if query_mask is not None:
+            object_pad = object_pad & query_mask
+
+        sample_weight = target + self.null_weight * (1 - target)
+        losses = {}
+        for loss_fn, loss_weight in self.losses.items():
+            losses[loss_fn] = loss_weight * loss_fns[loss_fn](
+                output, target, object_valid_mask=object_pad, input_pad_mask=hit_pad, sample_weight=sample_weight
+            )
+
+        return losses
+
+
+class IoUPredictionTask(Task):
+    def __init__(
+        self,
+        name: str,
+        input_object: str,
+        mask_task_name: str,
+        mask_logit_key: str,
+        target_mask_key: str,
+        dim: int,
+        loss_weight: float = 1.0,
+        input_constituent: str | None = None,
+        target_field: str = "valid",
+    ):
+        """Task for predicting IoU of mask predictions.
+
+        This task computes the IoU between predicted and target masks, and trains
+        a network to predict this IoU value. It only runs on the final decoder layer
+        (has_intermediate_loss=False) to avoid computational overhead during intermediate
+        decoder layers.
+
+        Args:
+            name: Name of the task.
+            input_object: Name of the input object (e.g., "particle").
+            mask_task_name: Name of the task that produces mask logits (e.g., "track_hit_valid").
+            mask_logit_key: Key to read mask logits from the mask task's outputs (e.g., "track_hit_logit").
+            target_mask_key: Base key for target mask (e.g., "particle_hit"), will be combined with target_field.
+            dim: Embedding dimension.
+            loss_weight: Weight for the IoU MSE loss.
+            input_constituent: Name of the constituent type (e.g., "hit"), used for validity masking. If None, inferred from mask_logit_key.
+            target_field: Target field name (default: "valid").
+
+        Raises:
+            ValueError: If input_constituent cannot be inferred from mask_logit_key when not provided explicitly.
+        """
+        super().__init__(has_intermediate_loss=False)
+
+        self.name = name
+        self.input_object = input_object
+        self.mask_task_name = mask_task_name
+        self.mask_logit_key = mask_logit_key
+        self.target_mask_key = target_mask_key
+        self.target_field = target_field
+        self.loss_weight = loss_weight
+        self.dim = dim
+
+        # Infer input_constituent from mask_logit_key if not provided
+        if input_constituent is None:
+            # Extract constituent name from mask_logit_key (e.g., "particle_hit_logit" -> "hit")
+            parts = mask_logit_key.replace("_logit", "").split("_")
+            if len(parts) >= 2:
+                self.input_constituent = parts[-1]
+            else:
+                raise ValueError(f"Cannot infer input_constituent from mask_logit_key '{mask_logit_key}'. Please provide it explicitly.")
+        else:
+            self.input_constituent = input_constituent
+
+        # Network to predict IoU from object embeddings
+        self.iou_net = Dense(dim, 1)
+
+        self.inputs = [input_object + "_embed"]
+        self.outputs = [input_object + "_iou_logit"]
+
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
+        # Predict IoU from object embeddings
+        iou_logit = self.iou_net(x[self.input_object + "_embed"]).squeeze(-1)
+        return {self.input_object + "_iou_logit": iou_logit}
+
+    def predict(self, outputs: dict[str, Tensor], query_mask: Tensor | None = None) -> dict[str, Tensor]:
+        iou = outputs[self.input_object + "_iou_logit"].detach().sigmoid()
+
+        # Apply query_mask to set padded query IoU to 0
+        if query_mask is not None:
+            iou = iou * query_mask.float()
+
+        return {self.input_object + "_iou": iou}
 
     def calculate_iou(self, pred_probs: Tensor, target: Tensor) -> Tensor:
         """Calculate IoU between predicted probabilities and target mask.
@@ -474,41 +716,51 @@ class ObjectHitMaskTask(Task):
         # Avoid division by zero
         return intersection / (union + 1e-6)
 
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        output = outputs[self.output_object_hit + "_logit"]
-        target = targets[self.target_object_hit + "_" + self.target_field].type_as(output)
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
+        # Read mask logits directly from the mask task's outputs (already permuted by Hungarian matching)
+        if layer_outputs is None or self.mask_task_name not in layer_outputs:
+            raise ValueError(f"Mask task '{self.mask_task_name}' not found in layer_outputs. Make sure the mask task runs before IoUPredictionTask.")
 
-        hit_pad = targets[self.input_constituent + "_valid"]
-        object_pad = targets[self.target_object + "_valid"]
-
-        sample_weight = target + self.null_weight * (1 - target)
-        losses = {}
-        for loss_fn, loss_weight in self.losses.items():
-            losses[loss_fn] = loss_weight * loss_fns[loss_fn](
-                output, target, object_valid_mask=object_pad, input_pad_mask=hit_pad, sample_weight=sample_weight
+        mask_task_outputs = layer_outputs[self.mask_task_name]
+        if self.mask_logit_key not in mask_task_outputs:
+            raise ValueError(
+                f"Mask logits key '{self.mask_logit_key}' not found in task '{self.mask_task_name}' outputs. "
+                f"Available keys: {list(mask_task_outputs.keys())}"
             )
 
-        if self.predict_iou:
-            # Calculate the actual IoU between the predicted mask and the target mask
-            # Get the predicted probabilities
-            pred_probs = output.sigmoid()
+        mask_logits = mask_task_outputs[self.mask_logit_key]
+        pred_probs = mask_logits.sigmoid()
 
-            # Calculate IoU using helper method
-            iou_target = self.calculate_iou(pred_probs, target)
+        # Get target mask
+        target = targets[self.target_mask_key + "_" + self.target_field].type_as(mask_logits)
 
-            # Get the predicted IoU
-            iou_pred = outputs[self.output_object + "_iou_logit"].sigmoid()
+        # Calculate the actual IoU between predicted and target masks
+        iou_target = self.calculate_iou(pred_probs, target)
 
-            # Only compute loss for valid objects
-            if object_pad is not None:
-                iou_target = iou_target[object_pad]
-                iou_pred = iou_pred[object_pad]
+        # Get the predicted IoU
+        iou_pred = outputs[self.input_object + "_iou_logit"].sigmoid()
 
-            # Compute MSE loss
-            iou_loss = torch.nn.functional.mse_loss(iou_pred, iou_target.detach())
-            losses["iou_mse"] = self.iou_loss_weight * iou_loss
+        # Only compute loss for valid objects, combined with query_mask if present
+        object_pad = targets.get(self.input_object + "_valid")
+        query_mask = targets.get("query_mask")
+        if object_pad is not None:
+            valid_mask = object_pad
+            if query_mask is not None:
+                valid_mask = valid_mask & query_mask
+            iou_target = iou_target[valid_mask]
+            iou_pred = iou_pred[valid_mask]
+        elif query_mask is not None:
+            iou_target = iou_target[query_mask]
+            iou_pred = iou_pred[query_mask]
 
-        return losses
+        # Compute MSE loss
+        iou_loss = torch.nn.functional.mse_loss(iou_pred, iou_target.detach())
+        return {"iou_mse": self.loss_weight * iou_loss}
 
 
 class RegressionTask(Task):
@@ -552,17 +804,22 @@ class RegressionTask(Task):
         # Define semantic output key as property
         self.regression_key = output_object + "_regr"
 
-    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
         # For a standard regression task, the raw network output is the final prediction
         latent = self.latent(x)
         return {self.regression_key: latent}
 
-    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    def predict(self, outputs: dict[str, Tensor], query_mask: Tensor | None = None) -> dict[str, Tensor]:
         # Split the regression vector into the separate fields
         latent = outputs[self.regression_key]
         return {self.output_object + "_" + field: latent[..., i] for i, field in enumerate(self.fields)}
 
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
         target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1)
         output = outputs[self.regression_key]
 
@@ -627,7 +884,7 @@ class GaussianRegressionTask(Task):
         self.ndofs = self.k + int(self.k * (self.k + 1) / 2)
         self.likelihood_norm = self.k * 0.5 * math.log(2 * math.pi)
 
-    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
         latent = self.latent(x)
         k = self.k
         triu_idx = torch.triu_indices(k, k, device=latent.device)
@@ -665,7 +922,12 @@ class GaussianRegressionTask(Task):
 
         return preds
 
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
         y = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1)
 
         # Compute the standardised score vector between the targets and the predicted distribution paramaters
@@ -807,21 +1069,6 @@ class ObjectRegressionTask(RegressionTask):
     def latent(self, x: dict[str, Tensor]) -> Tensor:
         return self.net(x[self.input_object + "_embed"])
 
-    def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        output = outputs[self.regression_key].detach().to(torch.float32)
-        target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1).to(torch.float32)
-        num_objects = output.shape[1]
-        # Index from the front so it works for both object and mask regression
-        # The expand is not necessary but stops a broadcasting warning from smooth_l1_loss
-        costs = self.loss_fn(
-            output.unsqueeze(2).expand(-1, -1, num_objects, -1),
-            target.unsqueeze(1).expand(-1, num_objects, -1, -1),
-            reduction="none",
-        )
-        # Average over the regression fields dimension
-        costs = costs.mean(-1)
-        return {f"regr_{self.loss_fn_name}": self.cost_weight * costs}
-
 
 class ObjectHitRegressionTask(RegressionTask):
     def __init__(
@@ -889,12 +1136,13 @@ class ClassificationTask(Task):
         self,
         name: str,
         input_object: str,
-        output_object: str,
-        target_object: str,
         classes: list[str],
         net: nn.Module,
+        output_object: str | None = None,
+        target_object: str | None = None,
         class_weights: dict[str, float] | None = None,
         loss_weight: float = 1.0,
+        threshold: float = 0.5,
         multilabel: bool = False,
         permute_loss: bool = True,
         has_intermediate_loss: bool = True,
@@ -915,25 +1163,27 @@ class ClassificationTask(Task):
         Args:
             name: Name of the task.
             input_object: Name of the input object.
-            output_object: Name of the output object.
-            target_object: Name of the target object.
             classes: List of class names (no null class - all inputs assumed valid).
             net: Network for classification. Should output len(classes) logits.
             class_weights: Weights for each class in the loss function.
             loss_weight: Weight for the loss function.
+            threshold: Threshold for classification predictions.
             multilabel: Whether this is a multilabel classification.
             permute_loss: Whether to permute loss.
             has_intermediate_loss: Whether the task has intermediate loss.
+            output_object: Name of the output object. Defaults to input_object if empty string.
+            target_object: Name of the target object. Defaults to input_object if empty string.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss, permute_loss=permute_loss)
 
         self.name = name
         self.input_object = input_object
-        self.output_object = output_object
-        self.target_object = target_object
+        self.output_object = output_object if output_object is not None else input_object
+        self.target_object = target_object if target_object is not None else input_object
         self.classes = classes
         self.class_weights = class_weights
         self.loss_weight = loss_weight
+        self.threshold = threshold
         self.multilabel = multilabel
         self.net = net
 
@@ -941,42 +1191,87 @@ class ClassificationTask(Task):
             self.class_weights_values = torch.tensor([self.class_weights[class_name] for class_name in self.classes])
 
         self.inputs = [input_object + "_embed"]
-        self.outputs = [output_object + "_logits"]
+        self.outputs = [self.output_object + "_logits"]
 
-    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
         # Get class logits from the configurable network
         x = self.net(x[f"{self.input_object}_embed"])
         return {f"{self.output_object}_logits": x}
 
-    def predict(self, outputs: dict[str, Tensor], threshold: float = 0.5) -> dict[str, Tensor]:
-        # Split the regression vector into the separate fields
+    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         logits = outputs[self.output_object + "_logits"].detach()
-        if self.multilabel:
-            predictions = torch.nn.functional.sigmoid(logits) >= threshold
-        else:
-            predictions = torch.nn.functional.one_hot(torch.argmax(logits, dim=-1), num_classes=len(self.classes))
-        return {self.output_object + "_" + class_name: predictions[..., i] for i, class_name in enumerate(self.classes)}
+        result = {}
 
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
-        # Get the targets and predictions
-        target = torch.stack([targets[self.target_object + "_" + class_name] for class_name in self.classes], dim=-1)
+        if len(self.classes) == 1 and not self.multilabel:
+            # Binary classification with single output
+            logits = logits.squeeze(-1) if logits.shape[-1] == 1 else logits
+            probs = torch.nn.functional.sigmoid(logits)
+            result[self.output_object + "_" + self.classes[0] + "_prob"] = probs
+            result[self.output_object + "_" + self.classes[0]] = probs >= self.threshold
+        elif self.multilabel:
+            # Multilabel classification
+            probs = torch.nn.functional.sigmoid(logits)
+            for i, class_name in enumerate(self.classes):
+                result[self.output_object + "_" + class_name + "_prob"] = probs[..., i]
+                result[self.output_object + "_" + class_name] = probs[..., i] >= self.threshold
+        else:
+            # Multi-class classification
+            probs = torch.nn.functional.softmax(logits, dim=-1)
+            predictions = torch.nn.functional.one_hot(torch.argmax(logits, dim=-1), num_classes=len(self.classes)).bool()
+            for i, class_name in enumerate(self.classes):
+                result[self.output_object + "_" + class_name + "_prob"] = probs[..., i]
+                result[self.output_object + "_" + class_name] = predictions[..., i]
+
+        return result
+
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
         logits = outputs[f"{self.output_object}_logits"]
 
-        # Put the class weights into a tensor with the correct dtype
-        class_weights = None
-        if self.class_weights is not None:
-            class_weights = self.class_weights_values.type_as(target)
+        if len(self.classes) == 1 and not self.multilabel:
+            # Binary classification with single output
+            target = targets[self.target_object + "_" + self.classes[0]].float()
+            logits = logits.squeeze(-1) if logits.dim() > target.dim() else logits
 
-        # Compute the loss, using the class weights
-        losses = torch.nn.functional.cross_entropy(
-            logits.view(-1, logits.shape[-1]),
-            target.view(-1, target.shape[-1]),
-            weight=class_weights,
-            reduction="none",
-        )
+            # Apply class weight if specified
+            pos_weight = None
+            if self.class_weights is not None:
+                pos_weight = torch.tensor([self.class_weights[self.classes[0]]], dtype=logits.dtype, device=logits.device)
 
-        # Only consider valid targets
-        losses = losses[targets[f"{self.target_object}_valid"].view(-1)]
+            losses = torch.nn.functional.binary_cross_entropy_with_logits(logits, target, pos_weight=pos_weight, reduction="none")
+        elif self.multilabel:
+            # Multilabel classification with BCE per class
+            target = torch.stack([targets[self.target_object + "_" + class_name] for class_name in self.classes], dim=-1).float()
+
+            # Apply class weights if specified
+            pos_weight = None
+            if self.class_weights is not None:
+                pos_weight = self.class_weights_values.type_as(target)
+
+            losses = torch.nn.functional.binary_cross_entropy_with_logits(logits, target, pos_weight=pos_weight, reduction="none").mean(dim=-1)
+        else:
+            # Multi-class classification with cross entropy
+            target = torch.stack([targets[self.target_object + "_" + class_name] for class_name in self.classes], dim=-1).float()
+
+            # Put the class weights into a tensor with the correct dtype
+            class_weights = None
+            if self.class_weights is not None:
+                class_weights = self.class_weights_values.type_as(target)
+
+            losses = torch.nn.functional.cross_entropy(
+                logits.view(-1, logits.shape[-1]),
+                target.view(-1, target.shape[-1]),
+                weight=class_weights,
+                reduction="none",
+            )
+
+        # Only consider valid targets - flatten both losses and mask
+        valid_mask = targets[f"{self.target_object}_valid"].view(-1)
+        losses = losses.view(-1)[valid_mask]
         return {"bce": self.loss_weight * losses.mean()}
 
     def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -985,8 +1280,13 @@ class ClassificationTask(Task):
             target = targets[f"{self.target_object}_{class_name}"][targets[f"{self.target_object}_valid"]].bool()
             pred = preds[f"{self.output_object}_{class_name}"][targets[f"{self.target_object}_valid"]].bool()
 
-            metrics[f"{class_name}_eff"] = (target & pred).sum() / target.sum()
-            metrics[f"{class_name}_pur"] = (target & pred).sum() / pred.sum()
+            true_positives = float((target & pred).sum())
+            false_positives = float((~target & pred).sum())
+
+            metrics[f"{class_name}_eff"] = true_positives / target.sum()
+            metrics[f"{class_name}_pur"] = true_positives / pred.sum()
+            metrics[f"{class_name}_tp"] = true_positives
+            metrics[f"{class_name}_fp"] = false_positives
 
         return metrics
 
@@ -1034,7 +1334,7 @@ class IncidenceRegressionTask(Task):
         self.inputs = [input_object + "_embed", input_constituent + "_embed"]
         self.outputs = [self.incidence_key]
 
-    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
         x_object = self.net(x[self.input_object + "_embed"])
         x_hit = self.node_net(x[self.input_constituent + "_embed"])
 
@@ -1043,7 +1343,7 @@ class IncidenceRegressionTask(Task):
 
         return {self.incidence_key: incidence_pred}
 
-    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    def predict(self, outputs: dict[str, Tensor], query_mask: Tensor | None = None) -> dict[str, Tensor]:
         return {self.output_object + "_incidence": outputs[self.incidence_key].detach()}
 
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -1055,7 +1355,12 @@ class IncidenceRegressionTask(Task):
             costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target)
         return costs
 
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
         losses = {}
         output = outputs[self.incidence_key]
         target = targets[self.target_object + "_incidence"].type_as(output)
@@ -1090,6 +1395,8 @@ class IncidenceBasedRegressionTask(RegressionTask):
         has_intermediate_loss: bool = True,
         mode: str = "offset",
         cost: str = "old",
+        incidence_task_name: str = "incidence",
+        class_prob_task_name: str = "classification",
     ):
         """Construct proxy particles from predicted incidence matrix, and then correct the proxies using a regression.
 
@@ -1110,6 +1417,8 @@ class IncidenceBasedRegressionTask(RegressionTask):
             has_intermediate_loss: Whether the task has intermediate loss.
             mode: Regression mode ('offset' or 'scale').
             cost: Cost mode ('old' or 'new').
+            incidence_task_name: Name of the task that produces incidence matrix (default: 'incidence').
+            class_prob_task_name: Name of the task that produces class probabilities (default: 'classification').
 
         Raises:
             ValueError: If the mode is not 'offset' or 'scale'.
@@ -1144,11 +1453,41 @@ class IncidenceBasedRegressionTask(RegressionTask):
         else:
             raise ValueError(f"Invalid cost mode {cost}")
 
-    def forward(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+        # Store task and output key names for direct access
+        self.incidence_task_name = incidence_task_name
+        self.incidence_output_key = f"{output_object}_incidence"
+        self.class_prob_task_name = class_prob_task_name
+        self.class_prob_output_key = f"{output_object}_class_prob"
+
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
         # get the predictions
         if self.use_incidence:
-            inc = x["incidence"].detach()
-            proxy_feats, is_charged = self.get_proxy_feats(inc, x["inputs"], class_probs=x["class_probs"].detach())
+            # Directly access incidence and class_probs from the specified tasks
+            inc = None
+            class_probs = None
+            if outputs is not None:
+                # Access incidence from the specified task
+                if self.incidence_task_name in outputs:
+                    inc = outputs[self.incidence_task_name].get(self.incidence_output_key)
+                    if inc is not None:
+                        inc = inc.detach()
+
+                # Access class_probs from the specified task
+                if self.class_prob_task_name in outputs:
+                    class_probs = outputs[self.class_prob_task_name].get(self.class_prob_output_key)
+                    if class_probs is not None:
+                        class_probs = class_probs.detach()
+
+            # Ensure inc and class_probs are available when use_incidence is True
+            if inc is None or class_probs is None:
+                raise RuntimeError(
+                    f"When use_incidence=True, both incidence and class_probs must be provided. "
+                    f"Got inc={inc is not None}, class_probs={class_probs is not None}. "
+                    f"Looking for incidence in task '{self.incidence_task_name}' with key '{self.incidence_output_key}' "
+                    f"and class_probs in task '{self.class_prob_task_name}' with key '{self.class_prob_output_key}'"
+                )
+
+            proxy_feats, is_charged = self.get_proxy_feats(inc, x["inputs"], class_probs=class_probs)
             input_data = torch.cat(
                 [
                     x[self.input_object + "_embed"],
@@ -1173,7 +1512,7 @@ class IncidenceBasedRegressionTask(RegressionTask):
             raise ValueError(f"Invalid mode {self.mode}")
         return {self.output_object + "_regr": preds, self.output_object + "_proxy_regr": proxy_feats}
 
-    def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    def predict(self, outputs: dict[str, Tensor], query_mask: Tensor | None = None) -> dict[str, Tensor]:
         # Split the regression vector into the separate fields
         pflow_regr = outputs[self.output_object + "_regr"]
         proxy_regr = outputs[self.output_object + "_proxy_regr"]
@@ -1236,7 +1575,12 @@ class IncidenceBasedRegressionTask(RegressionTask):
 
         return {f"regr_{self.loss_fn_name}": self.cost_weight * costs.mean(-1)}
 
-    def loss(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
         target = torch.stack([targets[self.target_object + "_" + field] for field in self.fields], dim=-1)
         output = outputs[self.output_object + "_regr"]
 

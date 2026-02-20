@@ -31,8 +31,17 @@ class MockTask(nn.Module):
         self.has_intermediate_loss = False
         self.permute_loss = True
 
-    def forward(self, x):
+    def forward(self, x, outputs=None):
         return {"output": torch.randn(2, 5, 10)}
+
+    def should_run_at_layer(self, layer_index):
+        return True
+
+    def should_permute_outputs(self, layer_name, layer_outputs):
+        return self.permute_loss and self.name in layer_outputs
+
+    def attn_mask(self, outputs):
+        return {}
 
     def predict(self, outputs):
         return {"prediction": outputs["output"] > 0}
@@ -40,7 +49,7 @@ class MockTask(nn.Module):
     def cost(self, outputs, targets):
         return {"cost": torch.randn(2, 5, 5)}
 
-    def loss(self, outputs, targets):
+    def loss(self, outputs, targets, layer_outputs=None):
         return {"loss": torch.tensor(0.1)}
 
 
@@ -48,7 +57,7 @@ class MockMatcher(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, costs, object_valid_mask=None):
+    def forward(self, costs, target_valid_mask=None, query_valid_mask=None):
         # Return identity permutation for simplicity
         batch_size, num_pred, _ = costs.shape
         return torch.arange(num_pred).unsqueeze(0).expand(batch_size, -1)
@@ -144,12 +153,12 @@ class TestMaskFormerSorting:
 
         # Test loss computation without sorting
         targets = {
-            "particle_hit_valid": torch.ones(1, 10, 5, dtype=torch.bool),  # Match the default target_object
-            "particle_valid": torch.ones(1, 10, 5, dtype=torch.bool),
+            "particle_hit_valid": torch.ones(2, 5, 10, dtype=torch.bool),  # Match the batch size from sample_inputs
+            "particle_valid": torch.ones(2, 5, dtype=torch.bool),
         }
 
         # Should not raise any errors
-        losses, _ = model.loss(outputs, targets)
+        outputs, targets, losses = model.loss(outputs, targets)
 
         # Check that losses are computed
         assert "final" in losses
@@ -203,7 +212,7 @@ class TestMaskFormerSorting:
         }
 
         # Run loss computation which should sort targets
-        _, sorted_targets = model.loss(outputs, deepcopy(targets))
+        outputs, sorted_targets, _losses = model.loss(outputs, deepcopy(targets))
 
         # check that particle valid is unchanged
         assert torch.allclose(sorted_targets["particle_valid"], targets["particle_valid"])
