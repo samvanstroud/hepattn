@@ -12,7 +12,7 @@ def generate_dummy_cost(rng: np.random.Generator, batch_size: int, n_objects: in
     object_valid_mask = np.zeros((batch_size, n_objects), dtype=bool)
     for i in range(batch_size):
         # Randomly set a portion of objects as valid
-        n_valid_objects = rng.integers(n_objects // 4, n_objects // 2)
+        n_valid_objects = int(rng.integers(n_objects // 4, n_objects // 2))
         object_valid_mask[i, :n_valid_objects] = True
     cost[~object_valid_mask[:, None, :].repeat(n_objects, 1)] = 1e4  # Set padding costs to large value
     return cost, object_valid_mask
@@ -25,7 +25,7 @@ def test_matcher_with_target_padding(solver, scale: float):
     rng = np.random.default_rng()
 
     for _ in range(10):
-        n_objects = rng.integers(100, 250)
+        n_objects = int(rng.integers(100, 250))
         cost, object_valid_mask = generate_dummy_cost(rng, 1, n_objects, scale)
 
         # Convert to torch tensors
@@ -60,7 +60,7 @@ def test_matcher_with_parallel_solver(solver, scale: float):
     rng = np.random.default_rng()
     batch_size = 32
     for _ in range(10):
-        n_objects = rng.integers(100, 250)
+        n_objects = int(rng.integers(100, 250))
         cost, object_valid_mask = generate_dummy_cost(rng, batch_size, n_objects, scale)
 
         # Convert to torch tensors
@@ -94,7 +94,7 @@ def test_matcher_speed(solver, parallel_solver: bool):
     times_padded = []
 
     for _ in range(16):
-        n_objects = rng.integers(100, 250)
+        n_objects = int(rng.integers(100, 250))
         cost, object_valid_mask = generate_dummy_cost(rng, batch_size, n_objects)
 
         # Convert to torch tensors
