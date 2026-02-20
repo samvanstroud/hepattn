@@ -106,16 +106,10 @@ CALO_SUBSYSTEM_ALIASES = {
     "hce": "HCAL Endcap",
 }
 
-particle_hists = {
-    field: {selection: CountingHistogram(field_bins) for selection in SELECTION_ALIASES}
-    for field, field_bins in PARTICLE_BINS.items()
-}
+particle_hists = {field: {selection: CountingHistogram(field_bins) for selection in SELECTION_ALIASES} for field, field_bins in PARTICLE_BINS.items()}
 
 hit_hists = {
-    hit_name: {
-        field: {selection: CountingHistogram(field_bins) for selection in SELECTION_ALIASES}
-        for field, field_bins in HIT_BINS.items()
-    }
+    hit_name: {field: {selection: CountingHistogram(field_bins) for selection in SELECTION_ALIASES} for field, field_bins in HIT_BINS.items()}
     for hit_name in ("sihit", "calohit")
 }
 
@@ -126,7 +120,7 @@ def _load_config():
 
 
 def _build_dataset_kwargs(config):
-    dataset_kwargs = {
+    return {
         "dirpath": config.get("test_dir", config["train_dir"]),
         "num_events": 10,
         "particle_min_pt": config["particle_min_pt"],
@@ -140,8 +134,6 @@ def _build_dataset_kwargs(config):
         "return_tracks": False,
         "build_calohit_associations": True,
     }
-
-    return dataset_kwargs
 
 
 def _to_numpy(values):
@@ -180,14 +172,10 @@ def _fill_particle_hists(targets, selection_masks):
         else np.diff(_to_numpy(targets["particle_calohit_indptr"][0]).astype(np.int64, copy=False))
     )
     num_ecalhits = (
-        _to_numpy(targets["particle_num_ecalhits"][0])
-        if "particle_num_ecalhits" in targets
-        else np.zeros_like(num_calohits, dtype=np.float32)
+        _to_numpy(targets["particle_num_ecalhits"][0]) if "particle_num_ecalhits" in targets else np.zeros_like(num_calohits, dtype=np.float32)
     )
     num_hcalhits = (
-        _to_numpy(targets["particle_num_hcalhits"][0])
-        if "particle_num_hcalhits" in targets
-        else np.zeros_like(num_calohits, dtype=np.float32)
+        _to_numpy(targets["particle_num_hcalhits"][0]) if "particle_num_hcalhits" in targets else np.zeros_like(num_calohits, dtype=np.float32)
     )
 
     particle_values = {
@@ -426,10 +414,7 @@ def main():
     ecal_calib_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
     hcal_calib_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
     total_calib_by_class = {selection: [] for selection in SELECTION_ALIASES if selection != "valid"}
-    calohit_energy_by_subsystem = {
-        subsystem: {"total": [], "contrib_sum": []}
-        for subsystem in ODDDataset.CALO_SUBSYSTEM_DETECTOR_IDS
-    }
+    calohit_energy_by_subsystem = {subsystem: {"total": [], "contrib_sum": []} for subsystem in ODDDataset.CALO_SUBSYSTEM_DETECTOR_IDS}
 
     for event_idx in tqdm(range(num_events)):
         inputs, targets = dataset[event_idx]
@@ -493,15 +478,9 @@ def main():
         if selection == "valid":
             continue
         energy_true = np.concatenate(energy_by_class[selection]) if energy_by_class[selection] else np.zeros(0, dtype=np.float32)
-        energy_ecal_calib = (
-            np.concatenate(ecal_calib_by_class[selection]) if ecal_calib_by_class[selection] else np.zeros(0, dtype=np.float32)
-        )
-        energy_hcal_calib = (
-            np.concatenate(hcal_calib_by_class[selection]) if hcal_calib_by_class[selection] else np.zeros(0, dtype=np.float32)
-        )
-        energy_total_calib = (
-            np.concatenate(total_calib_by_class[selection]) if total_calib_by_class[selection] else np.zeros(0, dtype=np.float32)
-        )
+        energy_ecal_calib = np.concatenate(ecal_calib_by_class[selection]) if ecal_calib_by_class[selection] else np.zeros(0, dtype=np.float32)
+        energy_hcal_calib = np.concatenate(hcal_calib_by_class[selection]) if hcal_calib_by_class[selection] else np.zeros(0, dtype=np.float32)
+        energy_total_calib = np.concatenate(total_calib_by_class[selection]) if total_calib_by_class[selection] else np.zeros(0, dtype=np.float32)
         _plot_calibrated_energy_vs_true_2d(
             class_name=selection,
             class_label=class_label,

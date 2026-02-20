@@ -1,6 +1,7 @@
-from pathlib import Path
 from collections import OrderedDict
+from pathlib import Path
 from time import perf_counter
+from typing import ClassVar
 
 import awkward as ak
 import numpy as np
@@ -13,7 +14,7 @@ from torch.utils.data import DataLoader, Dataset
 
 class ODDDataset(Dataset):
     CALO_SUBSYSTEMS = ("ecb", "ece", "hcb", "hce")
-    CALO_SUBSYSTEM_DETECTOR_IDS = {
+    CALO_SUBSYSTEM_DETECTOR_IDS: ClassVar[dict[str, np.ndarray]] = {
         "ecb": np.array([10], dtype=np.int64),
         "ece": np.array([9, 11], dtype=np.int64),
         "hcb": np.array([13], dtype=np.int64),
@@ -21,17 +22,17 @@ class ODDDataset(Dataset):
     }
     CALO_ECAL_DETECTOR_IDS = np.array([9, 10, 11], dtype=np.int64)
     CALO_HCAL_DETECTOR_IDS = np.array([12, 13, 14], dtype=np.int64)
-    CALO_SUBSYSTEM_CALIBRATION = {
+    CALO_SUBSYSTEM_CALIBRATION: ClassVar[dict[str, float]] = {
         "ecb": 37.5,
         "ece": 38.7,
         "hcb": 45.0,
         "hce": 46.9,
     }
-    CALO_GROUP_DETECTOR_IDS = {
+    CALO_GROUP_DETECTOR_IDS: ClassVar[dict[str, np.ndarray]] = {
         "ecalhits": CALO_ECAL_DETECTOR_IDS,
         "hcalhits": CALO_HCAL_DETECTOR_IDS,
     }
-    PARTICLE_HIT_CUT_CLASS_TO_MASK = {
+    PARTICLE_HIT_CUT_CLASS_TO_MASK: ClassVar[dict[str, str]] = {
         "all": "particle_valid",
         "charged_hadron": "particle_is_charged_hadron",
         "neutral_hadron": "particle_is_neutral_hadron",
@@ -47,7 +48,7 @@ class ODDDataset(Dataset):
         "min_num_ecal",
         "min_num_hcal",
     )
-    PARTICLE_HIT_CUT_DEFAULTS = {
+    PARTICLE_HIT_CUT_DEFAULTS: ClassVar[dict[str, int]] = {
         "min_num_sihit": 0,
         "min_num_ecal": 0,
         "min_num_hcal": 0,
@@ -80,10 +81,7 @@ class ODDDataset(Dataset):
         }
 
         self.particle_hit_cuts = self._normalize_particle_hit_cuts(particle_hit_cuts)
-        self._requires_calohits_for_hit_cuts = any(
-            cuts["min_num_ecal"] > 0 or cuts["min_num_hcal"] > 0
-            for cuts in self.particle_hit_cuts.values()
-        )
+        self._requires_calohits_for_hit_cuts = any(cuts["min_num_ecal"] > 0 or cuts["min_num_hcal"] > 0 for cuts in self.particle_hit_cuts.values())
 
         required_collections = {"particles", "tracker_hits"}
         if return_calohits or self._requires_calohits_for_hit_cuts:
@@ -93,10 +91,7 @@ class ODDDataset(Dataset):
 
         missing_dirs = [name for name in sorted(required_collections) if not self.collection_dirs[name].is_dir()]
         if missing_dirs:
-            msg = (
-                f"Missing required dataset directories for '{event_type}': {missing_dirs}. "
-                f"Expected these under {self.dirpath}."
-            )
+            msg = f"Missing required dataset directories for '{event_type}': {missing_dirs}. Expected these under {self.dirpath}."
             raise ValueError(msg)
 
         # Use particle shards as the reference and keep only shard names that are
@@ -196,11 +191,7 @@ class ODDDataset(Dataset):
                 cut_threshold = cls._coerce_non_negative_int(cut_name, cut_value)
                 normalized[mask_key][cut_key] = max(normalized[mask_key][cut_key], cut_threshold)
 
-        return {
-            mask_key: cfg
-            for mask_key, cfg in normalized.items()
-            if any(cfg[cut_key] > 0 for cut_key in cls.PARTICLE_HIT_CUT_KEYS)
-        }
+        return {mask_key: cfg for mask_key, cfg in normalized.items() if any(cfg[cut_key] > 0 for cut_key in cls.PARTICLE_HIT_CUT_KEYS)}
 
     def __len__(self):
         return int(self.num_events)
@@ -426,7 +417,7 @@ class ODDDataset(Dataset):
 
     def _build_particle_calohit_csr(self, particle_ids: torch.Tensor, calohits) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         num_particles = int(particle_ids.numel())
-        num_calohits = int(len(calohits["contrib_particle_ids"]))
+        num_calohits = len(calohits["contrib_particle_ids"])
         if num_particles == 0 or num_calohits == 0:
             return self._empty_csr_components(num_particles, num_calohits)
 
@@ -446,7 +437,7 @@ class ODDDataset(Dataset):
         return self._build_csr_components(num_particles, num_calohits, row_indices, col_indices)
 
     def _build_track_sihit_csr(self, track_hit_ids, num_sihits: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        num_tracks = int(len(track_hit_ids))
+        num_tracks = len(track_hit_ids)
         if num_tracks == 0 or num_sihits == 0:
             return self._empty_csr_components(num_tracks, num_sihits)
 
@@ -481,9 +472,9 @@ class ODDDataset(Dataset):
         targets["particle_eta"] = torch.arctanh(targets["particle_pz"] / p)
         targets["particle_theta"] = torch.arccos((targets["particle_pz"] / p).clamp(-1.0, 1.0))
         targets["particle_phi"] = torch.arctan2(targets["particle_py"], targets["particle_px"])
-        targets["particle_d0"] = (
-            -targets["particle_vx"] * targets["particle_py"] + targets["particle_vy"] * targets["particle_px"]
-        ) / pt.clamp_min(1e-6)
+        targets["particle_d0"] = (-targets["particle_vx"] * targets["particle_py"] + targets["particle_vy"] * targets["particle_px"]) / pt.clamp_min(
+            1e-6
+        )
         targets["particle_z0"] = targets["particle_vz"]
         targets["particle_charged"] = targets["particle_charge"] != 0
         targets["particle_neutral"] = ~targets["particle_charged"]
@@ -614,8 +605,7 @@ class ODDDataset(Dataset):
         num_particles = int(num_calohits.numel())
         if num_particles == 0 or particle_calohit_indices.numel() == 0:
             empty_counts = {
-                f"particle_num_{group_name}": torch.zeros(num_particles, dtype=torch.float32)
-                for group_name in self.CALO_GROUP_DETECTOR_IDS
+                f"particle_num_{group_name}": torch.zeros(num_particles, dtype=torch.float32) for group_name in self.CALO_GROUP_DETECTOR_IDS
             }
             return {
                 "particle_num_calohits": num_calohits,
@@ -655,10 +645,7 @@ class ODDDataset(Dataset):
 
     def _build_particle_calo_energy_fields(self, particle_ids: torch.Tensor, calohits: ak.Record) -> dict[str, torch.Tensor]:
         num_particles = int(particle_ids.numel())
-        particle_energy_raw_np = {
-            key: np.zeros(num_particles, dtype=np.float32)
-            for key in (*self.CALO_SUBSYSTEMS, "calo_sum")
-        }
+        particle_energy_raw_np = {key: np.zeros(num_particles, dtype=np.float32) for key in (*self.CALO_SUBSYSTEMS, "calo_sum")}
 
         contrib_counts = ak.to_numpy(ak.num(calohits["contrib_particle_ids"], axis=1))
         if num_particles > 0 and contrib_counts.sum() > 0:
@@ -692,26 +679,20 @@ class ODDDataset(Dataset):
         particle_energy_raw["hcal"] = particle_energy_raw["hcb"] + particle_energy_raw["hce"]
 
         particle_energy_calib = {
-            f"{subsystem}_calib": particle_energy_raw[subsystem] * scale
-            for subsystem, scale in self.CALO_SUBSYSTEM_CALIBRATION.items()
+            f"{subsystem}_calib": particle_energy_raw[subsystem] * scale for subsystem, scale in self.CALO_SUBSYSTEM_CALIBRATION.items()
         }
         particle_energy_calib["ecal_calib"] = particle_energy_calib["ecb_calib"] + particle_energy_calib["ece_calib"]
         particle_energy_calib["hcal_calib"] = particle_energy_calib["hcb_calib"] + particle_energy_calib["hce_calib"]
         particle_energy_calib["calo_calib"] = particle_energy_calib["ecal_calib"] + particle_energy_calib["hcal_calib"]
 
-        out = {
-            f"particle_energy_{subsystem}": particle_energy_raw[subsystem]
-            for subsystem in (*self.CALO_SUBSYSTEMS, "ecal", "hcal")
-        }
+        out = {f"particle_energy_{subsystem}": particle_energy_raw[subsystem] for subsystem in (*self.CALO_SUBSYSTEMS, "ecal", "hcal")}
         out["particle_energy_calo_sum"] = particle_energy_raw["calo_sum"]
         out.update({f"particle_energy_{name}": values for name, values in particle_energy_calib.items()})
         return out
 
     @staticmethod
     def _build_calohit_contrib_energy_sum(calohits: ak.Record) -> torch.Tensor:
-        contrib_energy_sum = ak.to_numpy(
-            ak.sum(calohits["contrib_energies"], axis=1, mask_identity=False)
-        ).astype(np.float32, copy=False)
+        contrib_energy_sum = ak.to_numpy(ak.sum(calohits["contrib_energies"], axis=1, mask_identity=False)).astype(np.float32, copy=False)
         return torch.from_numpy(contrib_energy_sum)
 
     def _add_calohits(
@@ -745,10 +726,7 @@ class ODDDataset(Dataset):
             self._debug("skipping calo association build (build_calohit_associations=False)")
             return
 
-        self._debug(
-            f"building calo associations: n_particles={targets['particle_particle_id'].size(0)} "
-            f"n_calohits={inputs['calohit_x'].size(0)}"
-        )
+        self._debug(f"building calo associations: n_particles={targets['particle_particle_id'].size(0)} n_calohits={inputs['calohit_x'].size(0)}")
         t_calo_assoc = perf_counter()
         particle_calohit_indptr, particle_calohit_indices, particle_calohit_shape = self._build_particle_calohit_csr(
             targets["particle_particle_id"],
@@ -795,9 +773,7 @@ class ODDDataset(Dataset):
     @staticmethod
     def _pad_particle_targets_inplace(targets: dict[str, torch.Tensor]) -> None:
         particle_keys = [
-            k
-            for k in targets
-            if k.startswith("particle_") and not k.startswith("particle_sihit_") and not k.startswith("particle_calohit_")
+            k for k in targets if k.startswith("particle_") and not k.startswith("particle_sihit_") and not k.startswith("particle_calohit_")
         ]
         if not particle_keys:
             return
@@ -876,21 +852,16 @@ class ODDDataset(Dataset):
             targets.update(particle_num_calo_hit_fields)
 
         constituent_debug = (
-            f"after constituent cuts: n_particles={targets['particle_particle_id'].size(0)} "
-            f"n_sihits={inputs['sihit_particle_id'].size(0)}"
+            f"after constituent cuts: n_particles={targets['particle_particle_id'].size(0)} n_sihits={inputs['sihit_particle_id'].size(0)}"
         )
         if particle_num_calohits is not None:
-            constituent_debug += (
-                f" n_calohits={int(particle_num_calohits.sum().item())}"
-            )
+            constituent_debug += f" n_calohits={int(particle_num_calohits.sum().item())}"
             if particle_num_calo_hit_fields is not None:
                 constituent_debug += (
                     f" n_ecalhits={int(particle_num_calo_hit_fields['particle_num_ecalhits'].sum().item())}"
                     f" n_hcalhits={int(particle_num_calo_hit_fields['particle_num_hcalhits'].sum().item())}"
                 )
-        self._debug(
-            constituent_debug
-        )
+        self._debug(constituent_debug)
 
         self._debug(
             f"built particle_sihit CSR in {perf_counter() - t_assoc:.3f}s "

@@ -15,7 +15,7 @@ def _load_config():
 
 
 def _build_dataset_kwargs(config):
-    dataset_kwargs = {
+    return {
         "dirpath": config.get("test_dir", config["train_dir"]),
         "num_events": config.get("num_test", -1),
         "particle_min_pt": config["particle_min_pt"],
@@ -26,8 +26,6 @@ def _build_dataset_kwargs(config):
         "event_type": config.get("event_type", "ttbar"),
         "debug": config.get("plot_debug", False),
     }
-
-    return dataset_kwargs
 
 
 def _load_first_event(dataset):

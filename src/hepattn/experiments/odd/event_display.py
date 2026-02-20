@@ -294,18 +294,16 @@ def plot_odd_event(
     top_n_particles_by_pt: int | None = None,
     particle_helix_linestyle: str = "-",
 ):
-    if not any(
-        [
-            plot_sihits,
-            plot_particle_sihits,
-            plot_track_sihits,
-            plot_calohits,
-            plot_calohits_by_detector,
-            plot_particle_calohits,
-            plot_particles,
-            plot_tracker,
-        ]
-    ):
+    if not any([
+        plot_sihits,
+        plot_particle_sihits,
+        plot_track_sihits,
+        plot_calohits,
+        plot_calohits_by_detector,
+        plot_particle_calohits,
+        plot_particles,
+        plot_tracker,
+    ]):
         msg = "Nothing selected to plot. Enable at least one plot_* flag."
         raise ValueError(msg)
     if top_n_particles_by_pt is not None and top_n_particles_by_pt <= 0:
@@ -333,14 +331,20 @@ def plot_odd_event(
         )
 
     selected_particle_calohit_mask = None
-    if particle_indices is not None and (plot_calohits or plot_calohits_by_detector or plot_particle_calohits):
-        if "particle_calohit_indptr" in data and "particle_calohit_indices" in data and "calohit_valid" in data:
-            selected_particle_calohit_mask = _build_csr_selected_hit_mask(
-                data["particle_calohit_indptr"][batch_idx],
-                data["particle_calohit_indices"][batch_idx],
-                particle_indices,
-                num_hits=int(data["calohit_valid"][batch_idx].numel()),
-            )
+    has_particle_calohit_assoc = (
+        "particle_calohit_indptr" in data and "particle_calohit_indices" in data and "calohit_valid" in data
+    )
+    if (
+        particle_indices is not None
+        and (plot_calohits or plot_calohits_by_detector or plot_particle_calohits)
+        and has_particle_calohit_assoc
+    ):
+        selected_particle_calohit_mask = _build_csr_selected_hit_mask(
+            data["particle_calohit_indptr"][batch_idx],
+            data["particle_calohit_indices"][batch_idx],
+            particle_indices,
+            num_hits=int(data["calohit_valid"][batch_idx].numel()),
+        )
 
     particle_helices = []
     track_helices = []
