@@ -74,12 +74,12 @@ z0:
   max: 400
 
 chi2:
-    type: min_max_sym
-    fn: sqrt
-    mean: 4.594
-    std: 2.435
-    min: 0.004
-    max: 100
+  type: min_max_sym
+  fn: sqrt
+  mean: 4.594
+  std: 2.435
+  min: 0.004
+  max: 100
 
 ndf:
   type: min_max_sym

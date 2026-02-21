@@ -1,8 +1,8 @@
 seed_everything: 42
 name: TRK-ATLAS-Muon-Filtering
-# ckpt_path: 
+# ckpt_path:
 
-data: 
+data:
   train_dir: /scratch/ml_training_data_2694000_hdf5
   val_dir: /scratch/ml_validation_data_144000_hdf5
   test_dir: /scratch/ml_test_data_156000_hdf5
@@ -14,7 +14,7 @@ data:
   batch_size: 50 # Calibrated for 95 GB of NVIDIA H100 GPU memory
 
   # ATLAS muon data parameters
-  event_max_num_particles: 10  
+  event_max_num_particles: 10
 
   # Define which inputs will be available to the model
   inputs:
@@ -87,7 +87,7 @@ trainer:
         patience: 15
         min_delta: 0.0
         mode: min
-        verbose: True 
+        verbose: True
 
 model:
   optimizer: Lion
@@ -135,7 +135,7 @@ model:
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
-                    input_size: 18  
+                    input_size: 18
                     output_size: &dim 128
                 posenc:
                   class_path: hepattn.models.posenc.PositionEncoder
@@ -153,10 +153,10 @@ model:
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 8 
+          num_layers: 8
           dim: *dim
           attn_type: flash
-          window_size: 512  
+          window_size: 512
           window_wrap: true
           hybrid_norm: true
           norm: RMSNorm

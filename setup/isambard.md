@@ -31,7 +31,7 @@ Either checkout and install the code under `/scratch/`, or if you have already c
 
 ```bash
 rm -rf .pixi/                                                     # remove existing pixi install dir if present
-mkdir -p /scratch/u5du/svanstroud.u5du/hepattn-pixi               # create install folder 
+mkdir -p /scratch/u5du/svanstroud.u5du/hepattn-pixi               # create install folder
 ln -s /scratch/u5du/svanstroud.u5du/hepattn-pixi .pixi            # symlink to current repo
 export PIXI_CACHE_DIR=/scratch/u5du/svanstroud.u5du/pixi-cache/   # set the pixi cache dir
 ```

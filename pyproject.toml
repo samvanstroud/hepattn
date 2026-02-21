@@ -8,7 +8,7 @@ requires-python = "== 3.12"
 version = "0.2.0"
 
 dependencies = [
-    "packaging>=24.1,<25",
+    "packaging>=24.1,<27",
     "jupyter>=1.1.1,<2",
     "ipykernel>=6.30.1,<7",
     "wheel>=0.45.1,<0.46",
@@ -23,8 +23,8 @@ dependencies = [
     "matplotlib>=3.10.6,<4",
     "lightning==2.5.2",
     "comet-ml==3.50.0",
-    "pandas>=2.3.2,<3",
-    "pyarrow>=21.0.0,<22",
+    "pandas>=2.3.2,<4",
+    "pyarrow>=21.0.0,<24",
     "jsonargparse[signatures]==4.40.1",
     "torchjd>=0.7.0,<0.8",
     "lion-pytorch>=0.2.3,<0.3",
@@ -63,7 +63,6 @@ hepattn = { path = ".", editable = true }
 
 [tool.pixi.pypi-options]
 no-build-isolation = ["flash-attn"]
-extra-index-urls = ["https://download.pytorch.org/whl/cu128"]
 
 [tool.pixi.feature.gpu.pypi-dependencies]
 torch = { version = "==2.9.1", index = "https://download.pytorch.org/whl/cu128"}
@@ -89,6 +88,7 @@ git = ">=2.51.0,<3"
 git-lfs = ">=3.7.0,<4"
 ninja = ">=1.13.1,<2"
 cuda = "12.8.*"
+datasets = ">=4.4.1,<5"
 
 [tool.pixi.tasks.test]
 cmd = "pytest"

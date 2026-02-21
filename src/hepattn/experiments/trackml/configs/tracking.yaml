@@ -13,12 +13,11 @@ data:
   train_dir: /projects/u5du/pduckett/data_new/train/
   val_dir: /projects/u5du/pduckett/data_new/val/
   test_dir: /projects/u5du/pduckett/data_new/test/
-  hit_eval_train: /lus/lfs1aip2/projects/u5du/svanstroud/logs/HF-600MeV-eta2.5_20251208-T205400/ckpts/epoch=079-val_loss=0.11373_train_eval.h5
-  hit_eval_val: /lus/lfs1aip2/projects/u5du/svanstroud/logs/HF-600MeV-eta2.5_20251208-T205400/ckpts/epoch=079-val_loss=0.11373_val_eval.h5
-  hit_eval_test: /lus/lfs1aip2/projects/u5du/svanstroud/logs/HF-600MeV-eta2.5_20251208-T205400/ckpts/epoch=079-val_loss=0.11373_test_eval.h5
-  hit_filter_threshold: 0.2
-  
-  num_workers: 15
+  hit_eval_train: /projects/u5du/pduckett/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_train_eval.h5
+  hit_eval_val: /projects/u5du/pduckett/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_val_eval.h5
+  hit_eval_test: /projects/u5du/pduckett/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_test_eval.h5
+
+  num_workers: 10
   num_train: -1
   num_test: -1
   num_val: -1

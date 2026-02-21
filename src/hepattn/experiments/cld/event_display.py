@@ -5,7 +5,7 @@ import torch
 plt.rcParams["figure.dpi"] = 300
 
 
-def plot_cld_event(data, axes_spec, object_name, batch_idx=0, valid=True, mark_transparent=None, label_objects=False, gridspec_kw=None):
+def plot_cld_event(data, axes_spec, object_name, batch_idx=0, valid=True, mark_transparent=None, gridspec_kw=None):
     # Setup the axes
     num_axes = len(axes_spec)
 
@@ -67,7 +67,7 @@ def plot_cld_event(data, axes_spec, object_name, batch_idx=0, valid=True, mark_t
                         ax[ax_idx].scatter(x[mask], y[mask], color=color, marker="x", alpha=alpha, s=4.0)
 
                     # Uncomment to leave a box denoting particle index for trkr hit
-                    if label_objects and input_name in {"trkr", "hcal"} and mask.any():
+                    if input_name in {"trkr", "hcal"} and mask.any():
                         idx = torch.argsort(data[f"{input_name}_time"][batch_idx][mask], dim=-1)
                         end_x = x[mask][idx][-1].item()
                         end_y = y[mask][idx][-1].item()

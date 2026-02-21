@@ -1,6 +1,6 @@
 seed_everything: 42
 name: TRK-ATLAS-Muon-Tracking
-# ckpt_path: 
+# ckpt_path:
 
 data:
 
@@ -55,7 +55,7 @@ trainer:
   devices: [1]
 
   precision: bf16-mixed
-  log_every_n_steps: 50 
+  log_every_n_steps: 50
   default_root_dir: logs
   gradient_clip_val: 0.1
   enable_progress_bar: true
@@ -68,7 +68,7 @@ trainer:
       offline_directory: logs/comet_offline
 
   callbacks:
-    # - class_path: hepattn.callbacks.Compile # Does not work with 
+    # - class_path: hepattn.callbacks.Compile # Does not work with
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint

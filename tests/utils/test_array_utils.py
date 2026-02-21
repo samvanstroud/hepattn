@@ -9,6 +9,10 @@ from hepattn.utils.array_utils import (
 )
 
 
+def _mask_as_array(mask) -> np.ndarray:
+    return np.asarray(mask, dtype=bool)
+
+
 class TestMaskedDiffLastAxis:
     """Tests for masked_diff_last_axis function."""
 
@@ -19,17 +23,18 @@ class TestMaskedDiffLastAxis:
         m = np.ma.MaskedArray(data, mask=mask)
 
         result = masked_diff_last_axis(m)
+        result_mask = _mask_as_array(result.mask)
 
         # First column should be masked (no previous valid)
-        assert result.mask[0, 0]
-        assert result.mask[1, 0]
+        assert result_mask[0, 0]
+        assert result_mask[1, 0]
 
         # Differences should be correct
         np.testing.assert_array_equal(result.data[0, 1:], [1, 1, 1])
         np.testing.assert_array_equal(result.data[1, 1:], [10, 10, 10])
 
         # Only first column should be masked
-        assert not np.any(result.mask[:, 1:])
+        assert not np.any(result_mask[:, 1:])
 
     def test_with_masked_values(self):
         """Test with some masked values in the input."""
@@ -38,17 +43,18 @@ class TestMaskedDiffLastAxis:
         m = np.ma.MaskedArray(data, mask=mask)
 
         result = masked_diff_last_axis(m)
+        result_mask = _mask_as_array(result.mask)
 
         # First column should be masked
-        assert result.mask[0, 0]
-        assert result.mask[1, 0]
+        assert result_mask[0, 0]
+        assert result_mask[1, 0]
 
         # Second column of first row should be masked (input was masked)
-        assert result.mask[0, 1]
+        assert result_mask[0, 1]
 
         # Third column of first row should use value from index 0 (since index 1 was masked)
         assert result.data[0, 2] == 2  # 3 - 1
-        assert not result.mask[0, 2]
+        assert not result_mask[0, 2]
 
     def test_all_masked_row(self):
         """Test with a completely masked row."""
@@ -57,9 +63,10 @@ class TestMaskedDiffLastAxis:
         m = np.ma.MaskedArray(data, mask=mask)
 
         result = masked_diff_last_axis(m)
+        result_mask = _mask_as_array(result.mask)
 
         # All should be masked
-        assert np.all(result.mask)
+        assert np.all(result_mask)
 
     def test_single_column(self):
         """Test with single column array."""
@@ -68,9 +75,10 @@ class TestMaskedDiffLastAxis:
         m = np.ma.MaskedArray(data, mask=mask)
 
         result = masked_diff_last_axis(m)
+        result_mask = _mask_as_array(result.mask)
 
         # Single column should be masked (no previous)
-        assert np.all(result.mask)
+        assert np.all(result_mask)
 
     def test_empty_array(self):
         """Test with empty array."""
@@ -95,13 +103,14 @@ class TestMaskedAngleDiffLastAxis:
         mask = np.array([[False, False]])
 
         result = masked_angle_diff_last_axis(ax, ay, az, mask)
+        result_mask = _mask_as_array(result.mask)
 
         # First should be masked (no previous)
-        assert result.mask[0, 0]
+        assert result_mask[0, 0]
 
         # Second should be 90 degrees (π/2)
         np.testing.assert_allclose(result.data[0, 1], np.pi / 2, rtol=1e-10)
-        assert not result.mask[0, 1]
+        assert not result_mask[0, 1]
 
     def test_parallel_vectors(self):
         """Test with parallel vectors (angle should be 0)."""
@@ -135,16 +144,17 @@ class TestMaskedAngleDiffLastAxis:
         mask = np.array([[False, True, False]])
 
         result = masked_angle_diff_last_axis(ax, ay, az, mask)
+        result_mask = _mask_as_array(result.mask)
 
         # First should be masked (no previous)
-        assert result.mask[0, 0]
+        assert result_mask[0, 0]
 
         # Second should be masked (input was masked)
-        assert result.mask[0, 1]
+        assert result_mask[0, 1]
 
         # Third should use first vector as reference (since second was masked)
         np.testing.assert_allclose(result.data[0, 2], 0.0, atol=1e-10)
-        assert not result.mask[0, 2]
+        assert not result_mask[0, 2]
 
     def test_3d_vectors(self):
         """Test with 3D vectors."""

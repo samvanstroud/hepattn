@@ -48,4 +48,3 @@ public:
 	PPMImage() : width(0), height(0), max_val(0), raw(0) {}
 	~PPMImage() { if (raw != 0) delete[] raw; }
 };
-

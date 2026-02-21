@@ -1,77 +1,77 @@
 model:
   model:
-      tasks:
-        class_path: torch.nn.ModuleList
-        init_args:
-          modules:
-            - class_path: hepattn.models.task.ObjectClassificationTask
-              init_args:
-                name: pred_valid
-                input_object: query
-                output_object: pred
-                target_object: sudo
-                losses:
-                  object_bce: 1.0
-                costs:
-                  object_bce: 100.0
-                dim: *dim
-                null_weight: 1.0
-                mask_queries: false
+    tasks:
+      class_path: torch.nn.ModuleList
+      init_args:
+        modules:
+          - class_path: hepattn.models.task.ObjectClassificationTask
+            init_args:
+              name: pred_valid
+              input_object: query
+              output_object: pred
+              target_object: sudo
+              losses:
+                object_bce: 1.0
+              costs:
+                object_bce: 100.0
+              dim: 256
+              null_weight: 1.0
+              mask_queries: false
 
-            - class_path: hepattn.models.task.ObjectHitMaskTask
-              init_args:
-                name: pred_pix_assignment
-                input_constituent: pix
-                input_object: query
-                output_object: pred
-                target_object: sudo
-                losses:
-                  mask_bce: 100.0
-                costs:
-                  mask_bce: 100.0
-                dim: *dim
-                null_weight: 1.0
+          - class_path: hepattn.models.task.ObjectHitMaskTask
+            init_args:
+              name: pred_pix_assignment
+              input_constituent: pix
+              input_object: query
+              output_object: pred
+              target_object: sudo
+              losses:
+                mask_bce: 100.0
+              costs:
+                mask_bce: 100.0
+              dim: 256
+              null_weight: 1.0
 
-            - class_path: hepattn.models.task.ObjectHitMaskTask
-              init_args:
-                name: pred_sct_assignment
-                input_constituent: sct
-                input_object: query
-                output_object: pred
-                target_object: sudo
-                losses:
-                  mask_bce: 50.0
-                costs:
-                  mask_bce: 50.0
-                dim: *dim
-                null_weight: 1.0
+          - class_path: hepattn.models.task.ObjectHitMaskTask
+            init_args:
+              name: pred_sct_assignment
+              input_constituent: sct
+              input_object: query
+              output_object: pred
+              target_object: sudo
+              losses:
+                mask_bce: 50.0
+              costs:
+                mask_bce: 50.0
+              dim: 256
+              null_weight: 1.0
 
-            - class_path: hepattn.models.task.ObjectRegressionTask
-              init_args:
-                name: pred_regression
-                input_object: query
-                output_object: pred
-                target_object: sudo
-                dim: *dim
-                loss_weight: 10.0
-                fields:
-                  - scaled_qopt
-                  - scaled_dtheta
-                  - scaled_dphi
-                  - scaled_d0
-                  - scaled_dz0
+          - class_path: hepattn.models.task.ObjectRegressionTask
+            init_args:
+              name: pred_regression
+              input_object: query
+              output_object: pred
+              target_object: sudo
+              dim: 256
+              loss_weight: 10.0
+              fields:
+                - scaled_qopt
+                - scaled_dtheta
+                - scaled_dphi
+                - scaled_d0
+                - scaled_dz0
 
-            - class_path: hepattn.models.task.ObjectHitRegressionTask
-              init_args:
-                name: pred_pix_regression
-                input_constituent: pix
-                input_object: query
-                output_object: pred_pix
-                target_object: sudo_pix
-                dim: *dim
-                loss_weight: 10.0
-                fields:
-                  - loc_x
-                  - loc_y
-                  - theta
-                  - phi
+          - class_path: hepattn.models.task.ObjectHitRegressionTask
+            init_args:
+              name: pred_pix_regression
+              input_constituent: pix
+              input_object: query
+              output_object: pred_pix
+              target_object: sudo_pix
+              dim: 256
+              loss_weight: 10.0
+              fields:
+                - loc_x
+                - loc_y
+                - theta
+                - phi
