@@ -60,6 +60,8 @@ platforms = ["linux-64", "linux-aarch64"]
 
 [tool.pixi.pypi-dependencies]
 hepattn = { path = ".", editable = true }
+datasets = ">=4.4.1,<5"
+fsspec = { version = ">=2025.10.0,<2027", extras = ["http"] }
 
 [tool.pixi.pypi-options]
 no-build-isolation = ["flash-attn"]
@@ -89,7 +91,6 @@ git = ">=2.51.0,<3"
 git-lfs = ">=3.7.0,<4"
 ninja = ">=1.13.1,<2"
 cuda = "12.8.*"
-datasets = ">=4.4.1,<5"
 
 [tool.pixi.tasks.test]
 cmd = "pytest"
