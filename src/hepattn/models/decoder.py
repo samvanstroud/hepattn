@@ -94,7 +94,7 @@ class MaskFormerDecoder(nn.Module):
             )
         assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
 
-    def _extract_kmeans_logits(self, layer_outputs: dict[str, object], num_constituents: int) -> Tensor | dict[str, Tensor | int]:
+    def _extract_kmeans_logits(self, layer_outputs: dict[str, object], num_constituents: int) -> Tensor:
         for task_outputs in layer_outputs.values():
             if not isinstance(task_outputs, dict):
                 continue
@@ -105,27 +105,7 @@ class MaskFormerDecoder(nn.Module):
             ]
             if dense_logits:
                 return dense_logits[0]
-
-            sparse_values_key = next(
-                (k for k, v in task_outputs.items() if k.endswith("_logit_sparse_values") and isinstance(v, Tensor) and v.dim() == 3),
-                None,
-            )
-            if sparse_values_key is None:
-                continue
-
-            base = sparse_values_key.removesuffix("_logit_sparse_values")
-            sparse_indices_key = f"{base}_logit_sparse_indices"
-            sparse_kv_len_key = f"{base}_logit_sparse_kv_len"
-            if sparse_indices_key not in task_outputs:
-                continue
-
-            return {
-                "values": task_outputs[sparse_values_key],
-                "indices": task_outputs[sparse_indices_key],
-                "kv_len": task_outputs.get(sparse_kv_len_key, num_constituents),
-            }
-
-        raise ValueError("cross_attn_mode='kmeans' requires a task output with 3D *_logit (matching key length) or *_logit_sparse_values/indices.")
+        raise ValueError("cross_attn_mode='kmeans' requires a task output with 3D *_logit matching key length.")
 
     def num_queries(self, x) -> int:
         if self.dynamic_queries:
@@ -429,7 +409,7 @@ class MaskFormerDecoderLayer(nn.Module):
         query_posenc: Tensor | None = None,
         key_posenc: Tensor | None = None,
         attn_mask_transpose: Tensor | None = None,
-        logits: Tensor | dict[str, Tensor | int] | None = None,
+        logits: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         """Forward pass for the decoder layer.
 
@@ -442,7 +422,7 @@ class MaskFormerDecoderLayer(nn.Module):
             query_posenc: Optional query positional encoding.
             key_posenc: Optional key positional encoding.
             attn_mask_transpose: Optional transposed attention mask for flex attention.
-            logits: If cross_attn_mode="kmeans", logits (B, N, M) or sparse logits dict for hard assignment.
+            logits: If cross_attn_mode="kmeans", dense logits (B, N, M).
 
         Returns:
             tuple[Tensor, Tensor]: Updated (q, kv).
