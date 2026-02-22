@@ -1,4 +1,4 @@
-# ruff: noqa: N803,N806,RET504
+# ruff: noqa: N803, RET504
 """Track visualization utilities for ROOT-based muon tracking data.
 
 This module provides the TrackVisualizer class for visualizing ATLAS muon

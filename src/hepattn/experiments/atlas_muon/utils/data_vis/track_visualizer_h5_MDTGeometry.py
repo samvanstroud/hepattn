@@ -1,4 +1,4 @@
-# ruff: noqa: N801,N803,N806,TRY300,SIM108,RET504,ICN001,TID252,PLC2801
+# ruff: noqa: N801, N803, TRY300, SIM108, RET504, ICN001, TID252, PLC2801
 
 """Track visualization utilities for HDF5-based muon tracking data.
 
