@@ -1,3 +1,5 @@
+import types
+
 import pytest
 import torch
 from torch import nn
@@ -82,6 +84,24 @@ class MockQueryInitTask(nn.Module):
 
     def predict(self, outputs):
         return {"hit_is_first_prob": outputs["hit_is_first_prob"]}
+
+
+class MockKMeansLogitTask:
+    has_intermediate_loss = True
+    has_first_layer_loss = True
+    name = "kmeans_task"
+
+    def __init__(self, logits: torch.Tensor):
+        self.logits = logits
+
+    def __call__(self, x, outputs=None):
+        return {"track_hit_logit": self.logits}
+
+    def should_run_at_layer(self, layer_index):
+        return True
+
+    def attn_mask(self, outputs):
+        return {}
 
 
 class TestMaskFormerDecoder:
@@ -433,6 +453,59 @@ class TestMaskFormerDecoder:
             assert not attn_mask[0, 1, 3]
             assert not attn_mask[1, 4, 5]
 
+    def test_extract_kmeans_logits_returns_dense_logits(self, decoder):
+        logits = torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
+        layer_outputs = {"task_a": {"track_hit_logit": logits}}
+
+        extracted = decoder._extract_kmeans_logits(layer_outputs, SEQ_LEN)  # noqa: SLF001
+
+        assert extracted is logits
+
+    def test_extract_kmeans_logits_skips_wrong_shape_logits(self, decoder):
+        wrong = torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN + 1)
+        layer_outputs = {"task_a": {"track_hit_logit": wrong}}
+
+        with pytest.raises(ValueError, match="cross_attn_mode='kmeans' requires"):
+            decoder._extract_kmeans_logits(layer_outputs, SEQ_LEN)  # noqa: SLF001
+
+    def test_forward_kmeans_passes_task_logits_to_decoder_layer(self, monkeypatch, decoder_layer_config, sample_decoder_data):
+        config = decoder_layer_config.copy()
+        config["cross_attn_mode"] = "kmeans"
+        config["bidirectional_ca"] = False
+        decoder = MaskFormerDecoder(
+            num_queries=NUM_QUERIES,
+            decoder_layer_config=config,
+            num_decoder_layers=1,
+            mask_attention=False,
+        )
+
+        x, input_names = sample_decoder_data
+        logits = torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
+        decoder.tasks = [MockKMeansLogitTask(logits)]
+
+        captured: dict[str, torch.Tensor | None] = {"logits": None}
+        layer = decoder.decoder_layers[0]
+
+        def fake_layer_forward(
+            self,
+            q,
+            kv,
+            attn_mask=None,
+            q_mask=None,
+            kv_mask=None,
+            query_posenc=None,
+            key_posenc=None,
+            attn_mask_transpose=None,
+            logits=None,
+        ):
+            captured["logits"] = logits
+            return q, kv
+
+        monkeypatch.setattr(layer, "forward", types.MethodType(fake_layer_forward, layer))
+        decoder(x, input_names)
+
+        assert captured["logits"] is logits
+
     def test_flex_local_cross_attention(self, decoder_layer_config, sample_local_strided_decoder_data):
         """Test flex implementation of local cross attention in the decoder."""
         # Configure decoder to use flex attention with local_strided_attn
@@ -526,6 +599,24 @@ class TestMaskFormerDecoderLayer:
         # Check output shapes
         assert new_q.shape == q.shape
         # Without bidirectional, kv should remain unchanged
+        assert new_kv is kv
+
+    def test_forward_kmeans_uses_logits_argument(self, monkeypatch, sample_data):
+        q, kv, _, _ = sample_data
+        layer = MaskFormerDecoderLayer(dim=DIM, bidirectional_ca=False, cross_attn_mode="kmeans")
+        logits = torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
+
+        captured: dict[str, torch.Tensor | None] = {"logits": None}
+
+        def fake_kmeans_forward(self, q, k=None, v=None, attn_mask=None, q_mask=None, kv_mask=None, logits=None, **kwargs):
+            captured["logits"] = logits
+            return q
+
+        monkeypatch.setattr(layer.q_ca.fn, "forward", types.MethodType(fake_kmeans_forward, layer.q_ca.fn))
+        new_q, new_kv = layer(q, kv, logits=logits)
+
+        assert captured["logits"] is logits
+        assert new_q.shape == q.shape
         assert new_kv is kv
 
 
