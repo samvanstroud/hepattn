@@ -28,14 +28,18 @@ class KMeansCrossAttention(nn.Module):
         attn_mask: Tensor | None = None,  # (B, N, M) bool
         q_mask: Tensor | None = None,  # (B, N) bool
         kv_mask: Tensor | None = None,  # (B, M) bool
+        logits: Tensor | None = None,  # (B, N, M)
+        **kwargs,
     ) -> Tensor:
         if v is None:
             raise ValueError("KMeansCrossAttention requires v (values).")
 
         neg_inf = float("-inf")
-        if k is None:
-            raise ValueError("KMeansCrossAttention requires k (keys).")
-        logits = q @ k.transpose(-2, -1)
+
+        if logits is None:
+            if k is None:
+                raise ValueError("Provide either logits or k.")
+            logits = q @ k.transpose(-2, -1)
 
         if q_mask is not None:
             logits = logits.masked_fill(~q_mask.unsqueeze(-1), neg_inf)
