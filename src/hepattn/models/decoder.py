@@ -94,19 +94,6 @@ class MaskFormerDecoder(nn.Module):
             )
         assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
 
-    def _extract_kmeans_logits(self, layer_outputs: dict[str, object], num_constituents: int) -> Tensor:
-        for task_outputs in layer_outputs.values():
-            if not isinstance(task_outputs, dict):
-                continue
-            dense_logits = [
-                v
-                for k, v in task_outputs.items()
-                if k.endswith("_logit") and isinstance(v, Tensor) and v.dim() == 3 and v.shape[-1] == num_constituents
-            ]
-            if dense_logits:
-                return dense_logits[0]
-        raise ValueError("cross_attn_mode='kmeans' requires a task output with 3D *_logit matching key length.")
-
     def num_queries(self, x) -> int:
         if self.dynamic_queries:
             return x["query_embed"].shape[1]
@@ -298,10 +285,6 @@ class MaskFormerDecoder(nn.Module):
             if (attn_mask is not None) and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
-            logits = None
-            if getattr(decoder_layer, "cross_attn_mode", "softmax") == "kmeans":
-                logits = self._extract_kmeans_logits(outputs[f"layer_{layer_index}"], num_constituents)
-
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"],
@@ -312,7 +295,6 @@ class MaskFormerDecoder(nn.Module):
                 query_posenc=x["query_posenc"] if self.posenc else None,
                 key_posenc=x["key_posenc"] if self.posenc else None,
                 attn_mask_transpose=attn_mask_transpose,
-                logits=logits,
             )
 
             # update the individual input constituent representations only if not in merged input mode
@@ -409,7 +391,6 @@ class MaskFormerDecoderLayer(nn.Module):
         query_posenc: Tensor | None = None,
         key_posenc: Tensor | None = None,
         attn_mask_transpose: Tensor | None = None,
-        logits: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         """Forward pass for the decoder layer.
 
@@ -422,7 +403,6 @@ class MaskFormerDecoderLayer(nn.Module):
             query_posenc: Optional query positional encoding.
             key_posenc: Optional key positional encoding.
             attn_mask_transpose: Optional transposed attention mask for flex attention.
-            logits: If cross_attn_mode="kmeans", dense logits (B, N, M).
 
         Returns:
             tuple[Tensor, Tensor]: Updated (q, kv).
@@ -430,18 +410,7 @@ class MaskFormerDecoderLayer(nn.Module):
         q_pe = q if query_posenc is None else q + query_posenc
         kv_pe = kv if key_posenc is None else kv + key_posenc
 
-        if self.cross_attn_mode == "kmeans":
-            q = self.q_ca(
-                q_pe,
-                k=kv_pe,
-                v=kv,
-                attn_mask=attn_mask,
-                q_mask=q_mask,
-                kv_mask=kv_mask,
-                logits=logits,
-            )
-        else:
-            q = self.q_ca(q_pe, k=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
+        q = self.q_ca(q_pe, k=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
 
         q = self.q_dense(q)
         q = self.q_sa(q, k=q, v=q, q_mask=q_mask)
