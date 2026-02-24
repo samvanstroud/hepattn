@@ -490,15 +490,9 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
             _self,
             q,
             kv,
-            _attn_mask=None,
-            _q_mask=None,
-            _kv_mask=None,
-            _query_posenc=None,
-            _key_posenc=None,
-            _attn_mask_transpose=None,
-            logits=None,
+            **kwargs,
         ):
-            captured["logits"] = logits
+            captured["logits"] = kwargs.get("logits")
             return q, kv
 
         monkeypatch.setattr(layer, "forward", types.MethodType(fake_layer_forward, layer))
@@ -608,8 +602,8 @@ class TestMaskFormerDecoderLayer:
 
         captured: dict[str, torch.Tensor | None] = {"logits": None}
 
-        def fake_kmeans_forward(_self, q, _k=None, _v=None, _attn_mask=None, _q_mask=None, _kv_mask=None, logits=None, **_kwargs):
-            captured["logits"] = logits
+        def fake_kmeans_forward(_self, q, **kwargs):
+            captured["logits"] = kwargs.get("logits")
             return q
 
         monkeypatch.setattr(layer.q_ca.fn, "forward", types.MethodType(fake_kmeans_forward, layer.q_ca.fn))
