@@ -104,7 +104,7 @@ class MockKMeansLogitTask:
         return {}
 
 
-class TestMaskFormerDecoder:
+class TestMaskFormerDecoder:  # noqa: PLR0904
     @pytest.fixture
     def decoder_layer_config(self):
         return {
@@ -487,15 +487,15 @@ class TestMaskFormerDecoder:
         layer = decoder.decoder_layers[0]
 
         def fake_layer_forward(
-            self,
+            _self,
             q,
             kv,
-            attn_mask=None,
-            q_mask=None,
-            kv_mask=None,
-            query_posenc=None,
-            key_posenc=None,
-            attn_mask_transpose=None,
+            _attn_mask=None,
+            _q_mask=None,
+            _kv_mask=None,
+            _query_posenc=None,
+            _key_posenc=None,
+            _attn_mask_transpose=None,
             logits=None,
         ):
             captured["logits"] = logits
@@ -608,7 +608,7 @@ class TestMaskFormerDecoderLayer:
 
         captured: dict[str, torch.Tensor | None] = {"logits": None}
 
-        def fake_kmeans_forward(self, q, k=None, v=None, attn_mask=None, q_mask=None, kv_mask=None, logits=None, **kwargs):
+        def fake_kmeans_forward(_self, q, _k=None, _v=None, _attn_mask=None, _q_mask=None, _kv_mask=None, logits=None, **_kwargs):
             captured["logits"] = logits
             return q
 
