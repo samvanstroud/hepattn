@@ -481,7 +481,7 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
 
         x, input_names = sample_decoder_data
         logits = torch.randn(BATCH_SIZE, NUM_QUERIES, SEQ_LEN)
-        decoder.tasks = [MockKMeansLogitTask(logits)]
+        decoder.tasks = [MockKMeansLogitTask(logits)]  # ty: ignore[unresolved-attribute]
 
         captured: dict[str, torch.Tensor | None] = {"logits": None}
         layer = decoder.decoder_layers[0]
