@@ -160,7 +160,8 @@ def load_events(fname, index_list=None, randomize=None, write_inputs=None, write
         targets_list = []
         parts_list = []
 
-        for _i, idx in tqdm(enumerate(id_list), total=len(id_list), desc="Events loaded"):
+        for _i, idx in tqdm(enumerate(id_list[:2]), total=len(id_list[:2]), desc="Events loaded"):
+        # for _i, idx in tqdm(enumerate(id_list), total=len(id_list), desc="Events loaded"):
             hits, targets, parts = load_event(f, idx, write_inputs, write_parts, threshold)
             hits_list.append(hits)
             targets_list.append(targets)

@@ -231,7 +231,11 @@ class AttnMaskLogger(Callback):
         prefix_suffix = "_val" if is_validation else "train"
 
         # Get only entries that contain "attn_mask"
-        layer_outputs = {k: v for k, v in outputs.items() if k != "loss" and "attn_mask" in v}
+        layer_outputs = {
+            k: v
+            for k, v in outputs.items()
+            if k not in {"loss", "encoder", "final"} and isinstance(v, dict) and "attn_mask" in v
+        }
         if not layer_outputs:
             return
 
@@ -239,23 +243,22 @@ class AttnMaskLogger(Callback):
         if not layer_indices:
             return
 
-        for layer_name, l_out in outputs.items():
-            if layer_name != "loss" and "attn_mask" in l_out:
-                layer_index = int(layer_name.split("_")[1])
+        for layer_name, l_out in layer_outputs.items():
+            layer_index = int(layer_name.split("_")[1])
 
-                # log only last layer
-                if layer_index == max(layer_indices):
-                    attn_mask = l_out["attn_mask"]
-                    attn_mask_im = attn_mask[0].detach().cpu().clone().int()
-                    self._log_attention_mask(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
-                    if step > 10000:
-                        self._log_mask_points_for_kde(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
-                    if self.log_stats:
-                        self._log_attention_stats(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+                # # log only last layer
+                # if layer_index == max(layer_indices):
+            attn_mask = l_out["attn_mask"]
+            attn_mask_im = attn_mask[0].detach().cpu().clone().int()
+            self._log_attention_mask(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+            if step > 10000:
+                self._log_mask_points_for_kde(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+            if self.log_stats:
+                self._log_attention_stats(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
 
-                    # Log diagonal metrics if enabled
-                    if self.log_diagonal_metrics:
-                        self._log_diagonal_metrics(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+                # Log diagonal metrics if enabled
+                if self.log_diagonal_metrics:
+                    self._log_diagonal_metrics(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.log_val:

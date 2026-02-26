@@ -1,7 +1,7 @@
 import comet_ml  # noqa: F401
 import torch
 from lightning.pytorch.cli import ArgsType
-from torch import nn
+from torch import Tensor, nn
 
 from hepattn.experiments.trackml.data import TrackMLDataModule
 from hepattn.models.wrapper import ModelWrapper
@@ -104,6 +104,20 @@ class TrackMLTracker(ModelWrapper):
         self.log(f"{stage}/num_hits", num_hits_total, sync_dist=True)
         self.log(f"{stage}/num_hits_valid", num_hits_valid, sync_dist=True)
         self.log(f"{stage}/num_hits_noise", num_hits_noise, sync_dist=True)
+
+    def test_step(
+        self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]
+    ) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
+        """TrackML override: include post-loss targets for prediction writing.
+
+        The post-loss targets are sorter-aligned when a sorter is configured, which keeps
+        saved targets and saved predictions on the same hit ordering in eval files.
+        """
+        inputs, targets = batch
+        outputs = self.model(inputs)
+        outputs, targets, losses = self.model.loss(outputs, targets)
+        preds = self.model.predict(outputs)
+        return outputs, preds, losses, targets
 
 
 def main(args: ArgsType = None) -> None:

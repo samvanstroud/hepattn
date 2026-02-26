@@ -217,11 +217,14 @@ class TrackMLDataset(Dataset):
         # If a hit eval file was specified, read in the predictions from it to use the hit filtering
         if self.hit_eval_path:
             with h5py.File(self.hit_eval_path, "r") as hit_eval_file:
-                assert str(self.sample_ids[idx]) in hit_eval_file, f"Key {self.sample_ids[idx]} not found in file {self.hit_eval_path}"
-
-                # The dataset has shape (1, num_hits)
-                hit_filter_probs = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle_prob"][0]
-                hit_filter_pred = hit_filter_probs >= self.hit_filter_threshold
+                if f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle_prob" in hit_eval_file:
+                    hit_filter_probs = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle_prob"][0]
+                    hit_filter_pred = hit_filter_probs >= self.hit_filter_threshold
+                elif f"{self.sample_ids[idx]}/preds/final/hit_filter/key_on_valid_particle_prob" in hit_eval_file:
+                    hit_filter_probs = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/key_on_valid_particle_prob"][0]
+                    hit_filter_pred = hit_filter_probs >= self.hit_filter_threshold
+                else:
+                    hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
                 hits = hits[hit_filter_pred]
 
         # TODO: Add back truth based hit filtering

@@ -226,29 +226,50 @@ class MaskFormerDecoder(nn.Module):
             assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
             q_len = x["query_embed"].shape[1]
             query_mask = x.get("query_mask")
-            valid_q_len = q_len if query_mask is None else int(query_mask[0].sum().item())
-            stride_q_len = max(valid_q_len, 1)
+            query_valid_mask = query_mask[0] if query_mask is not None else None
             kv_len = x["key_embed"].shape[1]
             if self.attn_type == "torch":
-                attn_mask = auto_local_ca_mask(
-                    torch.empty((1, stride_q_len), device=x["query_embed"].device, dtype=x["query_embed"].dtype),
-                    x["key_embed"],
-                    self.window_size,
-                    wrap=self.window_wrap,
-                )
-                if valid_q_len < q_len:
-                    padded_mask = torch.zeros((batch_size, q_len - valid_q_len, kv_len), dtype=attn_mask.dtype, device=attn_mask.device)
-                    attn_mask = torch.cat([attn_mask, padded_mask], dim=1)
+                if query_valid_mask is None:
+                    attn_mask = auto_local_ca_mask(
+                        x["query_embed"],
+                        x["key_embed"],
+                        self.window_size,
+                        wrap=self.window_wrap,
+                    )
+                else:
+                    device = x["query_embed"].device
+                    dtype_float = x["query_embed"].dtype
+                    stride_q_len = torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
+                    stride = torch.as_tensor(kv_len, device=device, dtype=dtype_float) / stride_q_len
+
+                    q_idx = torch.arange(q_len, device=device, dtype=dtype_float)
+                    kv_idx = torch.arange(kv_len, device=device, dtype=dtype_float)
+                    q_center = torch.round(q_idx * stride)
+
+                    half_window = self.window_size // 2
+                    diagonal = (kv_idx.unsqueeze(0) - q_center.unsqueeze(1)).abs() <= half_window
+
+                    if self.window_wrap:
+                        kv_len_t = torch.as_tensor(kv_len, device=device, dtype=dtype_float)
+                        wrap_left = (kv_idx.unsqueeze(0) - q_center.unsqueeze(1) + kv_len_t).abs() <= half_window
+                        wrap_right = (kv_idx.unsqueeze(0) - q_center.unsqueeze(1) - kv_len_t).abs() <= half_window
+                        diagonal = diagonal | wrap_left | wrap_right
+
+                    attn_mask = (query_valid_mask.unsqueeze(-1) & diagonal).unsqueeze(0)
             elif self.attn_type == "flex":
                 device = x["query_embed"].device
                 dtype_float = x["query_embed"].dtype
+                if query_valid_mask is None:
+                    stride_q_len: int | Tensor = q_len
+                else:
+                    stride_q_len = torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
                 attn_mask = self.flex_local_ca_mask(
                     q_len=q_len,
                     kv_len=kv_len,
                     device=device,
                     dtype_float=dtype_float,
                     stride_q_len=stride_q_len,
-                    valid_q_len=valid_q_len,
+                    query_valid_mask=query_valid_mask,
                 )
 
                 # Bidirectional cross-attention requires the transposed mask.
@@ -334,14 +355,22 @@ class MaskFormerDecoder(nn.Module):
         kv_len: int,
         device,
         dtype_float,
-        stride_q_len: int | None = None,
+        stride_q_len: int | Tensor | None = None,
         valid_q_len: int | None = None,
+        query_valid_mask: Tensor | None = None,
     ):
         # Calculate the stride using only the effective (unpadded) query count.
         if stride_q_len is None:
-            stride_q_len = q_len
-        stride_q_len = max(1, int(stride_q_len))
-        stride = kv_len / stride_q_len
+            if query_valid_mask is None:
+                stride_q_len = q_len
+            else:
+                stride_q_len = torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
+
+        if torch.is_tensor(stride_q_len):
+            stride_q_len = torch.as_tensor(stride_q_len, device=device, dtype=dtype_float).reshape(()).clamp_min(1.0)
+        else:
+            stride_q_len = torch.tensor(max(1, int(stride_q_len)), device=device, dtype=dtype_float)
+        stride = torch.as_tensor(kv_len, device=device, dtype=dtype_float) / stride_q_len
 
         if valid_q_len is None:
             valid_q_len = q_len
@@ -358,6 +387,7 @@ class MaskFormerDecoder(nn.Module):
                 wrap=self.window_wrap,
                 dtype_float=dtype_float,
                 valid_q_len=valid_q_len,
+                query_valid_mask=query_valid_mask,
             )
 
         window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided

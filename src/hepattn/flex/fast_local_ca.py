@@ -156,6 +156,7 @@ def build_strided_sliding_window_blockmask(
     wrap: bool,
     block_size: int = 128,
     dtype_float: torch.dtype = torch.float32,
+    valid_q_len: int | None = None,
 ) -> BlockMask:
     """Build a BlockMask for Flex Attention implementing a strided sliding window.
     High level:
@@ -176,6 +177,7 @@ def build_strided_sliding_window_blockmask(
     """
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
+    valid_q_len = q_len if valid_q_len is None else max(0, min(int(valid_q_len), int(q_len)))
 
     # Number of query/KV blocks (ceil division)
     q_blocks = (q_len + block_size - 1) // block_size
@@ -188,24 +190,45 @@ def build_strided_sliding_window_blockmask(
     else:
         kv_num_blocks, kv_indices = _kv_blocks_nonwrap(q_blocks, kv_blocks, block_size, window_size, stride_t, q_len, kv_len, device, dtype_float)
 
+    # Drop fully padded query blocks to avoid unnecessary work.
+    if valid_q_len < q_len:
+        valid_q_blocks = (valid_q_len + block_size - 1) // block_size
+        if valid_q_blocks < q_blocks:
+            kv_num_blocks[valid_q_blocks:] = 0
+            kv_indices[valid_q_blocks:] = 0
+
     # Flex Attention expects [B, H, Q_blocks, ...]; we use singleton B=H=1
     kv_num_blocks = kv_num_blocks.unsqueeze(0).unsqueeze(0)  # [1,1,Q_blocks]
     kv_indices = kv_indices.unsqueeze(0).unsqueeze(0)  # [1,1,Q_blocks,kv_blocks]
 
     # Scalars as tensors for compiled mask_mod
     kv_len_t = torch.as_tensor(kv_len, device=device).reshape(())
+    valid_q_len_t = torch.as_tensor(valid_q_len, device=device).reshape(())
 
     # Per-token refinement: given (q_idx, kv_idx) decide if it's inside the
     # strided window. Called by Flex Attention during block processing.
-    def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
-        # Center of the window for this query token
-        q_center = torch.round(q_idx * stride_t)
-        if not wrap:
-            return (kv_idx - q_center).abs() <= window_size // 2
-        diagonal = (kv_idx - q_center).abs() <= window_size // 2
-        wrap_left = (kv_idx - q_center + kv_len_t).abs() <= window_size // 2
-        wrap_right = (kv_idx - q_center - kv_len_t).abs() <= window_size // 2
-        return diagonal | wrap_left | wrap_right
+    if valid_q_len == q_len:
+        def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
+            # Center of the window for this query token
+            q_center = torch.round(q_idx * stride_t)
+            if not wrap:
+                return (kv_idx - q_center).abs() <= window_size // 2
+            diagonal = (kv_idx - q_center).abs() <= window_size // 2
+            wrap_left = (kv_idx - q_center + kv_len_t).abs() <= window_size // 2
+            wrap_right = (kv_idx - q_center - kv_len_t).abs() <= window_size // 2
+            return diagonal | wrap_left | wrap_right
+    else:
+        def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
+            # Center of the window for this query token
+            q_center = torch.round(q_idx * stride_t)
+            if not wrap:
+                in_window = (kv_idx - q_center).abs() <= window_size // 2
+            else:
+                diagonal = (kv_idx - q_center).abs() <= window_size // 2
+                wrap_left = (kv_idx - q_center + kv_len_t).abs() <= window_size // 2
+                wrap_right = (kv_idx - q_center - kv_len_t).abs() <= window_size // 2
+                in_window = diagonal | wrap_left | wrap_right
+            return (q_idx < valid_q_len_t) & in_window
 
     # Build the final BlockMask. seq_lengths makes sure the mask trims to
     # the exact (q_len, kv_len) even when the last block is partial.
