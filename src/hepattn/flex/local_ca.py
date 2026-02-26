@@ -11,16 +11,26 @@ def sliding_window_mask_strided(
     q_len: int,
     kv_len: int,
     device: str,
+    valid_q_len: int | None = None,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
 
     stride_val = torch.tensor(stride, device=device)
+    valid_q_len = q_len if valid_q_len is None else max(0, min(int(valid_q_len), int(q_len)))
+    valid_q_len_t = torch.tensor(valid_q_len, device=device)
 
-    def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
-        # b = 0, h = 0 here
-        q_center = torch.round(q_idx * stride_val)
-        return (kv_idx - q_center).abs() <= window_size // 2
+    if valid_q_len == q_len:
+        def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
+            # b = 0, h = 0 here
+            q_center = torch.round(q_idx * stride_val)
+            return (kv_idx - q_center).abs() <= window_size // 2
+    else:
+        def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
+            # b = 0, h = 0 here
+            q_center = torch.round(q_idx * stride_val)
+            in_window = (kv_idx - q_center).abs() <= window_size // 2
+            return (q_idx < valid_q_len_t) & in_window
 
     return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
 
@@ -31,22 +41,36 @@ def sliding_window_mask_strided_wrapped(
     q_len: int,
     kv_len: int,
     device: str,
+    valid_q_len: int | None = None,
 ) -> _mask_mod_signature:
     if window_size % 2 != 0:
         raise ValueError("Window size must be even for strided sliding window")
 
     stride_val = torch.tensor(stride, device=device)
     kv_len_t = torch.as_tensor(kv_len, device=device).reshape(())
+    valid_q_len = q_len if valid_q_len is None else max(0, min(int(valid_q_len), int(q_len)))
+    valid_q_len_t = torch.tensor(valid_q_len, device=device)
 
-    def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
-        # b = 0, h = 0 here
-        q_center = torch.round(q_idx * stride_val)
+    if valid_q_len == q_len:
+        def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
+            # b = 0, h = 0 here
+            q_center = torch.round(q_idx * stride_val)
 
-        diagonal = (kv_idx - q_center).abs() <= window_size // 2
-        wrap_left = (kv_idx - q_center + kv_len_t).abs() <= window_size // 2
-        wrap_right = (kv_idx - q_center - kv_len_t).abs() <= window_size // 2
+            diagonal = (kv_idx - q_center).abs() <= window_size // 2
+            wrap_left = (kv_idx - q_center + kv_len_t).abs() <= window_size // 2
+            wrap_right = (kv_idx - q_center - kv_len_t).abs() <= window_size // 2
 
-        return diagonal | wrap_left | wrap_right
+            return diagonal | wrap_left | wrap_right
+    else:
+        def mask_mod(b, h, q_idx, kv_idx):  # noqa: ARG001
+            # b = 0, h = 0 here
+            q_center = torch.round(q_idx * stride_val)
+
+            diagonal = (kv_idx - q_center).abs() <= window_size // 2
+            wrap_left = (kv_idx - q_center + kv_len_t).abs() <= window_size // 2
+            wrap_right = (kv_idx - q_center - kv_len_t).abs() <= window_size // 2
+
+            return (q_idx < valid_q_len_t) & (diagonal | wrap_left | wrap_right)
 
     return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
 
