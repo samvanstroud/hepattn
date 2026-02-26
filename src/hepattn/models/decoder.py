@@ -38,6 +38,8 @@ class MaskFormerDecoder(nn.Module):
         unmask_all_false: bool = True,
         dynamic_queries: bool = False,
         dynamic_query_source: str | None = None,
+        debug = False,
+        intermediate_tasks = True,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -78,6 +80,8 @@ class MaskFormerDecoder(nn.Module):
         self.unified_decoding = unified_decoding
         self.dynamic_queries = dynamic_queries
         self.dynamic_query_source = dynamic_query_source
+        self.debug = debug
+        self.intermediate_tasks = intermediate_tasks
 
         # Only initialize learned queries if not using dynamic queries
         if not dynamic_queries:
@@ -285,10 +289,13 @@ class MaskFormerDecoder(nn.Module):
                 x["key_embed"] = x["key_embed"] + x["key_posenc"]
 
             attn_masks: dict[str, torch.Tensor] = {}
+            is_last = layer_index == len(self.decoder_layers) - 1
 
             assert self.tasks is not None
             for task in self.tasks:
                 if not task.should_run_at_layer(layer_index):
+                    continue
+                if not is_last and not self.intermediate_tasks:
                     continue
 
                 # Get the outputs of the task given the current embeddings
@@ -323,14 +330,17 @@ class MaskFormerDecoder(nn.Module):
                         attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
 
                 attn_mask = attn_mask.detach()
+
+                if self.debug:
+                    outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
                 # True values indicate a slot will be included in the attention computation, while False will be ignored.
                 # If the attn mask is completely invalid for a given query, allow it to attend everywhere
                 # TODO: check and see see if this is really necessary
                 if self.unmask_all_false:
                     attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
 
-            if (attn_mask is not None) and self.attn_type != "flex":
-                outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
+            # if (attn_mask is not None) and self.attn_type != "flex":
+            #     outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(
                 x["query_embed"],

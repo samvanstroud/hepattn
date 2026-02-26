@@ -312,13 +312,15 @@ class MaskFormer(nn.Module):
             costs: Dictionary of costs keyed by layer name.
             targets: The data containing the targets.
         """
-        # Stack all layer costs into a single 4D tensor for parallel matching
-        layer_names = list(costs.keys())
-        num_layers = len(layer_names)
+        # Stack all layer costs into a single 4D tensor for parallel matching.
+        # Some decoder layers may have no active loss tasks (cost=None); skip those.
+        valid_layer_costs = [(name, layer_cost) for name, layer_cost in costs.items() if torch.is_tensor(layer_cost)]
+        num_layers = len(valid_layer_costs)
 
         if num_layers > 0:
+            layer_names = [name for name, _ in valid_layer_costs]
             # Stack costs: [num_layers, batch, num_pred, num_target]
-            stacked_costs = torch.stack([costs[name] for name in layer_names], dim=0)
+            stacked_costs = torch.stack([layer_cost for _, layer_cost in valid_layer_costs], dim=0)
             batch_size = stacked_costs.shape[1]
             num_pred = stacked_costs.shape[2]
             num_target = stacked_costs.shape[3]
