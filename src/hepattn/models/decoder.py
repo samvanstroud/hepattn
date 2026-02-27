@@ -299,7 +299,7 @@ class MaskFormerDecoder(nn.Module):
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
             logits = None
-            if getattr(decoder_layer, "cross_attn_mode", "softmax") == "kmeans":
+            if decoder_layer.cross_attn_mode == "kmeans":
                 logits = self._extract_kmeans_logits(outputs[f"layer_{layer_index}"], num_constituents)
 
             # Update the keys and queries
@@ -467,10 +467,9 @@ class MaskFormerDecoderLayer(nn.Module):
         Args:
             attn_type: Attention implementation type to use.
         """
-        if hasattr(self.q_ca.fn, "set_backend"):
+        if self.cross_attn_mode != "kmeans":
             self.q_ca.fn.set_backend(attn_type)
-        if hasattr(self.q_sa.fn, "set_backend"):
-            self.q_sa.fn.set_backend(attn_type)
+        self.q_sa.fn.set_backend(attn_type)
 
-        if self.bidirectional_ca and hasattr(self.kv_ca.fn, "set_backend"):
+        if self.bidirectional_ca:
             self.kv_ca.fn.set_backend(attn_type)
