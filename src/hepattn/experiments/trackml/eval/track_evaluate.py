@@ -116,12 +116,13 @@ def check_valid(f, idx, parts, tracks, key_mode=None, iou_threshold=0.0, track_v
 
     # Load and apply IoU threshold
     if iou_threshold > 0:
-        # Try new location in encoder_tasks first, then fall back to old location in track_hit_valid
-        try:
-            tracks["track_iou"] = np.array(f[idx]["preds"]["final"]["track_iou"]["query_iou"][:][0])
-        except (KeyError, AttributeError):
-            tracks["track_iou"] = np.array(f[idx]["preds"]["final"]["track_hit_valid"]["track_iou"][:][0])
-        tracks["valid"] = tracks["valid"] & (tracks["track_iou"] >= iou_threshold)
+        if key_mode != "old":
+            # Try new location in encoder_tasks first, then fall back to old location in track_hit_valid
+            try:
+                tracks["track_iou"] = np.array(f[idx]["preds"]["final"]["track_iou"]["query_iou"][:][0])
+            except (KeyError, AttributeError):
+                tracks["track_iou"] = np.array(f[idx]["preds"]["final"]["track_hit_valid"]["track_iou"][:][0])
+            tracks["valid"] = tracks["valid"] & (tracks["track_iou"] >= iou_threshold)
 
 
 def check_reconstructable(tracks, parts, eta_cut=2.5, pt_cut=1):
@@ -179,7 +180,58 @@ def build_incidence(f, idx):  # for key_mode = "old"
     return incidence
 
 
-def get_masks(f, idx, tracks, parts, key_mode=None):
+def _has_aligned_targets_attr(f):
+    value = f.attrs.get("targets_model_aligned")
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, bytes):
+        value = value.decode()
+    if isinstance(value, str):
+        return value.lower() in {"1", "true", "yes"}
+    return False
+
+
+def _align_hit_order(f, idx, masks, targets, mode="as_saved"):
+    valid_modes = {"as_saved", "unsort_preds"}
+    if mode not in valid_modes:
+        raise ValueError(f"Unknown hit_order_mode={mode!r}. Expected one of {sorted(valid_modes)}.")
+    # Keep the file content untouched.
+    if mode == "as_saved":
+        return masks, targets
+
+    sort_field = f.attrs.get("input_sort_field", "phi")
+    if isinstance(sort_field, bytes):
+        sort_field = sort_field.decode()
+    sort_field = str(sort_field)
+
+    # Sort values are stored under outputs/final/<sort_field>/hit_<sort_field> when write_outputs=True.
+    try:
+        sort_values = np.array(f[idx][f"outputs/final/{sort_field}/hit_{sort_field}"][:][0])
+    except KeyError:
+        if mode != "auto":
+            warnings.warn(
+                f"Cannot apply hit_order_mode={mode!r}: missing sort values for field {sort_field!r}. Using saved ordering.",
+                stacklevel=2,
+            )
+        return masks, targets
+
+    sort_idx = np.argsort(sort_values, kind="stable")
+
+    if masks.shape[-1] != sort_idx.shape[0] or targets.shape[-1] != sort_idx.shape[0]:
+        warnings.warn(
+            f"Cannot apply hit_order_mode={mode!r}: sort length {sort_idx.shape[0]} does not match masks/targets hit axis.",
+            stacklevel=2,
+        )
+        return masks, targets
+
+    unsort_idx = np.argsort(sort_idx, kind="stable")
+
+    masks = masks[:, unsort_idx]
+
+    return masks, targets
+
+
+def get_masks(f, idx, tracks, parts, key_mode=None, hit_order_mode="as_saved"):
     """Retrieve predicted hit masks.
 
     Arguments:
@@ -194,6 +246,8 @@ def get_masks(f, idx, tracks, parts, key_mode=None):
         The DataFrame for particles, count true hits for each particle
     key_mode: str
         specify if output file structure type
+    hit_order_mode: str
+        Hit-axis alignment mode for predicted masks vs target masks.
     """
     # extract hit mask and its target
     if key_mode == "old":
@@ -204,6 +258,7 @@ def get_masks(f, idx, tracks, parts, key_mode=None):
         masks = np.array(f[idx]["preds"]["final"]["track_hit_valid"]["track_hit_valid"][:][0])
         # truth tracks and associated hits, shape = (n_max_particles, n_hits)
         targets = np.array(f[idx]["targets"]["particle_hit_valid"][:][0])
+        masks, targets = _align_hit_order(f, idx, masks, targets, mode=hit_order_mode)
 
     # number of predicted hits for each track (retained hits), shape = (n_max_particles, )
     tracks["n_pred_hits"] = np.sum(masks, axis=-1)
@@ -367,7 +422,18 @@ def eval_tracks(tracks, parts):
     parts["eff_lhc"] = np.isin(pid, lhc_pid)
 
 
-def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=False, key_mode=None, iou_threshold=0.0, track_valid_threshold=0.5):
+def load_event(
+    f,
+    idx,
+    eta_cut=2.5,
+    pt_cut=1,
+    particle_targets=None,
+    regression=False,
+    key_mode=None,
+    iou_threshold=0.0,
+    track_valid_threshold=0.5,
+    hit_order_mode="as_saved",
+):
     """Load an event from an evaluation file and create a DataFrame.
 
     Arguments:
@@ -390,6 +456,8 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
         IoU threshold for valid tracks (default: 0.0)
     track_valid_threshold: float
         Track valid probability threshold (default: 0.5)
+    hit_order_mode: str
+        One of {"as_saved", "unsort_preds"}.
 
     Returns:
     --------
@@ -407,7 +475,7 @@ def load_event(f, idx, eta_cut=2.5, pt_cut=1, particle_targets=None, regression=
     process_particles(f, idx, parts, particle_targets, key_mode)
 
     # Extract masks from incidence boolean matrix
-    masks, targets = get_masks(f, idx, tracks, parts, key_mode)
+    masks, targets = get_masks(f, idx, tracks, parts, key_mode, hit_order_mode=hit_order_mode)
 
     # Perform track matching
     tracks, valid = process_tracks(f, idx, tracks, parts, masks, targets, key_mode, iou_threshold, track_valid_threshold)
@@ -440,6 +508,7 @@ def load_events(
     key_mode=None,
     iou_threshold=0.0,
     track_valid_threshold=0.5,
+    hit_order_mode="as_saved",
 ):
     """Sequentially load events from an evaluation file and aggregate into a single DataFrame.
 
@@ -465,6 +534,9 @@ def load_events(
         IoU threshold for valid tracks (default: 0.1)
     track_valid_threshold: float
         Track valid probability threshold (default: 0.5)
+    hit_order_mode: str
+        One of {"as_saved", "unsort_preds"}.
+        "auto" uses file metadata when available and otherwise infers the best alignment.
 
     Returns:
     --------
@@ -505,7 +577,18 @@ def load_events(
         parts_list = []
 
         for idx in id_list:
-            tracks, parts = load_event(f, idx, eta_cut, pt_cut, particle_targets, regression, key_mode, iou_threshold, track_valid_threshold)
+            tracks, parts = load_event(
+                f,
+                idx,
+                eta_cut,
+                pt_cut,
+                particle_targets,
+                regression,
+                key_mode,
+                iou_threshold,
+                track_valid_threshold,
+                hit_order_mode,
+            )
             tracks_list.append(tracks)
             parts_list.append(parts)
 

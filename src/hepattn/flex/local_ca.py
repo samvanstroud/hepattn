@@ -51,6 +51,43 @@ def sliding_window_mask_strided_wrapped(
     return create_block_mask(mask_mod, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=device)
 
 
+def flex_local_ca_mask(
+    self,
+    q_len: int,
+    kv_len: int,
+    device,
+    dtype_float,
+    stride_q_len: int | Tensor | None = None,
+    valid_q_len: int | None = None,
+    query_valid_mask: Tensor | None = None,
+):
+    # Calculate the stride using only the effective (unpadded) query count.
+    if stride_q_len is None:
+        if query_valid_mask is None:
+            stride_q_len = q_len
+        else:
+            stride_q_len = torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
+
+    if torch.is_tensor(stride_q_len):
+        stride_q_len = torch.as_tensor(stride_q_len, device=device, dtype=dtype_float).reshape(()).clamp_min(1.0)
+    else:
+        stride_q_len = torch.tensor(max(1, int(stride_q_len)), device=device, dtype=dtype_float)
+    stride = torch.as_tensor(kv_len, device=device, dtype=dtype_float) / stride_q_len
+
+    if valid_q_len is None:
+        valid_q_len = q_len
+    valid_q_len = max(0, min(int(valid_q_len), int(q_len)))
+
+    window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
+    return window_mask_func(
+        self.window_size,
+        stride=stride,
+        q_len=q_len,
+        kv_len=kv_len,
+        device=str(device),
+        valid_q_len=valid_q_len,
+    )
+
 def transpose_blockmask(bm: BlockMask, *, q_tokens: int, kv_tokens: int, dev: str) -> BlockMask:
     """Exact transpose of a FlexAttention BlockMask by transposing the mask function.
 
