@@ -30,15 +30,14 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
-        fast_local_ca: bool = False,
         block_size: int = 128,
         unified_decoding: bool = False,
         phi_shift: float = 0.0,
         unmask_all_false: bool = True,
         dynamic_queries: bool = False,
         dynamic_query_source: str | None = None,
-        debug = False,
-        intermediate_tasks = True,
+        debug: bool = False,
+        intermediate_tasks: bool = True,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -52,13 +51,14 @@ class MaskFormerDecoder(nn.Module):
             local_strided_attn: If True, uses local strided window attention.
             window_size: The size of the window for local strided window attention.
             window_wrap: If True, wraps the window for local strided window attention.
-            attn_type: The attention type to use (e.g., 'torch', 'flex').
             block_size: The size of the block for fast local CA.
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
             phi_shift: The shift in the phi angle for positional encoding.
             unmask_all_false: If True, queries with all-false attention masks will be unmasked to attend everywhere.
             dynamic_queries: If True, queries are initialized dynamically.
             dynamic_query_source: Name of the input type to use as the source for dynamic query initialization.
+            debug: If True, stores non-flex attention masks in decoder outputs for debugging.
+            intermediate_tasks: If True, run task heads at every decoder layer instead of only the last.
         """
         super().__init__()
 
@@ -213,7 +213,7 @@ class MaskFormerDecoder(nn.Module):
             x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
         else:
             # Initialize dynamic queries
-            x["query_embed"], query_valid, selection_meta = self.initialize_dynamic_queries(x)
+            x["query_embed"], query_valid = self.initialize_dynamic_queries(x)
             # Always set query_mask for consistent control flow with torch.compile
             x["query_mask"] = query_valid
             outputs["encoder"]["query_mask"] = query_valid
@@ -264,11 +264,12 @@ class MaskFormerDecoder(nn.Module):
                     stride_q_len: int | Tensor = q_len
                 else:
                     stride_q_len = torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
-                attn_mask = self.flex_local_ca_mask(
+                attn_mask = flex_local_ca_mask(
                     q_len=q_len,
                     kv_len=kv_len,
                     device=device,
                     dtype_float=dtype_float,
+                    self=self,
                     stride_q_len=stride_q_len,
                     query_valid_mask=query_valid_mask,
                 )
@@ -352,7 +353,6 @@ class MaskFormerDecoder(nn.Module):
                 x = unmerge_inputs(x, input_names)
 
         return x, outputs
-
 
     def generate_positional_encodings(self, x: dict):
         idx = torch.arange(self.num_queries(x), device=x["query_embed"].device, dtype=x["query_embed"].dtype)
