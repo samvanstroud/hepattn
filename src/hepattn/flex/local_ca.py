@@ -61,20 +61,21 @@ def flex_local_ca_mask(
     q_len: int,
     kv_len: int,
     device,
-    dtype_float,
     stride_q_len: int | Tensor | None = None,
     valid_q_len: int | None = None,
     query_valid_mask: Tensor | None = None,
 ):
     # Calculate the stride using only the effective (unpadded) query count.
+    # Use float32 for stride math regardless of model precision to avoid precision
+    # loss with bf16/fp16 that can break q_center = round(q_idx * stride).
     if stride_q_len is None:
-        stride_q_len = q_len if query_valid_mask is None else torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
+        stride_q_len = q_len if query_valid_mask is None else torch.clamp(query_valid_mask.sum(dtype=torch.float32), min=1.0)
 
     if torch.is_tensor(stride_q_len):
-        stride_q_len = torch.as_tensor(stride_q_len, device=device, dtype=dtype_float).reshape(()).clamp_min(1.0)
+        stride_q_len = torch.as_tensor(stride_q_len, device=device, dtype=torch.float32).reshape(()).clamp_min(1.0)
     else:
-        stride_q_len = torch.tensor(max(1, int(stride_q_len)), device=device, dtype=dtype_float)
-    stride = torch.as_tensor(kv_len, device=device, dtype=dtype_float) / stride_q_len
+        stride_q_len = torch.tensor(max(1, int(stride_q_len)), device=device, dtype=torch.float32)
+    stride = torch.as_tensor(kv_len, device=device, dtype=torch.float32) / stride_q_len
 
     if valid_q_len is None:
         valid_q_len = q_len
