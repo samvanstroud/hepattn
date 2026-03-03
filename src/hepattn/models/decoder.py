@@ -312,7 +312,6 @@ class MaskFormerDecoder(nn.Module):
             is_last = layer_index == len(self.decoder_layers) - 1
 
             if is_last or self.intermediate_tasks:
-
                 assert self.tasks is not None
                 for task in self.tasks:
                     if not task.should_run_at_layer(layer_index):
@@ -356,7 +355,7 @@ class MaskFormerDecoder(nn.Module):
                     if self.unmask_all_false:
                         attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
 
-            if (attn_mask is not None) and self.attn_type != "flex" and self.debug:
+            if (attn_mask is not None) and (self.attn_type != "flex") and self.debug:
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
             # Update the keys and queries
             x["query_embed"], x["key_embed"] = decoder_layer(

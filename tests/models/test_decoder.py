@@ -103,6 +103,7 @@ class TestMaskFormerDecoder:
             decoder_layer_config=decoder_layer_config,
             num_decoder_layers=NUM_LAYERS,
             mask_attention=True,
+            debug=True,
         )
 
     @pytest.fixture
