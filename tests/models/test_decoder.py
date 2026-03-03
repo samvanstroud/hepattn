@@ -139,6 +139,7 @@ class TestMaskFormerDecoder:
             local_strided_attn=True,
             window_size=4,
             window_wrap=True,
+            debug=True,
         )
 
     @pytest.fixture

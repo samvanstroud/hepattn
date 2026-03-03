@@ -7,8 +7,10 @@ from functools import partial
 
 import torch
 from torch import Tensor, nn
+from torch.nn.attention.flex_attention import BlockMask
 
-from hepattn.flex.local_ca import flex_local_ca_mask, transpose_blockmask
+from hepattn.flex.local_ca import flex_local_ca_mask as _flex_local_ca_mask
+from hepattn.flex.local_ca import transpose_blockmask
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
@@ -98,6 +100,27 @@ class MaskFormerDecoder(nn.Module):
         if self.dynamic_queries:
             return x["query_embed"].shape[1]
         return self._num_queries
+
+    def flex_local_ca_mask(
+        self,
+        q_len: int,
+        kv_len: int,
+        device,
+        dtype_float,
+        stride_q_len: int | Tensor | None = None,
+        valid_q_len: int | None = None,
+        query_valid_mask: Tensor | None = None,
+    ) -> BlockMask:
+        return _flex_local_ca_mask(
+            self=self,
+            q_len=q_len,
+            kv_len=kv_len,
+            device=device,
+            dtype_float=dtype_float,
+            stride_q_len=stride_q_len,
+            valid_q_len=valid_q_len,
+            query_valid_mask=query_valid_mask,
+        )
 
     def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Initialize queries dynamically using the `query_init` task.
@@ -264,12 +287,11 @@ class MaskFormerDecoder(nn.Module):
                     stride_q_len: int | Tensor = q_len
                 else:
                     stride_q_len = torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
-                attn_mask = flex_local_ca_mask(
+                attn_mask = self.flex_local_ca_mask(
                     q_len=q_len,
                     kv_len=kv_len,
                     device=device,
                     dtype_float=dtype_float,
-                    self=self,
                     stride_q_len=stride_q_len,
                     query_valid_mask=query_valid_mask,
                 )
