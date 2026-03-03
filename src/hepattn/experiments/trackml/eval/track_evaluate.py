@@ -205,9 +205,14 @@ def _align_hit_order(f, idx, masks, targets, mode="as_saved"):
     sort_field = str(sort_field)
 
     # Sort values are stored under outputs/final/<sort_field>/hit_<sort_field> when write_outputs=True.
-    sort_values = np.array(f[idx][f"outputs/final/{sort_field}/hit_{sort_field}"][:][0])
-
-    return masks, targets
+    try:
+        sort_values = np.array(f[idx][f"outputs/final/{sort_field}/hit_{sort_field}"][:][0])
+    except KeyError:
+        warnings.warn(
+            f"Cannot apply hit_order_mode={mode!r}: missing sort values for field {sort_field!r}. Using saved ordering.",
+            stacklevel=2,
+        )
+        return masks, targets
 
     sort_idx = np.argsort(sort_values, kind="stable")
 
