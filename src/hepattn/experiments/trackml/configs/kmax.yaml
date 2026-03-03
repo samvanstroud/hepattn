@@ -1,0 +1,32 @@
+name: TRK-kMax
+
+model:
+  model:
+    init_args:
+      decoder:
+        num_decoder_layers: 4
+        num_queries: 2200
+
+        # kMaX / k-means CA works best without Mask2Former-style boolean attention masking
+        mask_attention: false
+        use_query_masks: false
+        unmask_all_false: false
+
+        decoder_layer_config:
+          dim: 256
+          norm: CustomLayerNorm
+          hybrid_norm: true
+          dense_kwargs: {activation: SwiGLU}
+          attn_kwargs: {bias: false}
+
+          # --- enable k-means cross-attention update ---
+          cross_attn_mode: kmeans
+
+          # recommended: don't update keys from queries for kMaX-like behavior
+          bidirectional_ca: false
+
+          # k-means CA options
+          kmeans_kwargs:
+            update: mean          # "mean" is usually more stable than "sum"
+            value_proj: true      # learnable V projection
+            mask_attn: false  # since mask_attention is off anyway

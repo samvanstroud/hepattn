@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ruff: noqa: PLC0415,N806,E501,DTZ005,ARG001,D417,EXE001
+# ruff: noqa: PLC0415, E501, DTZ005, ARG001, D417, EXE001
 """Evaluation script for ATLAS muon hit filtering model using DataLoader approach.
 This version uses the AtlasMuonDataModule for proper multi-worker data loading.
 

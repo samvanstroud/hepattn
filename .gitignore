@@ -107,6 +107,7 @@ site/
 pytest-temp
 /vendor
 core
+tmp/
 
 # NFS
 *.nfs*
