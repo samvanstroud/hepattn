@@ -100,7 +100,7 @@ class ModelWrapper(LightningModule):
             return None
         total_loss = self.aggregate_losses(losses, stage="train")
 
-        return {"loss": total_loss}
+        return {"loss": total_loss, "attn_mask_outputs": outputs}
 
     def validation_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> dict[str, Tensor]:
         inputs, targets = batch
@@ -116,7 +116,7 @@ class ModelWrapper(LightningModule):
         preds = self.model.predict(outputs)
         self.log_metrics(preds, targets, "val")
 
-        return {"loss": total_loss}
+        return {"loss": total_loss, "attn_mask_outputs": outputs}
 
     def test_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
         inputs, targets = batch

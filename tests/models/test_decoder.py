@@ -123,6 +123,7 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
             decoder_layer_config=decoder_layer_config,
             num_decoder_layers=NUM_LAYERS,
             mask_attention=True,
+            debug=True,
         )
 
     @pytest.fixture
@@ -159,6 +160,7 @@ class TestMaskFormerDecoder:  # noqa: PLR0904
             local_strided_attn=True,
             window_size=4,
             window_wrap=True,
+            debug=True,
         )
 
     @pytest.fixture

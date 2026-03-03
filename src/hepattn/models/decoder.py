@@ -8,9 +8,10 @@ from typing import Literal
 
 import torch
 from torch import Tensor, nn
+from torch.nn.attention.flex_attention import BlockMask
 
-from hepattn.flex.fast_local_ca import build_strided_sliding_window_blockmask
-from hepattn.flex.local_ca import sliding_window_mask_strided, sliding_window_mask_strided_wrapped, transpose_blockmask
+from hepattn.flex.local_ca import flex_local_ca_mask as _flex_local_ca_mask
+from hepattn.flex.local_ca import transpose_blockmask
 from hepattn.models.attention import Attention
 from hepattn.models.dense import Dense
 from hepattn.models.encoder import Residual
@@ -33,13 +34,14 @@ class MaskFormerDecoder(nn.Module):
         local_strided_attn: bool = False,
         window_size: int = 512,
         window_wrap: bool = True,
-        fast_local_ca: bool = False,
         block_size: int = 128,
         unified_decoding: bool = False,
         phi_shift: float = 0.0,
         unmask_all_false: bool = True,
         dynamic_queries: bool = False,
         dynamic_query_source: str | None = None,
+        debug: bool = False,
+        intermediate_tasks: bool = True,
     ):
         """MaskFormer decoder that handles multiple decoder layers and task integration.
 
@@ -53,13 +55,14 @@ class MaskFormerDecoder(nn.Module):
             local_strided_attn: If True, uses local strided window attention.
             window_size: The size of the window for local strided window attention.
             window_wrap: If True, wraps the window for local strided window attention.
-            fast_local_ca: If True, uses fast local CA.
             block_size: The size of the block for fast local CA.
             unified_decoding: If True, inputs remain merged for task processing instead of being unmerged after each layer.
             phi_shift: The shift in the phi angle for positional encoding.
             unmask_all_false: If True, queries with all-false attention masks will be unmasked to attend everywhere.
             dynamic_queries: If True, queries are initialized dynamically.
             dynamic_query_source: Name of the input type to use as the source for dynamic query initialization.
+            debug: If True, stores non-flex attention masks in decoder outputs for debugging.
+            intermediate_tasks: If True, run task heads at every decoder layer instead of only the last.
         """
         super().__init__()
 
@@ -78,12 +81,13 @@ class MaskFormerDecoder(nn.Module):
         self.unified_decoding = unified_decoding
         self.dynamic_queries = dynamic_queries
         self.dynamic_query_source = dynamic_query_source
+        self.debug = debug
+        self.intermediate_tasks = intermediate_tasks
 
         # Only initialize learned queries if not using dynamic queries
         if not dynamic_queries:
             self.initial_queries = nn.Parameter(torch.randn(self._num_queries, decoder_layer_config["dim"]))
 
-        self.fast_local_ca = fast_local_ca
         self.block_size = block_size
         self.phi_shift = phi_shift
         self.unmask_all_false = unmask_all_false
@@ -111,6 +115,27 @@ class MaskFormerDecoder(nn.Module):
         if self.dynamic_queries:
             return x["query_embed"].shape[1]
         return self._num_queries
+
+    def flex_local_ca_mask(
+        self,
+        q_len: int,
+        kv_len: int,
+        device,
+        dtype_float,
+        stride_q_len: int | Tensor | None = None,
+        valid_q_len: int | None = None,
+        query_valid_mask: Tensor | None = None,
+    ) -> BlockMask:
+        return _flex_local_ca_mask(
+            self=self,
+            q_len=q_len,
+            kv_len=kv_len,
+            device=device,
+            dtype_float=dtype_float,
+            stride_q_len=stride_q_len,
+            valid_q_len=valid_q_len,
+            query_valid_mask=query_valid_mask,
+        )
 
     def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
         """Initialize queries dynamically using the `query_init` task.
@@ -238,15 +263,59 @@ class MaskFormerDecoder(nn.Module):
         attn_mask_transpose = None
         if self.local_strided_attn:
             assert x["query_embed"].shape[0] == 1, "Local strided attention only supports batch size 1"
+            q_len = x["query_embed"].shape[1]
+            query_mask = x.get("query_mask")
+            query_valid_mask = query_mask[0] if query_mask is not None else None
+            kv_len = x["key_embed"].shape[1]
             if self.attn_type == "torch":
-                attn_mask = auto_local_ca_mask(x["query_embed"], x["key_embed"], self.window_size, wrap=self.window_wrap)
+                if query_valid_mask is None:
+                    attn_mask = auto_local_ca_mask(
+                        x["query_embed"],
+                        x["key_embed"],
+                        self.window_size,
+                        wrap=self.window_wrap,
+                    )
+                else:
+                    device = x["query_embed"].device
+                    # Compute indices/stride in float32 to avoid bf16/fp16 index aliasing.
+                    calc_dtype = torch.float32
+                    index_dtype = torch.int32
+                    stride_q_len = torch.clamp(query_valid_mask.sum(dtype=calc_dtype), min=1.0)
+                    stride = torch.as_tensor(kv_len, device=device, dtype=calc_dtype) / stride_q_len
+
+                    q_idx = torch.arange(q_len, device=device, dtype=calc_dtype)
+                    q_center = torch.round(q_idx * stride).to(index_dtype)
+                    kv_idx = torch.arange(kv_len, device=device, dtype=index_dtype)
+
+                    half_window = self.window_size // 2
+                    diagonal = (kv_idx.unsqueeze(0) - q_center.unsqueeze(1)).abs() <= half_window
+
+                    if self.window_wrap:
+                        kv_len_t = torch.as_tensor(kv_len, device=device, dtype=index_dtype)
+                        wrap_left = (kv_idx.unsqueeze(0) - q_center.unsqueeze(1) + kv_len_t).abs() <= half_window
+                        wrap_right = (kv_idx.unsqueeze(0) - q_center.unsqueeze(1) - kv_len_t).abs() <= half_window
+                        diagonal = diagonal | wrap_left | wrap_right
+
+                    attn_mask = (query_valid_mask.unsqueeze(-1) & diagonal).unsqueeze(0)
             elif self.attn_type == "flex":
                 device = x["query_embed"].device
-                q_len = x["query_embed"].shape[1]
-                kv_len = x["key_embed"].shape[1]
                 dtype_float = x["query_embed"].dtype
-                attn_mask = self.flex_local_ca_mask(q_len, kv_len, device, dtype_float)
-                attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=device)
+                if query_valid_mask is None:
+                    stride_q_len: int | Tensor = q_len
+                else:
+                    stride_q_len = torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
+                attn_mask = self.flex_local_ca_mask(
+                    q_len=q_len,
+                    kv_len=kv_len,
+                    device=device,
+                    dtype_float=dtype_float,
+                    stride_q_len=stride_q_len,
+                    query_valid_mask=query_valid_mask,
+                )
+
+                # Bidirectional cross-attention requires the transposed mask.
+                if any(layer.bidirectional_ca for layer in self.decoder_layers):
+                    attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=str(device))
 
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
             outputs[f"layer_{layer_index}"] = {}
@@ -257,45 +326,53 @@ class MaskFormerDecoder(nn.Module):
                 x["key_embed"] = x["key_embed"] + x["key_posenc"]
 
             attn_masks: dict[str, torch.Tensor] = {}
+            is_last = layer_index == len(self.decoder_layers) - 1
 
-            assert self.tasks is not None
-            for task in self.tasks:
-                if not task.should_run_at_layer(layer_index):
-                    continue
+            if is_last or self.intermediate_tasks:
+                assert self.tasks is not None
+                for task in self.tasks:
+                    if not task.should_run_at_layer(layer_index):
+                        continue
 
-                # Get the outputs of the task given the current embeddings
-                # Pass current layer's outputs so tasks can read from previously executed tasks
-                task_outputs = task(x, outputs=outputs[f"layer_{layer_index}"])
+                    # Get the outputs of the task given the current embeddings
+                    # Pass current layer's outputs so tasks can read from previously executed tasks
+                    task_outputs = task(x, outputs=outputs[f"layer_{layer_index}"])
 
-                outputs[f"layer_{layer_index}"][task.name] = task_outputs
+                    outputs[f"layer_{layer_index}"][task.name] = task_outputs
 
-                # Collect attention masks from different tasks
-                task_attn_masks = task.attn_mask(task_outputs)
-                for input_name, task_attn_mask in task_attn_masks.items():
-                    if input_name in attn_masks:
-                        attn_masks[input_name] |= task_attn_mask
+                    # Collect attention masks from different tasks
+                    task_attn_masks = task.attn_mask(task_outputs)
+                    for input_name, task_attn_mask in task_attn_masks.items():
+                        if input_name in attn_masks:
+                            attn_masks[input_name] |= task_attn_mask
+                        else:
+                            attn_masks[input_name] = task_attn_mask
+
+                # Construct the full attention mask for MaskAttention decoder
+                if attn_masks and self.mask_attention:
+                    if self.unified_decoding:
+                        # In merged input mode, tasks should return masks directly for the full merged tensor
+                        # We expect only one mask key (likely "key" or similar) that covers all constituents
+                        if len(attn_masks) > 1:
+                            raise ValueError(f"In merged input mode, expected only one attention mask, got {len(attn_masks)}")
+                        attn_mask = next(iter(attn_masks.values()))
+                        # Ensure proper shape: (batch, num_queries, num_constituents)
+                        if attn_mask.dim() == 2:  # (batch, num_queries) -> (batch, num_queries, num_constituents)
+                            attn_mask = attn_mask.unsqueeze(-1).expand(-1, -1, num_constituents)
                     else:
-                        attn_masks[input_name] = task_attn_mask
+                        # Original logic for separate input types
+                        attn_mask = torch.full((batch_size, self.num_queries(x), num_constituents), False, device=x["key_embed"].device)
+                        for input_name, task_attn_mask in attn_masks.items():
+                            attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
 
-            # Construct the full attention mask for MaskAttention decoder
-            if attn_masks and self.mask_attention:
-                if self.unified_decoding:
-                    if len(attn_masks) > 1:
-                        raise ValueError(f"In merged input mode, expected only one attention mask, got {len(attn_masks)}")
-                    attn_mask = next(iter(attn_masks.values()))
-                    if attn_mask.dim() == 2:  # (batch, num_queries) -> (batch, num_queries, num_constituents)
-                        attn_mask = attn_mask.unsqueeze(-1).expand(-1, -1, num_constituents)
-                else:
-                    attn_mask = torch.full((batch_size, self.num_queries(x), num_constituents), False, device=x["key_embed"].device)
-                    for input_name, task_attn_mask in attn_masks.items():
-                        attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
+                    attn_mask = attn_mask.detach()
 
-                attn_mask = attn_mask.detach()
-                # If the attn mask is completely invalid for a given query, allow it to attend everywhere
-                if self.unmask_all_false:
-                    attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
+                    # True values indicate a slot will be included in the attention computation, while False will be ignored.
+                    # If the attn mask is completely invalid for a given query, allow it to attend everywhere
+                    if self.unmask_all_false:
+                        attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
 
-            if (attn_mask is not None) and self.attn_type != "flex":
+            if (attn_mask is not None) and (self.attn_type != "flex") and self.debug:
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
             logits = None
@@ -320,22 +397,6 @@ class MaskFormerDecoder(nn.Module):
                 x = unmerge_inputs(x, input_names)
 
         return x, outputs
-
-    def flex_local_ca_mask(self, q_len: int, kv_len: int, device, dtype_float):
-        stride = kv_len / q_len
-        if self.fast_local_ca:
-            return build_strided_sliding_window_blockmask(
-                window_size=self.window_size,
-                block_size=self.block_size,
-                stride=kv_len / q_len,
-                q_len=q_len,
-                kv_len=kv_len,
-                device=device,
-                wrap=self.window_wrap,
-                dtype_float=dtype_float,
-            )
-        window_mask_func = sliding_window_mask_strided_wrapped if self.window_wrap else sliding_window_mask_strided
-        return window_mask_func(self.window_size, stride=stride, q_len=q_len, kv_len=kv_len, device=str(device))
 
     def generate_positional_encodings(self, x: dict):
         idx = torch.arange(self.num_queries(x), device=x["query_embed"].device, dtype=x["query_embed"].dtype)

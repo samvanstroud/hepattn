@@ -30,6 +30,7 @@ class PredictionWriter(Callback):
 
         self.file = None
         self.num_queries: int | None = None
+        self.input_sort_field: str | None = None
 
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         if stage != "test":
@@ -41,13 +42,21 @@ class PredictionWriter(Callback):
         self.dataset = trainer.datamodule.test_dataloader().dataset
 
         self.num_queries = self._resolve_num_queries(pl_module)
+        sorter = getattr(getattr(pl_module, "model", None), "sorter", None)
+        self.input_sort_field = getattr(sorter, "input_sort_field", None)
 
         # Open the handle for writing to the file
         self.file = h5py.File(self.output_path, "w")
+        if self.input_sort_field is not None:
+            self.file.attrs["input_sort_field"] = self.input_sort_field
 
-    def _resolve_num_queries(self, pl_module: LightningModule) -> int:
-        # User assumption: model.decoder._num_queries is always available.
-        return int(pl_module.model.decoder._num_queries)  # noqa: SLF001
+    def _resolve_num_queries(self, pl_module: LightningModule) -> int | None:
+        # Some models (e.g. HitFilter) have no decoder.
+        decoder = getattr(getattr(pl_module, "model", None), "decoder", None)
+        if decoder is None:
+            return None
+        num_queries = getattr(decoder, "_num_queries", None)
+        return int(num_queries) if num_queries is not None else None
 
     @property
     def output_path(self) -> Path:
@@ -57,20 +66,30 @@ class PredictionWriter(Callback):
 
     def on_test_batch_end(self, trainer, pl_module, test_step_outputs, batch, batch_idx):
         inputs, targets = batch
-        outputs, preds, losses = test_step_outputs
+        sorted_targets = None
+
+        if len(test_step_outputs) == 4:
+            outputs, preds, losses, sorted_targets = test_step_outputs
+        else:
+            outputs, preds, losses = test_step_outputs
+
+        if "targets_model_aligned" not in self.file.attrs:
+            self.file.attrs["targets_model_aligned"] = bool(sorted_targets is not None)
+
+        targets_to_write = sorted_targets if sorted_targets is not None else targets
 
         # handle batched case
-        if "sample_id" in targets:
+        if "sample_id" in targets_to_write:
             # Get all of the sample IDs in the batch, this is what will be used to retrieve the samples
-            sample_ids = targets["sample_id"]
+            sample_ids = targets_to_write["sample_id"]
 
             # Iterate through all of the samples in the batch
             for idx, sample_id in enumerate(sample_ids):
-                self.write_sample(sample_id, inputs, targets, outputs, preds, losses, idx)
+                self.write_sample(sample_id, inputs, targets_to_write, outputs, preds, losses, idx)
 
         # handle unbatched case
         else:
-            self.write_sample(batch_idx, inputs, targets, outputs, preds, losses, 0)
+            self.write_sample(batch_idx, inputs, targets_to_write, outputs, preds, losses, 0)
 
     def write_sample(self, sample_id, inputs, targets, outputs, preds, losses, idx):
         """Write a single sample to the output file."""
