@@ -53,7 +53,6 @@ data:
       - phi
       - u
       - v
-      - s
       # Hit local charge information
       - charge_frac
       - leta

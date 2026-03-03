@@ -205,15 +205,9 @@ def _align_hit_order(f, idx, masks, targets, mode="as_saved"):
     sort_field = str(sort_field)
 
     # Sort values are stored under outputs/final/<sort_field>/hit_<sort_field> when write_outputs=True.
-    try:
-        sort_values = np.array(f[idx][f"outputs/final/{sort_field}/hit_{sort_field}"][:][0])
-    except KeyError:
-        if mode != "auto":
-            warnings.warn(
-                f"Cannot apply hit_order_mode={mode!r}: missing sort values for field {sort_field!r}. Using saved ordering.",
-                stacklevel=2,
-            )
-        return masks, targets
+    sort_values = np.array(f[idx][f"outputs/final/{sort_field}/hit_{sort_field}"][:][0])
+
+    return masks, targets
 
     sort_idx = np.argsort(sort_values, kind="stable")
 
@@ -536,7 +530,6 @@ def load_events(
         Track valid probability threshold (default: 0.5)
     hit_order_mode: str
         One of {"as_saved", "unsort_preds"}.
-        "auto" uses file metadata when available and otherwise infers the best alignment.
 
     Returns:
     --------
