@@ -100,7 +100,9 @@ class ModelWrapper(LightningModule):
             return None
         total_loss = self.aggregate_losses(losses, stage="train")
 
-        return {"loss": total_loss, "attn_mask_outputs": outputs}
+        # Extract only per-layer attn_mask tensors for AttnMaskLogger
+        attn_mask_outputs = {k: {"attn_mask": v["attn_mask"]} for k, v in outputs.items() if isinstance(v, dict) and "attn_mask" in v}
+        return {"loss": total_loss, **attn_mask_outputs}
 
     def validation_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> dict[str, Tensor]:
         inputs, targets = batch
@@ -116,7 +118,9 @@ class ModelWrapper(LightningModule):
         preds = self.model.predict(outputs)
         self.log_metrics(preds, targets, "val")
 
-        return {"loss": total_loss, "attn_mask_outputs": outputs}
+        # Extract only per-layer attn_mask tensors for AttnMaskLogger
+        attn_mask_outputs = {k: {"attn_mask": v["attn_mask"]} for k, v in outputs.items() if isinstance(v, dict) and "attn_mask" in v}
+        return {"loss": total_loss, **attn_mask_outputs}
 
     def test_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
         inputs, targets = batch
