@@ -1,4 +1,4 @@
-# ruff: noqa: N803,N806,E501,A001
+# ruff: noqa: N803, E501, A001
 
 import argparse
 import multiprocessing as mp
