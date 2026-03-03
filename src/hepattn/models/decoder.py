@@ -277,19 +277,21 @@ class MaskFormerDecoder(nn.Module):
                     )
                 else:
                     device = x["query_embed"].device
-                    dtype_float = x["query_embed"].dtype
-                    stride_q_len = torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
-                    stride = torch.as_tensor(kv_len, device=device, dtype=dtype_float) / stride_q_len
+                    # Compute indices/stride in float32 to avoid bf16/fp16 index aliasing.
+                    calc_dtype = torch.float32
+                    index_dtype = torch.int32
+                    stride_q_len = torch.clamp(query_valid_mask.sum(dtype=calc_dtype), min=1.0)
+                    stride = torch.as_tensor(kv_len, device=device, dtype=calc_dtype) / stride_q_len
 
-                    q_idx = torch.arange(q_len, device=device, dtype=dtype_float)
-                    kv_idx = torch.arange(kv_len, device=device, dtype=dtype_float)
-                    q_center = torch.round(q_idx * stride)
+                    q_idx = torch.arange(q_len, device=device, dtype=calc_dtype)
+                    q_center = torch.round(q_idx * stride).to(index_dtype)
+                    kv_idx = torch.arange(kv_len, device=device, dtype=index_dtype)
 
                     half_window = self.window_size // 2
                     diagonal = (kv_idx.unsqueeze(0) - q_center.unsqueeze(1)).abs() <= half_window
 
                     if self.window_wrap:
-                        kv_len_t = torch.as_tensor(kv_len, device=device, dtype=dtype_float)
+                        kv_len_t = torch.as_tensor(kv_len, device=device, dtype=index_dtype)
                         wrap_left = (kv_idx.unsqueeze(0) - q_center.unsqueeze(1) + kv_len_t).abs() <= half_window
                         wrap_right = (kv_idx.unsqueeze(0) - q_center.unsqueeze(1) - kv_len_t).abs() <= half_window
                         diagonal = diagonal | wrap_left | wrap_right
