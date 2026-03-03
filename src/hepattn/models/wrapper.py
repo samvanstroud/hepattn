@@ -118,17 +118,17 @@ class ModelWrapper(LightningModule):
 
         return {"loss": total_loss, "attn_mask_outputs": outputs}
 
-    def test_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
+    def test_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
         inputs, targets = batch
         outputs = self.model(inputs)
 
-        # Calculate loss to also run matching
+        # Calculate loss to also run matching; targets may be sorted/aligned by model.loss
         outputs, targets, losses = self.model.loss(outputs, targets)
 
         # Get the predictions from the model
         preds = self.model.predict(outputs)
 
-        return outputs, preds, losses
+        return outputs, preds, losses, targets
 
     def on_train_start(self) -> None:
         # Manually overwride the learning rate in case we are starting
