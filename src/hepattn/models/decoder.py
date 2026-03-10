@@ -291,53 +291,53 @@ class MaskFormerDecoder(nn.Module):
             attn_masks: dict[str, torch.Tensor] = {}
             is_last = layer_index == len(self.decoder_layers) - 1
 
-            assert self.tasks is not None
-            for task in self.tasks:
-                if not task.should_run_at_layer(layer_index):
-                    continue
-                if not is_last and not self.intermediate_tasks:
-                    continue
+            if is_last or self.intermediate_tasks:
 
-                # Get the outputs of the task given the current embeddings
-                # Pass current layer's outputs so tasks can read from previously executed tasks
-                task_outputs = task(x, outputs=outputs[f"layer_{layer_index}"])
+                assert self.tasks is not None
+                for task in self.tasks:
+                    if not task.should_run_at_layer(layer_index):
+                        continue
 
-                outputs[f"layer_{layer_index}"][task.name] = task_outputs
+                    # Get the outputs of the task given the current embeddings
+                    # Pass current layer's outputs so tasks can read from previously executed tasks
+                    task_outputs = task(x, outputs=outputs[f"layer_{layer_index}"])
 
-                # Collect attention masks from different tasks
-                task_attn_masks = task.attn_mask(task_outputs)
-                for input_name, task_attn_mask in task_attn_masks.items():
-                    if input_name in attn_masks:
-                        attn_masks[input_name] |= task_attn_mask
+                    outputs[f"layer_{layer_index}"][task.name] = task_outputs
+
+                    # Collect attention masks from different tasks
+                    task_attn_masks = task.attn_mask(task_outputs)
+                    for input_name, task_attn_mask in task_attn_masks.items():
+                        if input_name in attn_masks:
+                            attn_masks[input_name] |= task_attn_mask
+                        else:
+                            attn_masks[input_name] = task_attn_mask
+
+                # Construct the full attention mask for MaskAttention decoder
+                if attn_masks and self.mask_attention:
+                    if self.unified_decoding:
+                        # In merged input mode, tasks should return masks directly for the full merged tensor
+                        # We expect only one mask key (likely "key" or similar) that covers all constituents
+                        if len(attn_masks) > 1:
+                            raise ValueError(f"In merged input mode, expected only one attention mask, got {len(attn_masks)}")
+                        attn_mask = next(iter(attn_masks.values()))
+                        # Ensure proper shape: (batch, num_queries, num_constituents)
+                        if attn_mask.dim() == 2:  # (batch, num_queries) -> (batch, num_queries, num_constituents)
+                            attn_mask = attn_mask.unsqueeze(-1).expand(-1, -1, num_constituents)
                     else:
-                        attn_masks[input_name] = task_attn_mask
+                        # Original logic for separate input types
+                        attn_mask = torch.full((batch_size, self.num_queries(x), num_constituents), False, device=x["key_embed"].device)
+                        for input_name, task_attn_mask in attn_masks.items():
+                            attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
 
-            # Construct the full attention mask for MaskAttention decoder
-            if attn_masks and self.mask_attention:
-                if self.unified_decoding:
-                    # In merged input mode, tasks should return masks directly for the full merged tensor
-                    # We expect only one mask key (likely "key" or similar) that covers all constituents
-                    if len(attn_masks) > 1:
-                        raise ValueError(f"In merged input mode, expected only one attention mask, got {len(attn_masks)}")
-                    attn_mask = next(iter(attn_masks.values()))
-                    # Ensure proper shape: (batch, num_queries, num_constituents)
-                    if attn_mask.dim() == 2:  # (batch, num_queries) -> (batch, num_queries, num_constituents)
-                        attn_mask = attn_mask.unsqueeze(-1).expand(-1, -1, num_constituents)
-                else:
-                    # Original logic for separate input types
-                    attn_mask = torch.full((batch_size, self.num_queries(x), num_constituents), False, device=x["key_embed"].device)
-                    for input_name, task_attn_mask in attn_masks.items():
-                        attn_mask[x[f"key_is_{input_name}"].unsqueeze(1).expand_as(attn_mask)] = task_attn_mask.flatten()
+                    attn_mask = attn_mask.detach()
 
-                attn_mask = attn_mask.detach()
-
-                if self.debug:
-                    outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
-                # True values indicate a slot will be included in the attention computation, while False will be ignored.
-                # If the attn mask is completely invalid for a given query, allow it to attend everywhere
-                # TODO: check and see see if this is really necessary
-                if self.unmask_all_false:
-                    attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
+                    if self.debug:
+                        outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
+                    # True values indicate a slot will be included in the attention computation, while False will be ignored.
+                    # If the attn mask is completely invalid for a given query, allow it to attend everywhere
+                    # TODO: check and see see if this is really necessary
+                    if self.unmask_all_false:
+                        attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
 
             # if (attn_mask is not None) and self.attn_type != "flex":
             #     outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask

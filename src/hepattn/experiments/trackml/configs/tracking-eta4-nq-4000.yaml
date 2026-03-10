@@ -1,14 +1,15 @@
 seed_everything: 42
-name: TRK-v8-3l-fast-fix-vec-new-filter-attn-mask-sort
+name: TRK-v8-3l-fast-fix-vec-new-filter-th-0p1-nq-4000
 data:
   # isambard
   train_dir:  /share/rcif2/pduckett/data/prepped/train/
   val_dir: /share/rcif2/pduckett/data/prepped/val/
   test_dir: /share/rcif2/pduckett/data/prepped/test/
 
-  hit_eval_train: /share/rcif2/pduckett/data/prepped/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_train_eval.h5
-  hit_eval_val: /share/rcif2/pduckett/data/prepped/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_val_eval.h5
-  hit_eval_test: /share/rcif2/pduckett/data/prepped/filter_evals/eta2p5pt600/epoch=100-val_loss=0.15778_test_eval.h5
+  hit_eval_train: /share/rcif2/pduckett/hepattn-dq/HF-pix-600MeV-eta4_20260214-T195401/epoch=070-val_loss=0.20153_train_eval.h5
+  hit_eval_val: /share/rcif2/pduckett/hepattn-dq/HF-pix-600MeV-eta4_20260214-T195401/epoch=070-val_loss=0.20153_val_eval.h5
+  hit_eval_test: /share/rcif2/pduckett/hepattn-dq/HF-pix-600MeV-eta4_20260214-T195401/epoch=070-val_loss=0.20153_test_eval.h5
+  hit_filter_threshold: 0.1
   
   num_workers: 10
   num_train: -1
@@ -24,13 +25,13 @@ data:
   particle_min_pt: 0.6
 
   # Maximum absolute eta for a particle to be deemed reconstructible
-  particle_max_abs_eta: 2.5
+  particle_max_abs_eta: 4
 
   # Minimum number of true hits for a particle to be deemed reconstructible
   particle_min_num_hits: 3
 
   # Maximum number of reconstructable particles allowed in an event
-  event_max_num_particles: &num_objects 2200
+  event_max_num_particles: &num_objects 4000
   strict_max_objects: false
 
   # Define which inputs will be available to the model
@@ -94,9 +95,6 @@ trainer:
       init_args:
         skip_dynamic_cudagraphs: true
         #mode: max-autotune # use for fastest inference
-    - class_path: hepattn.callbacks.AttnMaskLogger
-      init_args:
-        log_every_n_batches: 100
     - class_path: hepattn.callbacks.InferenceTimer
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint
@@ -133,10 +131,7 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 256
-      sorter:
-        class_path: hepattn.utils.sorter.Sorter
-        init_args:
-          input_sort_field: phi
+      input_sort_field: phi
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -199,7 +194,6 @@ model:
         mask_attention: true
         use_query_masks: false
         unmask_all_false: false
-        debug: true
         decoder_layer_config:
           dim: *dim
           norm: CustomLayerNorm
@@ -218,7 +212,7 @@ model:
                 input_object: hit
                 classes: ["is_first"]
                 loss_weight: 1.0
-                threshold: 0.05
+                threshold: 0.1
                 permute_loss: false
                 net:
                   class_path: hepattn.models.Dense

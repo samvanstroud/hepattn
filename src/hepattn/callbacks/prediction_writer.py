@@ -50,9 +50,13 @@ class PredictionWriter(Callback):
         if self.input_sort_field is not None:
             self.file.attrs["input_sort_field"] = self.input_sort_field
 
-    def _resolve_num_queries(self, pl_module: LightningModule) -> int:
-        # User assumption: model.decoder._num_queries is always available.
-        return int(pl_module.model.decoder._num_queries)  # noqa: SLF001
+    def _resolve_num_queries(self, pl_module: LightningModule) -> int | None:
+        # Some models (e.g. HitFilter) have no decoder.
+        decoder = getattr(getattr(pl_module, "model", None), "decoder", None)
+        if decoder is None:
+            return None
+        num_queries = getattr(decoder, "_num_queries", None)
+        return int(num_queries) if num_queries is not None else None
 
     @property
     def output_path(self) -> Path:
