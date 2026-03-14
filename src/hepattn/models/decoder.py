@@ -234,7 +234,7 @@ class MaskFormerDecoder(nn.Module):
             kv_len = x["key_embed"].shape[1]
             if self.attn_type == "torch":
                 if query_valid_mask is None:
-                    attn_mask = auto_local_ca_mask(
+                    attn_mask_lca = auto_local_ca_mask(
                         x["query_embed"],
                         x["key_embed"],
                         self.window_size,
@@ -259,7 +259,7 @@ class MaskFormerDecoder(nn.Module):
                         wrap_right = (kv_idx.unsqueeze(0) - q_center.unsqueeze(1) - kv_len_t).abs() <= half_window
                         diagonal = diagonal | wrap_left | wrap_right
 
-                    attn_mask = (query_valid_mask.unsqueeze(-1) & diagonal).unsqueeze(0)
+                    attn_mask_lca = (query_valid_mask.unsqueeze(-1) & diagonal).unsqueeze(0)
             elif self.attn_type == "flex":
                 device = x["query_embed"].device
                 dtype_float = x["query_embed"].dtype
@@ -267,7 +267,7 @@ class MaskFormerDecoder(nn.Module):
                     stride_q_len: int | Tensor = q_len
                 else:
                     stride_q_len = torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
-                attn_mask = self.flex_local_ca_mask(
+                attn_mask_lca = self.flex_local_ca_mask(
                     q_len=q_len,
                     kv_len=kv_len,
                     device=device,
@@ -313,7 +313,7 @@ class MaskFormerDecoder(nn.Module):
                             attn_masks[input_name] = task_attn_mask
 
                 # Construct the full attention mask for MaskAttention decoder
-                if attn_masks and self.mask_attention:
+                if attn_masks and (self.mask_attention or self.debug):
                     if self.unified_decoding:
                         # In merged input mode, tasks should return masks directly for the full merged tensor
                         # We expect only one mask key (likely "key" or similar) that covers all constituents
@@ -338,6 +338,11 @@ class MaskFormerDecoder(nn.Module):
                     # TODO: check and see see if this is really necessary
                     if self.unmask_all_false:
                         attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
+
+            if self.local_strided_attn:
+                attn_mask = attn_mask_lca
+                if self.debug:
+                    outputs[f"layer_{layer_index}"]["attn_mask_lca"] = attn_mask
 
             # if (attn_mask is not None) and self.attn_type != "flex":
             #     outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
