@@ -121,7 +121,6 @@ class MaskFormerDecoder(nn.Module):
         q_len: int,
         kv_len: int,
         device,
-        dtype_float,
         stride_q_len: int | Tensor | None = None,
         valid_q_len: int | None = None,
         query_valid_mask: Tensor | None = None,
@@ -131,7 +130,6 @@ class MaskFormerDecoder(nn.Module):
             q_len=q_len,
             kv_len=kv_len,
             device=device,
-            dtype_float=dtype_float,
             stride_q_len=stride_q_len,
             valid_q_len=valid_q_len,
             query_valid_mask=query_valid_mask,
@@ -299,16 +297,14 @@ class MaskFormerDecoder(nn.Module):
                     attn_mask = (query_valid_mask.unsqueeze(-1) & diagonal).unsqueeze(0)
             elif self.attn_type == "flex":
                 device = x["query_embed"].device
-                dtype_float = x["query_embed"].dtype
                 if query_valid_mask is None:
                     stride_q_len: int | Tensor = q_len
                 else:
-                    stride_q_len = torch.clamp(query_valid_mask.sum(dtype=dtype_float), min=1.0)
+                    stride_q_len = torch.clamp(query_valid_mask.sum(dtype=torch.float32), min=1.0)
                 attn_mask = self.flex_local_ca_mask(
                     q_len=q_len,
                     kv_len=kv_len,
                     device=device,
-                    dtype_float=dtype_float,
                     stride_q_len=stride_q_len,
                     query_valid_mask=query_valid_mask,
                 )
