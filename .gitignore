@@ -125,3 +125,6 @@ core
 src/hepattn/experiments/cld/plots/
 src/hepattn/experiments/cld/eval/
 src/hepattn/experiments/trackml/eval/
+
+*/submit/*
+*/configs/*

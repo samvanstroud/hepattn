@@ -38,7 +38,14 @@ class ModelWrapper(LightningModule):
             assert all(task.has_intermediate_loss is False for task in self.model.tasks)
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, Tensor]:
+        self._sync_decoder_epoch()
         return self.model(inputs)
+
+    def _sync_decoder_epoch(self) -> None:
+        decoder = getattr(self.model, "decoder", None)
+        if decoder is None or not hasattr(decoder, "set_current_epoch"):
+            return
+        decoder.set_current_epoch(int(self.current_epoch))
 
     def predict(self, outputs: dict[str, Tensor]) -> dict[str, Tensor]:
         return self.model.predict(outputs)
@@ -85,6 +92,7 @@ class ModelWrapper(LightningModule):
         inputs, targets = batch
 
         # Get the model outputs
+        self._sync_decoder_epoch()
         outputs = self.model(inputs)
 
         # Compute and log losses
@@ -106,6 +114,7 @@ class ModelWrapper(LightningModule):
         inputs, targets = batch
 
         # Get the raw model outputs
+        self._sync_decoder_epoch()
         outputs = self.model(inputs)
 
         # Compute losses then aggregate and log them
@@ -120,6 +129,7 @@ class ModelWrapper(LightningModule):
 
     def test_step(self, batch: tuple[dict[str, Tensor], dict[str, Tensor]]) -> tuple[dict[str, Tensor], dict[str, Tensor], dict[str, Tensor]]:
         inputs, targets = batch
+        self._sync_decoder_epoch()
         outputs = self.model(inputs)
 
         # Calculate loss to also run matching

@@ -489,6 +489,8 @@ class ObjectHitMaskTask(Task):
         dim: int,
         object_net: nn.Module | None = None,
         constituent_net: nn.Module | None = None,
+        loss_kwargs: dict[str, dict] | None = None,
+        cost_kwargs: dict[str, dict] | None = None,
         null_weight: float = 1.0,
         mask_attn: bool = True,
         target_field: str = "valid",
@@ -531,6 +533,8 @@ class ObjectHitMaskTask(Task):
 
         self.losses = losses
         self.costs = costs
+        self.loss_kwargs = loss_kwargs or {}
+        self.cost_kwargs = cost_kwargs or {}
         self.dim = dim
         self.constituent_net = constituent_net
         self.object_net = object_net or Dense(dim, dim)
@@ -594,7 +598,7 @@ class ObjectHitMaskTask(Task):
         costs = {}
         # sample_weight = target + self.null_weight * (1 - target)
         for cost_fn, cost_weight in self.costs.items():
-            costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target, input_pad_mask=hit_pad)
+            costs[cost_fn] = cost_weight * cost_fns[cost_fn](output, target, input_pad_mask=hit_pad, **self.cost_kwargs.get(cost_fn, {}))
         return costs
 
     def loss(
@@ -618,7 +622,12 @@ class ObjectHitMaskTask(Task):
         losses = {}
         for loss_fn, loss_weight in self.losses.items():
             losses[loss_fn] = loss_weight * loss_fns[loss_fn](
-                output, target, object_valid_mask=object_pad, input_pad_mask=hit_pad, sample_weight=sample_weight
+                output,
+                target,
+                object_valid_mask=object_pad,
+                input_pad_mask=hit_pad,
+                sample_weight=sample_weight,
+                **self.loss_kwargs.get(loss_fn, {}),
             )
 
         return losses
@@ -635,7 +644,14 @@ class IoUPredictionTask(Task):
         dim: int,
         loss_weight: float = 1.0,
         input_constituent: str | None = None,
+        target_object: str | None = None,
         target_field: str = "valid",
+        loss: Literal["mse", "huber"] = "mse",
+        huber_delta: float = 0.1,
+        target_mode: Literal["soft", "hard"] = "soft",
+        target_threshold: float = 0.5,
+        valid_target_weight: float = 1.0,
+        null_target_weight: float = 1.0,
     ):
         """Task for predicting IoU of mask predictions.
 
@@ -653,7 +669,14 @@ class IoUPredictionTask(Task):
             dim: Embedding dimension.
             loss_weight: Weight for the IoU MSE loss.
             input_constituent: Name of the constituent type (e.g., "hit"), used for validity masking. If None, inferred from mask_logit_key.
+            target_object: Name of the target object used for validity weighting. If None, inferred from target_mask_key.
             target_field: Target field name (default: "valid").
+            loss: Regression loss for the IoU head.
+            huber_delta: Delta parameter for Huber loss.
+            target_mode: Whether to build the IoU target from soft probabilities or thresholded hard masks.
+            target_threshold: Threshold used when ``target_mode="hard"``.
+            valid_target_weight: Per-slot loss weight for matched real targets.
+            null_target_weight: Per-slot loss weight for padded/null targets.
 
         Raises:
             ValueError: If input_constituent cannot be inferred from mask_logit_key when not provided explicitly.
@@ -668,6 +691,12 @@ class IoUPredictionTask(Task):
         self.target_field = target_field
         self.loss_weight = loss_weight
         self.dim = dim
+        self.loss_name = loss
+        self.huber_delta = huber_delta
+        self.target_mode = target_mode
+        self.target_threshold = target_threshold
+        self.valid_target_weight = valid_target_weight
+        self.null_target_weight = null_target_weight
 
         # Infer input_constituent from mask_logit_key if not provided
         if input_constituent is None:
@@ -679,6 +708,27 @@ class IoUPredictionTask(Task):
                 raise ValueError(f"Cannot infer input_constituent from mask_logit_key '{mask_logit_key}'. Please provide it explicitly.")
         else:
             self.input_constituent = input_constituent
+
+        # Infer target_object from target_mask_key if not provided
+        if target_object is None:
+            parts = target_mask_key.rsplit("_", maxsplit=1)
+            if len(parts) != 2:
+                raise ValueError(f"Cannot infer target_object from target_mask_key '{target_mask_key}'. Please provide it explicitly.")
+            self.target_object = parts[0]
+        else:
+            self.target_object = target_object
+
+        if self.loss_name not in {"mse", "huber"}:
+            raise ValueError(f"Unknown IoU loss '{self.loss_name}'. Expected one of ['mse', 'huber'].")
+        if self.target_mode not in {"soft", "hard"}:
+            raise ValueError(f"Unknown IoU target_mode '{self.target_mode}'. Expected one of ['soft', 'hard'].")
+        if self.huber_delta <= 0:
+            raise ValueError(f"huber_delta must be > 0, got {self.huber_delta}")
+        if self.valid_target_weight < 0 or self.null_target_weight < 0:
+            raise ValueError(
+                "valid_target_weight and null_target_weight must be non-negative, "
+                f"got {self.valid_target_weight} and {self.null_target_weight}."
+            )
 
         # Network to predict IoU from object embeddings
         self.iou_net = Dense(dim, 1)
@@ -716,6 +766,25 @@ class IoUPredictionTask(Task):
         # Avoid division by zero
         return intersection / (union + 1e-6)
 
+    def _build_iou_target(self, mask_logits: Tensor, target: Tensor) -> Tensor:
+        if self.target_mode == "soft":
+            pred_mask = mask_logits.sigmoid()
+        else:
+            pred_mask = (mask_logits.sigmoid() >= self.target_threshold).type_as(mask_logits)
+        return self.calculate_iou(pred_mask, target)
+
+    def _reduce_iou_loss(self, iou_pred: Tensor, iou_target: Tensor, sample_weight: Tensor | None = None) -> Tensor:
+        if self.loss_name == "mse":
+            loss = torch.square(iou_pred - iou_target)
+        else:
+            loss = torch.nn.functional.huber_loss(iou_pred, iou_target, delta=self.huber_delta, reduction="none")
+
+        if sample_weight is None:
+            return loss.mean()
+
+        weight_sum = sample_weight.sum().clamp_min(1e-6)
+        return (loss * sample_weight).sum() / weight_sum
+
     def loss(
         self,
         outputs: dict[str, Tensor],
@@ -734,33 +803,291 @@ class IoUPredictionTask(Task):
             )
 
         mask_logits = mask_task_outputs[self.mask_logit_key]
-        pred_probs = mask_logits.sigmoid()
 
         # Get target mask
         target = targets[self.target_mask_key + "_" + self.target_field].type_as(mask_logits)
 
         # Calculate the actual IoU between predicted and target masks
-        iou_target = self.calculate_iou(pred_probs, target)
+        iou_target = self._build_iou_target(mask_logits, target)
 
         # Get the predicted IoU
         iou_pred = outputs[self.input_object + "_iou_logit"].sigmoid()
 
-        # Only compute loss for valid objects, combined with query_mask if present
-        object_pad = targets.get(self.input_object + "_valid")
+        target_valid = targets.get(self.target_object + "_valid")
         query_mask = targets.get("query_mask")
-        if object_pad is not None:
-            valid_mask = object_pad
-            if query_mask is not None:
-                valid_mask = valid_mask & query_mask
-            iou_target = iou_target[valid_mask]
-            iou_pred = iou_pred[valid_mask]
-        elif query_mask is not None:
+
+        sample_weight = None
+        if target_valid is not None:
+            sample_weight = torch.full_like(iou_pred, self.null_target_weight)
+            sample_weight[target_valid] = self.valid_target_weight
+
+        if query_mask is not None:
             iou_target = iou_target[query_mask]
             iou_pred = iou_pred[query_mask]
+            if sample_weight is not None:
+                sample_weight = sample_weight[query_mask]
 
-        # Compute MSE loss
-        iou_loss = torch.nn.functional.mse_loss(iou_pred, iou_target.detach())
-        return {"iou_mse": self.loss_weight * iou_loss}
+        if iou_pred.numel() == 0:
+            return {f"iou_{self.loss_name}": iou_pred.new_zeros(())}
+
+        iou_loss = self._reduce_iou_loss(iou_pred, iou_target.detach(), sample_weight=sample_weight)
+        return {f"iou_{self.loss_name}": self.loss_weight * iou_loss}
+
+
+class HitCountPredictionTask(Task):
+    def __init__(
+        self,
+        name: str,
+        input_object: str,
+        target_mask_key: str,
+        dim: int,
+        loss_weight: float = 1.0,
+        input_constituent: str | None = None,
+        target_field: str = "valid",
+        loss: RegressionLossType = "smooth_l1",
+    ):
+        """Task for predicting the number of constituents assigned to each object.
+
+        This is intended as a lightweight final-layer-only auxiliary prior. It predicts
+        ``log1p(hit_count)`` from the object/query embedding and compares that to the
+        matched target-mask occupancy.
+
+        Args:
+            name: Name of the task.
+            input_object: Name of the input object (for example ``query``).
+            target_mask_key: Base key for the target mask (for example ``particle_hit``).
+            dim: Embedding dimension.
+            loss_weight: Weight for the hit-count regression loss.
+            input_constituent: Optional constituent name used to apply validity masking.
+            target_field: Target field name appended to ``target_mask_key``.
+            loss: Regression loss type for the log-count regression.
+        """
+        super().__init__(has_intermediate_loss=False)
+
+        self.name = name
+        self.input_object = input_object
+        self.target_mask_key = target_mask_key
+        self.target_field = target_field
+        self.loss_weight = loss_weight
+        self.input_constituent = input_constituent
+        self.loss_fn_name = loss
+        self.loss_fn = REGRESSION_LOSS_FNS[loss]
+
+        self.count_net = Dense(dim, 1)
+        self.inputs = [input_object + "_embed"]
+        self.outputs = [input_object + "_hit_count_log"]
+
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
+        count_log = self.count_net(x[self.input_object + "_embed"]).squeeze(-1)
+        return {self.input_object + "_hit_count_log": count_log}
+
+    def predict(self, outputs: dict[str, Tensor], query_mask: Tensor | None = None) -> dict[str, Tensor]:
+        count = torch.expm1(outputs[self.input_object + "_hit_count_log"].detach()).clamp_min(0.0)
+        if query_mask is not None:
+            count = count * query_mask.float()
+        return {self.input_object + "_hit_count": count}
+
+    def _target_hit_count(self, targets: dict[str, Tensor], dtype: torch.dtype) -> Tensor:
+        target = targets[self.target_mask_key + "_" + self.target_field].to(dtype=dtype)
+        if self.input_constituent is not None:
+            input_valid = targets.get(self.input_constituent + "_valid")
+            if input_valid is not None:
+                target = target * input_valid.unsqueeze(1).to(dtype=dtype)
+        return target.sum(dim=-1)
+
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
+        pred_log_count = outputs[self.input_object + "_hit_count_log"]
+        target_count = self._target_hit_count(targets, dtype=pred_log_count.dtype)
+        target_log_count = torch.log1p(target_count)
+
+        valid_mask = targets.get(self.input_object + "_valid")
+        query_mask = targets.get("query_mask")
+        if valid_mask is not None:
+            if query_mask is not None:
+                valid_mask = valid_mask & query_mask
+            pred_log_count = pred_log_count[valid_mask]
+            target_log_count = target_log_count[valid_mask]
+        elif query_mask is not None:
+            pred_log_count = pred_log_count[query_mask]
+            target_log_count = target_log_count[query_mask]
+
+        if pred_log_count.numel() == 0:
+            return {"hit_count_" + self.loss_fn_name: outputs[self.input_object + "_hit_count_log"].new_zeros(())}
+
+        hit_count_loss = self.loss_fn(pred_log_count, target_log_count, reduction="mean")
+        return {"hit_count_" + self.loss_fn_name: self.loss_weight * hit_count_loss}
+
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        pred_count = preds[self.input_object + "_hit_count"]
+        true_count = self._target_hit_count(targets, dtype=pred_count.dtype)
+
+        valid_mask = targets.get(self.input_object + "_valid")
+        query_mask = targets.get("query_mask")
+        if valid_mask is not None:
+            if query_mask is not None:
+                valid_mask = valid_mask & query_mask
+            pred_count = pred_count[valid_mask]
+            true_count = true_count[valid_mask]
+        elif query_mask is not None:
+            pred_count = pred_count[query_mask]
+            true_count = true_count[query_mask]
+
+        if pred_count.numel() == 0:
+            zero = preds[self.input_object + "_hit_count"].new_zeros(())
+            return {"hit_count_mae": zero, "hit_count_bias": zero}
+
+        return {
+            "hit_count_mae": (pred_count - true_count).abs().mean(),
+            "hit_count_bias": (pred_count - true_count).mean(),
+        }
+
+
+class ThresholdCountLossTask(Task):
+    def __init__(
+        self,
+        name: str,
+        source_task_name: str,
+        logits_key: str,
+        target_object: str,
+        target_field: str,
+        threshold: float,
+        loss_weight: float = 1.0,
+        count_tau: float = 0.5,
+        valid_key: str | None = None,
+        max_count: int | None = None,
+    ):
+        """Auxiliary loss that aligns a thresholded classifier with the desired event-level count.
+
+        This task reads logits from an earlier task in the same layer, forms a differentiable
+        approximation to the number of entries that clear a probability threshold, and applies
+        a smooth regression loss on the resulting event-level count.
+
+        It is intended for encoder-side use with ``query_init`` but is generic enough for other
+        thresholded constituent classifiers.
+
+        Args:
+            name: Name of this auxiliary task.
+            source_task_name: Name of the task that produces the logits to count from.
+            logits_key: Key in ``source_task_name`` outputs containing logits.
+            target_object: Target object prefix used to construct ``{target_object}_{target_field}``.
+            target_field: Target field containing the binary labels to count.
+            threshold: Probability threshold used at inference time.
+            loss_weight: Overall weight for the count loss.
+            count_tau: Temperature for the soft threshold approximation.
+            valid_key: Optional validity-mask key. Defaults to ``{target_object}_valid``.
+            max_count: Optional upper cap applied to the target count.
+        """
+        super().__init__(has_intermediate_loss=True, permute_loss=False)
+
+        if not 0.0 <= threshold <= 1.0:
+            raise ValueError(f"threshold must be in [0, 1], got {threshold}")
+        if count_tau <= 0:
+            raise ValueError(f"count_tau must be > 0, got {count_tau}")
+
+        self.name = name
+        self.source_task_name = source_task_name
+        self.logits_key = logits_key
+        self.target_object = target_object
+        self.target_field = target_field
+        self.threshold = threshold
+        self.loss_weight = loss_weight
+        self.count_tau = count_tau
+        self.valid_key = valid_key if valid_key is not None else f"{target_object}_valid"
+        self.max_count = max_count
+
+        self.soft_count_key = f"{target_object}_{target_field}_soft_count"
+        self.hard_count_key = f"{target_object}_{target_field}_threshold_count"
+        self.outputs = [self.soft_count_key, self.hard_count_key]
+        self.inputs: list[str] = []
+
+    def _threshold_logit(self, dtype: torch.dtype, device: torch.device) -> Tensor:
+        eps = torch.tensor(torch.finfo(dtype).eps, dtype=dtype, device=device)
+        threshold = torch.as_tensor(self.threshold, dtype=dtype, device=device).clamp(min=eps, max=1 - eps)
+        return torch.log(threshold) - torch.log1p(-threshold)
+
+    def _source_logits(self, outputs: dict[str, dict[str, Tensor]] | None) -> Tensor:
+        if outputs is None or self.source_task_name not in outputs:
+            raise ValueError(
+                f"Task '{self.name}' requires outputs from task '{self.source_task_name}'. "
+                "Make sure it is listed after the source task in the same task list."
+            )
+
+        source_outputs = outputs[self.source_task_name]
+        if self.logits_key not in source_outputs:
+            raise ValueError(
+                f"Logits key '{self.logits_key}' not found in task '{self.source_task_name}' outputs. "
+                f"Available keys: {list(source_outputs.keys())}"
+            )
+
+        logits = source_outputs[self.logits_key]
+        return logits.squeeze(-1) if logits.shape[-1:] == (1,) else logits
+
+    def _valid_mask(self, container: dict[str, Tensor], shape: torch.Size, device: torch.device) -> Tensor:
+        valid = container.get(self.valid_key)
+        if valid is None:
+            return torch.ones(shape, dtype=torch.bool, device=device)
+        return valid.bool()
+
+    def _target_count(self, targets: dict[str, Tensor], dtype: torch.dtype, device: torch.device) -> Tensor:
+        target = targets[f"{self.target_object}_{self.target_field}"].to(dtype=dtype)
+        valid_mask = self._valid_mask(targets, target.shape, device=device)
+        target_count = (target * valid_mask.to(dtype=dtype)).sum(dim=-1)
+        if self.max_count is not None:
+            target_count = target_count.clamp(max=float(self.max_count))
+        return target_count
+
+    def _counts_from_logits(self, logits: Tensor, valid_mask: Tensor) -> tuple[Tensor, Tensor]:
+        threshold_logit = self._threshold_logit(dtype=logits.dtype, device=logits.device)
+        soft_cross = torch.sigmoid((logits - threshold_logit) / self.count_tau)
+        soft_count = (soft_cross * valid_mask.to(dtype=logits.dtype)).sum(dim=-1)
+
+        probs = logits.sigmoid()
+        hard_count = ((probs >= self.threshold) & valid_mask).sum(dim=-1).to(dtype=logits.dtype)
+        return soft_count, hard_count
+
+    def forward(self, x: dict[str, Tensor], outputs: dict[str, dict[str, Tensor]] | None = None) -> dict[str, Tensor]:
+        logits = self._source_logits(outputs)
+        valid_mask = self._valid_mask(x, logits.shape, device=logits.device)
+        soft_count, hard_count = self._counts_from_logits(logits, valid_mask)
+        return {
+            self.soft_count_key: soft_count,
+            self.hard_count_key: hard_count,
+        }
+
+    def predict(self, outputs: dict[str, Tensor], **kwargs) -> dict[str, Tensor]:
+        return {
+            self.soft_count_key: outputs[self.soft_count_key].detach(),
+            self.hard_count_key: outputs[self.hard_count_key].detach(),
+        }
+
+    def loss(
+        self,
+        outputs: dict[str, Tensor],
+        targets: dict[str, Tensor],
+        layer_outputs: dict[str, dict[str, Tensor]] | None = None,
+    ) -> dict[str, Tensor]:
+        soft_count = outputs[self.soft_count_key]
+        target_count = self._target_count(targets, dtype=soft_count.dtype, device=soft_count.device)
+        loss = torch.nn.functional.smooth_l1_loss(soft_count, target_count, reduction="mean")
+        return {"threshold_count_smooth_l1": self.loss_weight * loss}
+
+    def metrics(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
+        soft_count = preds[self.soft_count_key]
+        hard_count = preds[self.hard_count_key]
+        target_count = self._target_count(targets, dtype=soft_count.dtype, device=soft_count.device)
+        return {
+            "soft_count_mae": (soft_count - target_count).abs().mean(),
+            "soft_count_bias": (soft_count - target_count).mean(),
+            "hard_count_mae": (hard_count - target_count).abs().mean(),
+            "hard_count_bias": (hard_count - target_count).mean(),
+        }
+
+
 
 
 class RegressionTask(Task):

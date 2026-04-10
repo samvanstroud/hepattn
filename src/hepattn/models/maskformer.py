@@ -149,7 +149,7 @@ class MaskFormer(nn.Module):
         # Run encoder tasks
         outputs = {"encoder": {}}
         for task in self.encoder_tasks:
-            outputs["encoder"][task.name] = task(x)
+            outputs["encoder"][task.name] = task(x, outputs=outputs["encoder"])
 
         # Pass through decoder layers
         x, decoder_outputs = self.decoder(x, self.input_names)

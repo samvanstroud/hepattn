@@ -1,3 +1,4 @@
+
 import uuid
 from contextlib import suppress
 from pathlib import Path
@@ -29,10 +30,66 @@ class AttnMaskLogger(Callback):
         self.lca_window_sizes = lca_window_sizes if lca_window_sizes is not None else [32, 64, 128, 512, 1024, 2048]
         self.log_diagonal_metrics = log_diagonal_metrics
 
-    def _log_attention_mask(self, pl_module, mask, step, layer, prefix="local_ca_mask"):
+    def _to_2d_mask(self, mask: torch.Tensor | None) -> torch.Tensor | None:
+        if mask is None:
+            return None
+        if mask.dim() == 3:
+            return mask[0]
+        return mask
+
+    def _to_3d_mask(self, mask: torch.Tensor | None) -> torch.Tensor | None:
+        if mask is None:
+            return None
+        if mask.dim() == 2:
+            return mask.unsqueeze(0)
+        return mask
+
+    def _select_pred_mask(self, layer_outputs: dict) -> torch.Tensor | None:
+        # Prefer the predicted mask first, then legacy, then actual mask.
+        for key in ("attn_mask_pred", "attn_mask_log", "attn_mask"):
+            if key in layer_outputs:
+                return layer_outputs[key]
+        return None
+
+    def _compute_overlap_metrics(self, pred_mask: torch.Tensor, lca_mask: torch.Tensor) -> tuple[float, float, float, float]:
+        pred_positions = pred_mask.sum()
+        lca_positions = lca_mask.sum()
+        intersection = (pred_mask & lca_mask).sum()
+        union = (pred_mask | lca_mask).sum()
+        efficiency = float(intersection / pred_positions) if pred_positions > 0 else 0.0
+        purity = float(intersection / lca_positions) if lca_positions > 0 else 0.0
+        iou = float(intersection / union) if union > 0 else 0.0
+        return efficiency, purity, float(intersection), iou
+
+    def _log_superimposed_masks(self, pl_module, lca_mask, pred_mask, step, layer, prefix="mask_overlay"):
+        """Overlay LCA and predicted mask-attention regions in a single plot."""
+        lca_mask = lca_mask.bool()
+        pred_mask = pred_mask.bool()
+        overlay = torch.zeros_like(pred_mask, dtype=torch.int32)
+        overlay[lca_mask & ~pred_mask] = 1
+        overlay[~lca_mask & pred_mask] = 2
+        overlay[lca_mask & pred_mask] = 3
+
+        fig, ax = plt.subplots(constrained_layout=True, dpi=300)
+        cmap = ListedColormap(["#0c1222", "#2ec4b6", "#ff9f1c", "#f1fa8c"])
+        im = ax.imshow(overlay.cpu().numpy(), aspect="auto", cmap=cmap, vmin=0, vmax=3, interpolation="nearest")
+        ax.invert_yaxis()
+        cbar = plt.colorbar(im, ax=ax, ticks=[0, 1, 2, 3])
+        cbar.set_label("Mask Category", rotation=270, labelpad=15)
+        cbar.ax.set_yticklabels(["Masked by both", "LCA only", "Predicted only", "Overlap"])
+        ax.set_title(f"LCA vs Predicted Attention - Step {step}, Layer {layer}")
+        ax.set_xlabel("Hits (→ increasing φ)")
+        ax.set_ylabel("Queries (→ increasing φ)")
+
+        logger = getattr(pl_module, "logger", None)
+        if logger is not None and hasattr(logger, "experiment"):
+            logger.experiment.log_figure(figure_name=f"{prefix}_step{step}_layer{layer}", figure=fig, step=step)
+        plt.close(fig)
+
+    def _log_attention_mask(self, pl_module, mask, step, layer, prefix="local_ca_mask", extra_text: str | None = None):
         """Helper method to create and log attention mask figures."""
         fig, ax = plt.subplots(constrained_layout=True, dpi=300)
-        cmap = ListedColormap(["#002b7f", "#ffff33"])  # blue for 0, yellow for 1
+        cmap = ListedColormap(["#ffffff", "#000000"])  # white for 0, black for 1
         im = ax.imshow(mask.numpy().astype(int), aspect="auto", cmap=cmap, vmin=0, vmax=1, interpolation="nearest")
         # Flip y-axis so lowest phi is at the bottom
         ax.invert_yaxis()
@@ -41,7 +98,10 @@ class AttnMaskLogger(Callback):
         cbar.set_label("Attention Mask", rotation=270, labelpad=15)
         cbar.ax.set_yticklabels(["Masked (0)", "Used in Attention (1)"])
         # Add title with step and layer info
-        ax.set_title(f"Attention Mask - Step {step}, Layer {layer}")
+        title = f"Attention Mask - Step {step}, Layer {layer}"
+        if extra_text:
+            title = f"{title}\n{extra_text}"
+        ax.set_title(title)
         # Add arrows to axis labels to indicate phi direction
         ax.set_xlabel("Hits (→ increasing φ)")
         ax.set_ylabel("Queries (→ increasing φ)")
@@ -50,6 +110,99 @@ class AttnMaskLogger(Callback):
         if logger is not None and hasattr(logger, "experiment"):
             logger.experiment.log_figure(figure_name=f"{prefix}_step{step}_layer{layer}", figure=fig, step=step)
         plt.close(fig)
+
+    def _log_query_init_map(self, pl_module, init_indices, step, prefix="query_init_map"):
+        """Log a scatter of query index vs selected hit index used for query init."""
+        if init_indices is None:
+            return
+        init_idx = init_indices[0].detach().cpu()
+        if init_idx.numel() == 0:
+            return
+
+        q_idx = torch.arange(init_idx.numel())
+        max_points = 5000
+        if init_idx.numel() > max_points:
+            perm = torch.randperm(init_idx.numel())[:max_points]
+            init_idx = init_idx[perm]
+            q_idx = q_idx[perm]
+
+        fig, ax = plt.subplots(constrained_layout=True, dpi=300)
+        ax.scatter(init_idx.numpy(), q_idx.numpy(), s=2, alpha=0.6, c="#00b5d8")
+        ax.set_title("Query Init: Selected Hit Index vs Query Index")
+        ax.set_xlabel("Selected Hit Index")
+        ax.set_ylabel("Query Index")
+
+        logger = getattr(pl_module, "logger", None)
+        if logger is not None and hasattr(logger, "experiment"):
+            logger.experiment.log_figure(figure_name=f"{prefix}_step{step}", figure=fig, step=step)
+        plt.close(fig)
+
+    def _log_query_init_retention(self, pl_module, attn_mask, init_indices, step, layer, prefix="query_init", plot=False):
+        """Log whether init-selected hits remain in the attention mask for each query."""
+        if init_indices is None:
+            return
+        init_idx = init_indices[0]
+        num_queries = init_idx.numel()
+        if num_queries == 0:
+            return
+        if attn_mask.dim() != 3:
+            return
+
+        mask = attn_mask[0]
+        if mask.shape[0] != num_queries:
+            return
+        if init_idx.max().item() >= mask.shape[1]:
+            return
+
+        q_idx = torch.arange(num_queries, device=mask.device)
+        retained = mask[q_idx, init_idx]
+        retained_frac = retained.float().mean().item()
+        all_false_frac = (mask.sum(dim=-1) == 0).float().mean().item()
+
+        deltas = init_idx.detach().cpu().to(torch.int64) - torch.arange(num_queries)
+        if retained.any():
+            retained_deltas = deltas[retained.detach().cpu()]
+            retained_delta_mean = float(retained_deltas.float().mean())
+        else:
+            retained_delta_mean = float("nan")
+        if (~retained).any():
+            dropped_deltas = deltas[(~retained).detach().cpu()]
+            dropped_delta_mean = float(dropped_deltas.float().mean())
+        else:
+            dropped_delta_mean = float("nan")
+
+        logger = getattr(pl_module, "logger", None)
+        if logger is not None and hasattr(logger, "experiment"):
+            logger.experiment.log_metrics(
+                {
+                    f"{prefix}/retained_frac_layer{layer}": retained_frac,
+                    f"{prefix}/all_false_frac_layer{layer}": all_false_frac,
+                    f"{prefix}/retained_delta_mean_layer{layer}": retained_delta_mean,
+                    f"{prefix}/dropped_delta_mean_layer{layer}": dropped_delta_mean,
+                    f"{prefix}/num_queries_layer{layer}": float(num_queries),
+                },
+                step=step,
+            )
+
+            if plot:
+                max_points = 5000
+                plot_q_idx = q_idx.detach().cpu()
+                plot_init_idx = init_idx.detach().cpu()
+                plot_retained = retained.detach().cpu()
+                if plot_init_idx.numel() > max_points:
+                    perm = torch.randperm(plot_init_idx.numel())[:max_points]
+                    plot_q_idx = plot_q_idx[perm]
+                    plot_init_idx = plot_init_idx[perm]
+                    plot_retained = plot_retained[perm]
+
+                fig, ax = plt.subplots(constrained_layout=True, dpi=300)
+                colors = np.where(plot_retained.numpy(), "#2ca02c", "#d62728")
+                ax.scatter(plot_init_idx.numpy(), plot_q_idx.numpy(), s=2, alpha=0.6, c=colors)
+                ax.set_title(f"Query Init Retention - Layer {layer}")
+                ax.set_xlabel("Selected Hit Index")
+                ax.set_ylabel("Query Index")
+                logger.experiment.log_figure(figure_name=f"{prefix}_retention_layer{layer}_step{step}", figure=fig, step=step)
+                plt.close(fig)
 
     def _log_attention_stats(self, pl_module, mask, step, layer, prefix="val"):
         """Log basic attention mask statistics."""
@@ -74,7 +227,7 @@ class AttnMaskLogger(Callback):
         except (ValueError, AttributeError, TypeError) as e:
             print(f"[AttnMaskLogger] Error logging attention stats: {e}")
 
-    def _calculate_multi_lca_comparison_metrics(self, ma_mask):
+    def _calculate_multi_lca_comparison_metrics(self, ma_mask, wrap=True):
         """Calculate LCA comparison metrics for multiple window sizes using dummy embeddings."""
         all_metrics = {}
 
@@ -89,26 +242,18 @@ class AttnMaskLogger(Callback):
 
         for window_size in self.lca_window_sizes:
             # Generate LCA mask for this window size
-            lca_mask = auto_local_ca_mask(dummy_q_embed, dummy_kv_embed, window_size, wrap=True)
+            lca_mask = auto_local_ca_mask(dummy_q_embed, dummy_kv_embed, window_size, wrap=wrap)
             lca_mask = lca_mask.squeeze(0)  # Remove batch dimension
 
-            # Calculate efficiency: fraction of MA mask positions that are in LCA mask
-            # Efficiency = (MA ∩ LCA) / MA
-            ma_positions = ma_mask.sum()
-            intersection = (ma_mask & lca_mask).sum()
-            efficiency = float(intersection / ma_positions) if ma_positions > 0 else 0.0
-
-            # Calculate purity: fraction of LCA mask positions that are in MA mask
-            # Purity = (MA ∩ LCA) / LCA
-            lca_positions = lca_mask.sum()
-            purity = float(intersection / lca_positions) if lca_positions > 0 else 0.0
+            efficiency, purity, intersection, iou = self._compute_overlap_metrics(ma_mask, lca_mask)
 
             # Store metrics with window size suffix
             window_suffix = f"_w{window_size}"
             all_metrics.update({
                 f"attn_mask_lca_efficiency{window_suffix}": efficiency,
                 f"attn_mask_lca_purity{window_suffix}": purity,
-                f"attn_mask_intersection{window_suffix}": float(intersection),
+                f"attn_mask_intersection{window_suffix}": intersection,
+                f"attn_mask_lca_iou{window_suffix}": iou,
             })
 
         return all_metrics
@@ -203,7 +348,7 @@ class AttnMaskLogger(Callback):
 
         return 1.0  # If all queries attend to the same number of hits
 
-    def _log_diagonal_metrics(self, pl_module, ma_mask, step, layer, prefix="val"):
+    def _log_diagonal_metrics(self, pl_module, ma_mask, step, layer, prefix="val", wrap=True):
         """Log metrics comparing MA mask to LCA mask to measure diagonal consistency."""
         # Calculate basic metrics based on MA mask structure
         diagonal_distance = self._calculate_distance_from_diagonal(ma_mask)
@@ -219,7 +364,7 @@ class AttnMaskLogger(Callback):
         }
 
         # Calculate LCA comparison metrics for all window sizes using dummy embeddings
-        lca_metrics = self._calculate_multi_lca_comparison_metrics(ma_mask)
+        lca_metrics = self._calculate_multi_lca_comparison_metrics(ma_mask, wrap=wrap)
         metrics.update(lca_metrics)
 
         logger = getattr(pl_module, "logger", None)
@@ -230,35 +375,123 @@ class AttnMaskLogger(Callback):
         """Process attention masks directly from the outputs dictionary."""
         prefix_suffix = "_val" if is_validation else "train"
 
-        # Get only entries that contain "attn_mask"
+        if isinstance(outputs, dict) and "attn_mask_outputs" in outputs:
+            outputs = outputs["attn_mask_outputs"]
+
+        # Get only entries that contain attention-mask payloads
         layer_outputs = {
             k: v
             for k, v in outputs.items()
-            if k not in {"loss", "encoder", "final"} and isinstance(v, dict) and "attn_mask" in v
+            if k != "loss"
+            and isinstance(v, dict)
+            and any(mask_key in v for mask_key in {"attn_mask_log", "attn_mask", "attn_mask_pred", "attn_mask_lca"})
         }
         if not layer_outputs:
             return
+
+        encoder_outputs = outputs.get("encoder", {})
+        init_indices = encoder_outputs.get("query_init_indices")
+        num_init_queries = None
+        if init_indices is not None:
+            num_init_queries = int(init_indices.shape[-1])
+            self._log_query_init_map(pl_module, init_indices, step, f"query_init_map_{prefix_suffix}")
 
         layer_indices = sorted(int(k.split("_")[1]) for k in layer_outputs)
         if not layer_indices:
             return
 
-        for layer_name, l_out in layer_outputs.items():
-            layer_index = int(layer_name.split("_")[1])
+        for layer_name, l_out in outputs.items():
+            if layer_name != "loss" and isinstance(l_out, dict) and any(
+                mask_key in l_out for mask_key in {"attn_mask_log", "attn_mask", "attn_mask_pred", "attn_mask_lca"}
+            ):
+                layer_index = int(layer_name.split("_")[1])
 
-                # # log only last layer
-                # if layer_index == max(layer_indices):
-            attn_mask = l_out["attn_mask"]
-            attn_mask_im = attn_mask[0].detach().cpu().clone().int()
-            self._log_attention_mask(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
-            if step > 10000:
-                self._log_mask_points_for_kde(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
-            if self.log_stats:
-                self._log_attention_stats(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+                pred_mask = self._to_3d_mask(self._select_pred_mask(l_out))
+                lca_mask = self._to_3d_mask(l_out.get("attn_mask_lca"))
+                retention_mask = pred_mask if pred_mask is not None else lca_mask
+                if retention_mask is None:
+                    continue
+                # assert num_init_queries == attn_mask.shape[1], f"num initial queries {num_init_queries}, does not match attn mask {attn_mask.shape}"
 
-                # Log diagonal metrics if enabled
-                if self.log_diagonal_metrics:
-                    self._log_diagonal_metrics(pl_module, attn_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+                self._log_query_init_retention(
+                    pl_module,
+                    retention_mask,
+                    init_indices,
+                    step,
+                    layer_index,
+                    prefix=f"query_init_{prefix_suffix}",
+                    plot=layer_index == max(layer_indices),
+                )
+
+                # log only last layer
+                if layer_index == max(layer_indices):
+                    # assert attn_mask_im.shape[0] == num_init_queries
+                    extra_text = None
+                    if num_init_queries is not None:
+                        extra_text = f"init queries: {num_init_queries}"
+
+                    pred_mask_im = None
+                    if pred_mask is not None:
+                        pred_mask_im = pred_mask[0].detach().cpu().clone().int()
+                        self._log_attention_mask(
+                            pl_module,
+                            pred_mask_im,
+                            step,
+                            layer_index,
+                            f"local_ma_mask_{prefix_suffix}",
+                            extra_text=extra_text,
+                        )
+                        if step > 10000:
+                            self._log_mask_points_for_kde(
+                                pl_module, pred_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}"
+                            )
+                        if self.log_stats:
+                            self._log_attention_stats(pl_module, pred_mask_im, step, layer_index, f"local_ma_mask_{prefix_suffix}")
+
+                        # Log diagonal metrics if enabled
+                        if self.log_diagonal_metrics:
+                            self._log_diagonal_metrics(
+                                pl_module,
+                                pred_mask_im,
+                                step,
+                                layer_index,
+                                f"local_ma_mask_{prefix_suffix}",
+                                wrap=bool(l_out.get("attn_mask_lca_wrap", True)),
+                            )
+
+                    lca_mask_2d = self._to_2d_mask(l_out.get("attn_mask_lca"))
+                    if lca_mask_2d is not None:
+                        lca_mask_im = lca_mask_2d.detach().cpu().clone().int()
+                        self._log_attention_mask(
+                            pl_module,
+                            lca_mask_im,
+                            step,
+                            layer_index,
+                            f"local_lca_mask_{prefix_suffix}",
+                            extra_text=extra_text,
+                        )
+
+                        if pred_mask_im is not None:
+                            self._log_superimposed_masks(
+                                pl_module,
+                                lca_mask_im.bool(),
+                                pred_mask_im.bool(),
+                                step,
+                                layer_index,
+                                f"local_ma_lca_overlay_{prefix_suffix}",
+                            )
+                            efficiency, purity, intersection, iou = self._compute_overlap_metrics(pred_mask_im.bool(), lca_mask_im.bool())
+                            logger = getattr(pl_module, "logger", None)
+                            if logger is not None and hasattr(logger, "experiment"):
+                                logger.experiment.log_metrics(
+                                    {
+                                        f"local_ma_mask_{prefix_suffix}/attn_mask_lca_efficiency_layer{layer_index}": efficiency,
+                                        f"local_ma_mask_{prefix_suffix}/attn_mask_lca_purity_layer{layer_index}": purity,
+                                        f"local_ma_mask_{prefix_suffix}/attn_mask_lca_intersection_layer{layer_index}": intersection,
+                                        f"local_ma_mask_{prefix_suffix}/attn_mask_lca_iou_layer{layer_index}": iou,
+                                    },
+                                    step=step,
+                                )
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if not self.log_val:

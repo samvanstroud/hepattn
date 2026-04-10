@@ -4,6 +4,7 @@
 """
 
 from functools import partial
+import math
 
 import torch
 from torch import Tensor, nn
@@ -38,6 +39,11 @@ class MaskFormerDecoder(nn.Module):
         unmask_all_false: bool = True,
         dynamic_queries: bool = False,
         dynamic_query_source: str | None = None,
+        dynamic_query_warmup_epochs: int = 0,
+        dynamic_query_hit_ratio: float | None = None,
+        dynamic_query_budget_intercept: float | None = None,
+        dynamic_query_budget_slope: float | None = None,
+        dynamic_query_budget_margin: float | None = None,
         debug = False,
         intermediate_tasks = True,
     ):
@@ -61,6 +67,13 @@ class MaskFormerDecoder(nn.Module):
             unmask_all_false: If True, queries with all-false attention masks will be unmasked to attend everywhere.
             dynamic_queries: If True, queries are initialized dynamically.
             dynamic_query_source: Name of the input type to use as the source for dynamic query initialization.
+            dynamic_query_warmup_epochs: Number of initial epochs to use the original static learned queries
+                before enabling dynamic query initialization.
+            dynamic_query_hit_ratio: Optional hit-scaled per-event query budget. If set, the effective budget is
+                ``ceil(dynamic_query_hit_ratio * num_valid_source_inputs)``.
+            dynamic_query_budget_intercept: Optional affine per-event budget intercept.
+            dynamic_query_budget_slope: Optional affine per-event budget slope multiplying valid source inputs.
+            dynamic_query_budget_margin: Optional affine per-event budget margin.
         """
         super().__init__()
 
@@ -80,11 +93,28 @@ class MaskFormerDecoder(nn.Module):
         self.unified_decoding = unified_decoding
         self.dynamic_queries = dynamic_queries
         self.dynamic_query_source = dynamic_query_source
+        self.dynamic_query_warmup_epochs = dynamic_query_warmup_epochs
+        self.dynamic_query_hit_ratio = dynamic_query_hit_ratio
+        self.dynamic_query_budget_intercept = dynamic_query_budget_intercept
+        self.dynamic_query_budget_slope = dynamic_query_budget_slope
+        self.dynamic_query_budget_margin = dynamic_query_budget_margin
         self.debug = debug
         self.intermediate_tasks = intermediate_tasks
+        self._dynamic_query_current_epoch: int | None = None
 
-        # Only initialize learned queries if not using dynamic queries
-        if not dynamic_queries:
+        if self.dynamic_query_hit_ratio is not None and any(
+            value is not None
+            for value in (self.dynamic_query_budget_intercept, self.dynamic_query_budget_slope, self.dynamic_query_budget_margin)
+        ):
+            raise ValueError("Specify either dynamic_query_hit_ratio or affine dynamic_query_budget_* parameters, not both")
+        if (self.dynamic_query_budget_intercept is None) ^ (self.dynamic_query_budget_slope is None):
+            raise ValueError("Affine dynamic query budgets require both dynamic_query_budget_intercept and dynamic_query_budget_slope")
+        if self.dynamic_query_budget_margin is None and self.dynamic_query_budget_intercept is not None:
+            self.dynamic_query_budget_margin = 0.0
+
+        # Keep learned queries available for the original static path and for optional
+        # dynamic-query warmup epochs.
+        if not dynamic_queries or dynamic_query_warmup_epochs > 0:
             self.initial_queries = nn.Parameter(torch.randn(self._num_queries, decoder_layer_config["dim"]))
 
         self.block_size = block_size
@@ -98,15 +128,48 @@ class MaskFormerDecoder(nn.Module):
         assert not (self.local_strided_attn and self.mask_attention), "local_strided_attn and mask_attention cannot both be True"
 
     def num_queries(self, x) -> int:
-        if self.dynamic_queries:
+        if self._dynamic_queries_active():
             return x["query_embed"].shape[1]
         return self._num_queries
 
-    def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
+    def set_current_epoch(self, epoch: int | None) -> None:
+        self._dynamic_query_current_epoch = None if epoch is None else int(epoch)
+
+    def _dynamic_queries_active(self) -> bool:
+        if not self.dynamic_queries:
+            return False
+        if self.dynamic_query_warmup_epochs <= 0:
+            return True
+        if self._dynamic_query_current_epoch is None:
+            return True
+        return self._dynamic_query_current_epoch >= self.dynamic_query_warmup_epochs
+
+    def _effective_query_budget(self, x: dict[str, Tensor], source_valid_key: str) -> int:
+        if self.dynamic_query_hit_ratio is None and self.dynamic_query_budget_intercept is None:
+            return self._num_queries
+
+        if x[source_valid_key].shape[0] != 1:
+            raise ValueError(f"dynamic query budgets only support batch_size=1, got {x[source_valid_key].shape[0]}")
+
+        num_valid_source = int(x[source_valid_key][0].sum().item())
+        if self.dynamic_query_hit_ratio is not None:
+            budget = math.ceil(self.dynamic_query_hit_ratio * num_valid_source)
+        else:
+            assert self.dynamic_query_budget_intercept is not None
+            assert self.dynamic_query_budget_slope is not None
+            assert self.dynamic_query_budget_margin is not None
+            budget = math.ceil(
+                self.dynamic_query_budget_intercept
+                + self.dynamic_query_budget_slope * num_valid_source
+                + self.dynamic_query_budget_margin
+            )
+        return max(1, budget)
+
+    def initialize_dynamic_queries(self, x: dict[str, Tensor]) -> tuple[Tensor, Tensor, dict[str, Tensor]]:
         """Initialize queries dynamically using the `query_init` task.
 
         This selects hit embeddings whose predicted first-hit probability passes the task threshold,
-        then keeps the top-k by probability where k is `self._num_queries`.
+        then keeps the top-k by probability where k is the effective query budget.
 
         Notes:
             - Only supports batch_size == 1.
@@ -116,13 +179,14 @@ class MaskFormerDecoder(nn.Module):
             Tuple of:
                 - query_embed: (1, N_queries, dim) query embeddings
                 - query_valid: (1, N_queries) validity mask (always created for torch.compile compatibility)
+                - selection metadata including the effective query budget
 
         Raises:
             ValueError: If `decoder.dynamic_queries` is False, decoder tasks are unset, the `query_init` task
                 is missing, required source tensors are missing, or batch size is not 1.
         """
-        if not self.dynamic_queries:
-            raise ValueError("initialize_dynamic_queries called but decoder.dynamic_queries is False")
+        if not self._dynamic_queries_active():
+            raise ValueError("initialize_dynamic_queries called but dynamic queries are disabled or still in warmup")
 
         if self.encoder_tasks is None:
             raise ValueError("dynamic_queries=True requires decoder.encoder_tasks to be set")
@@ -152,44 +216,59 @@ class MaskFormerDecoder(nn.Module):
         if source_prob.shape[0] != 1:
             raise ValueError(f"dynamic_queries only supports batch_size=1, got {source_prob.shape[0]}")
 
+        query_budget = min(self._effective_query_budget(x, source_valid_key), self._num_queries)
+
         # Filter: probability >= threshold AND valid, then select top-k by probability
         valid_mask = (source_prob[0] >= query_init_task.threshold) & x[source_valid_key][0]
         selected_indices = torch.where(valid_mask)[0]
+        valid_indices = torch.where(x[source_valid_key][0])[0]
 
         if selected_indices.numel() == 0:
-            selected_indices = source_prob[0].topk(self._num_queries).indices
+            if valid_indices.numel() > 0:
+                fallback_k = min(query_budget, valid_indices.numel())
+                fallback_probs = source_prob[0, valid_indices]
+                top_k_idx = fallback_probs.topk(fallback_k).indices
+                selected_indices = valid_indices[top_k_idx]
+            else:
+                selected_indices = torch.empty(0, dtype=torch.long, device=source_prob.device)
 
         # If more candidates than needed, keep top-k by probability
-        if selected_indices.numel() > self._num_queries:
+        if selected_indices.numel() > query_budget:
             probs = source_prob[0, selected_indices]
-            top_k_idx = probs.topk(self._num_queries).indices
+            top_k_idx = probs.topk(query_budget).indices
             selected_indices = selected_indices[top_k_idx]
 
         # Sort to preserve original spatial ordering
         selected_indices = selected_indices.sort().values
         num_selected = selected_indices.numel()
         device = x[source_embed_key].device
+        output_query_count = max(self._num_queries, num_selected)
 
         # get selected embeddings
         selected_constituent_embeds = x[source_embed_key][0, selected_indices].detach()
 
-        # Pad to fixed num_queries size if fewer were selected to match the full target set
-        if num_selected < self._num_queries:
-            num_padding = self._num_queries - num_selected
+        # The dynamic budget acts as an upper bound on selection, but the decoder keeps the
+        # original static num_queries as the minimum padded size for batching/targets.
+        # If more than num_queries inputs are selected, the decoder expands to fit them.
+        if num_selected < output_query_count:
+            num_padding = output_query_count - num_selected
             # Pad with zero embeddings
             null_padding = torch.zeros(num_padding, self.dim, device=device, dtype=selected_constituent_embeds.dtype)
-            query_embed = torch.cat([selected_constituent_embeds, null_padding], dim=0).unsqueeze(0)  # (1, num_queries, dim)
+            query_embed = torch.cat([selected_constituent_embeds, null_padding], dim=0).unsqueeze(0)  # (1, output_query_count, dim)
             # Validity: selected queries are valid, padding is not
             query_valid = torch.cat([
                 torch.ones(num_selected, dtype=torch.bool, device=device),
                 torch.zeros(num_padding, dtype=torch.bool, device=device),
-            ]).unsqueeze(0)  # (1, num_queries)
+            ]).unsqueeze(0)  # (1, output_query_count)
         else:
             query_embed = selected_constituent_embeds.unsqueeze(0)  # (1, N_selected, dim)
             # All queries are valid - still create mask for consistent control flow with torch.compile
             query_valid = torch.ones(1, num_selected, dtype=torch.bool, device=device)
 
-        return query_embed, query_valid
+        selection_meta = {
+            "query_budget": torch.as_tensor(query_budget, device=device, dtype=torch.int64),
+        }
+        return query_embed, query_valid, selection_meta
 
     def forward(self, x: dict[str, Tensor], input_names: list[str]) -> tuple[dict[str, Tensor], dict[str, dict]]:
         """Forward pass through decoder layers.
@@ -211,15 +290,16 @@ class MaskFormerDecoder(nn.Module):
 
         # Generate or use pre-initialized queries
         outputs: dict[str, dict] = {"encoder": {}}
-        if not self.dynamic_queries:
+        if not self._dynamic_queries_active():
             # Static learned queries (backward compatible)
             x["query_embed"] = self.initial_queries.expand(batch_size, -1, -1)
         else:
             # Initialize dynamic queries
-            x["query_embed"], query_valid = self.initialize_dynamic_queries(x)
+            x["query_embed"], query_valid, selection_meta = self.initialize_dynamic_queries(x)
             # Always set query_mask for consistent control flow with torch.compile
             x["query_mask"] = query_valid
             outputs["encoder"]["query_mask"] = query_valid
+            outputs["encoder"].update(selection_meta)
 
         if self.posenc:
             x["query_posenc"], x["key_posenc"] = self.generate_positional_encodings(x)
@@ -278,7 +358,7 @@ class MaskFormerDecoder(nn.Module):
 
                 # Bidirectional cross-attention requires the transposed mask.
                 if any(layer.bidirectional_ca for layer in self.decoder_layers):
-                    attn_mask_transpose = transpose_blockmask(attn_mask, q_tokens=q_len, kv_tokens=kv_len, dev=str(device))
+                    attn_mask_transpose = transpose_blockmask(attn_mask_lca, q_tokens=q_len, kv_tokens=kv_len, dev=str(device))
 
         for layer_index, decoder_layer in enumerate(self.decoder_layers):
             outputs[f"layer_{layer_index}"] = {}
@@ -442,7 +522,7 @@ class MaskFormerDecoderLayer(nn.Module):
             norm: Normalization type.
             depth: Layer depth index.
             dense_kwargs: Optional arguments for Dense layers.
-            attn_kwargs: Optional arguments for Attention layers.
+            attn_kwargs: Optional arguments for cross-attention layers.
             bidirectional_ca: Enable bidirectional cross-attention.
             qkv_norm: Apply normalization to QKV in attention.
             hybrid_norm: Enable hybrid normalization from 2503.04598.
@@ -453,7 +533,8 @@ class MaskFormerDecoderLayer(nn.Module):
 
         attn_norm, dense_post_norm, qkv_norm = get_hybrid_norm_config(norm, depth, hybrid_norm, qkv_norm)
 
-        attn_kwargs = attn_kwargs or {}
+        attn_kwargs = dict(attn_kwargs or {})
+
         self.attn_type = attn_kwargs.get("attn_type", "torch")
         dense_kwargs = dense_kwargs or {}
 
