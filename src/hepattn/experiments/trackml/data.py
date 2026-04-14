@@ -118,12 +118,14 @@ class TrackMLDataset(Dataset):
         num_particles = len(particles)
 
         # Build the input hits
+        feature_hits_map: dict[str, pd.DataFrame] = {}
         for feature, fields in self.inputs.items():
             # Determine per-feature hit subset
             if self.feature_volume_ids is not None and feature in self.feature_volume_ids:
                 feature_hits = hits[hits["volume_id"].isin(self.feature_volume_ids[feature])]
             else:
                 feature_hits = hits
+            feature_hits_map[feature] = feature_hits
 
             # Valid mask is all True for the feature-specific subset
             inputs[f"{feature}_valid"] = torch.full((len(feature_hits),), True).unsqueeze(0)
@@ -131,6 +133,10 @@ class TrackMLDataset(Dataset):
 
             for field in fields:
                 inputs[f"{feature}_{field}"] = torch.from_numpy(feature_hits[field].values).unsqueeze(0).half()
+
+        # Unified decoding uses merged "key" constituents; provide matching target mask.
+        if len(self.inputs) > 1:
+            targets["key_valid"] = torch.concatenate([inputs[f"{feature}_valid"] for feature in self.inputs], dim=-1)
 
         # Create the targets for whether a particle slot is used or not
         if num_particles > self.event_max_num_particles:
@@ -149,6 +155,9 @@ class TrackMLDataset(Dataset):
         particle_ids = torch.cat([selected_particle_ids, torch.full((num_padding,), -999)])
         hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
         targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+        # Unified decoding uses "key" as the merged constituent name.
+        # Keep a separate copy so sorting can reorder it without mutating particle_hit_valid.
+        targets["particle_key_valid"] = targets["particle_hit_valid"].clone()
 
         # Store particle and hit IDs for dynamic query selection
         targets["hit_particle_id"] = hit_particle_ids.unsqueeze(0)  # (1, N_hits)
@@ -156,10 +165,11 @@ class TrackMLDataset(Dataset):
 
         # Create the hit filter targets (note this ignores the event_max_num_particles filtering)
         for target_feature, fields in self.targets.items():
+            target_hits = feature_hits_map.get(target_feature, hits)
             if "on_valid_particle" in fields:
-                targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy()).unsqueeze(0)
+                targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(target_hits["on_valid_particle"].to_numpy()).unsqueeze(0)
             if "is_first" in fields:
-                targets[f"{target_feature}_is_first"] = torch.from_numpy(hits["is_first"].to_numpy()).unsqueeze(0)
+                targets[f"{target_feature}_is_first"] = torch.from_numpy(target_hits["is_first"].to_numpy()).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)
@@ -220,8 +230,14 @@ class TrackMLDataset(Dataset):
                 assert str(self.sample_ids[idx]) in hit_eval_file, f"Key {self.sample_ids[idx]} not found in file {self.hit_eval_path}"
 
                 # The dataset has shape (1, num_hits)
-                hit_filter_probs = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle_prob"][0]
-                hit_filter_pred = hit_filter_probs >= self.hit_filter_threshold
+                if f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle_prob" in hit_eval_file:
+                    hit_filter_probs = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle_prob"][0]
+                    hit_filter_pred = hit_filter_probs >= self.hit_filter_threshold
+                elif f"{self.sample_ids[idx]}/preds/final/hit_filter/key_on_valid_particle_prob" in hit_eval_file:
+                    hit_filter_probs = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/key_on_valid_particle_prob"][0]
+                    hit_filter_pred = hit_filter_probs >= self.hit_filter_threshold
+                else:
+                    hit_filter_pred = hit_eval_file[f"{self.sample_ids[idx]}/preds/final/hit_filter/hit_on_valid_particle"][0]
                 hits = hits[hit_filter_pred]
 
         # TODO: Add back truth based hit filtering
@@ -277,6 +293,10 @@ class TrackMLDataset(Dataset):
                 # Generate random normal data for all fields
                 data = rng.standard_normal(num_hits)
                 inputs[f"{feature}_{field}"] = torch.from_numpy(data).unsqueeze(0).to(torch.float32)
+
+        # Unified decoding uses merged "key" constituents; provide matching target mask.
+        if len(self.inputs) > 1:
+            targets["key_valid"] = torch.concatenate([inputs[f"{feature}_valid"] for feature in self.inputs], dim=-1)
 
         # Build the targets for whether a particle slot is used or not
         targets["particle_valid"] = torch.full((self.event_max_num_particles,), False)

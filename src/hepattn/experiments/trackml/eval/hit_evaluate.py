@@ -7,7 +7,23 @@ import sklearn
 from tqdm import tqdm
 
 
-def load_event(f, idx, write_inputs=None, write_parts=None, threshold=0.1):
+def _read_first_available(group, dataset_names):
+    for dataset_name in dataset_names:
+        if dataset_name in group:
+            return np.asarray(group[dataset_name][:][0])
+    raise KeyError(f"None of {dataset_names} found under {group.name}")
+
+
+def load_event(
+    f,
+    idx,
+    write_inputs=None,
+    write_parts=None,
+    threshold=0.1,
+    task_name="hit_filter",
+    pred_key_candidates=None,
+    target_key_candidates=None,
+):
     """Load an event from an evaluation file and create a DataFrame.
 
     Arguments:
@@ -39,12 +55,24 @@ def load_event(f, idx, write_inputs=None, write_parts=None, threshold=0.1):
     hits["event_id"] = int(idx)
     targets["event_id"] = int(idx)
 
-    hits["score_sigmoid"] = np.array(f[idx]["preds"]["final"]["hit_filter"]["hit_on_valid_particle_prob"][:][0])
-    hits["score_bool"] = np.where(hits["score_sigmoid"] < threshold, False, True)
-    hits["pred"] = np.array(f[idx]["preds"]["final"]["hit_filter"]["hit_on_valid_particle"][:][0])
+    if pred_key_candidates is None:
+        pred_key_candidates = ["hit_on_valid_particle"]
+    if target_key_candidates is None:
+        target_key_candidates = ["hit_on_valid_particle"]
+    valid_key_candidates = []
+    for target_key in target_key_candidates:
+        if target_key.endswith("_on_valid_particle"):
+            valid_key_candidates.append(target_key.removesuffix("_on_valid_particle") + "_valid")
+    valid_key_candidates.extend(["key_valid", "hit_valid"])
 
-    targets["hit_on_valid_particle"] = np.array(f[idx]["targets"]["hit_on_valid_particle"][:][0])
-    targets["hit_valid"] = np.array(f[idx]["targets"]["hit_valid"][:][0])
+    pred_group = f[idx]["preds"]["final"][task_name]
+    target_group = f[idx]["targets"]
+    hits["score_sigmoid"] = _read_first_available(pred_group, [f"{name}_prob" for name in pred_key_candidates])
+    hits["score_bool"] = np.where(hits["score_sigmoid"] < threshold, False, True)
+    hits["pred"] = _read_first_available(pred_group, pred_key_candidates)
+
+    targets["hit_on_valid_particle"] = _read_first_available(target_group, target_key_candidates)
+    targets["hit_valid"] = _read_first_available(target_group, valid_key_candidates)
 
     if (write_inputs is not None) or (write_parts):
         hit_particle = np.array(f[idx]["targets"]["particle_hit_valid"][:][0])
@@ -103,7 +131,17 @@ def eval_event(hits, targets, threshold=0.1):
     return metrics
 
 
-def load_events(fname, index_list=None, randomize=None, write_inputs=None, write_parts=True, threshold=0.1):
+def load_events(
+    fname,
+    index_list=None,
+    randomize=None,
+    write_inputs=None,
+    write_parts=True,
+    threshold=0.1,
+    task_name="hit_filter",
+    pred_key_candidates=None,
+    target_key_candidates=None,
+):
     """Sequentially load events from an evaluation file and aggregate into a single DataFrame.
 
     Arguments:
@@ -161,7 +199,16 @@ def load_events(fname, index_list=None, randomize=None, write_inputs=None, write
         parts_list = []
 
         for _i, idx in tqdm(enumerate(id_list), total=len(id_list), desc="Events loaded"):
-            hits, targets, parts = load_event(f, idx, write_inputs, write_parts, threshold)
+            hits, targets, parts = load_event(
+                f,
+                idx,
+                write_inputs,
+                write_parts,
+                threshold,
+                task_name=task_name,
+                pred_key_candidates=pred_key_candidates,
+                target_key_candidates=target_key_candidates,
+            )
             hits_list.append(hits)
             targets_list.append(targets)
             if write_parts:

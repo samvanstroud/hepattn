@@ -20,6 +20,18 @@ class TrackMLTracker(ModelWrapper):
         super().__init__(name, model, lrs_config, optimizer, mtl)
 
     def log_custom_metrics(self, preds, targets, stage):
+        def select_mask(task_preds: dict[str, torch.Tensor]) -> tuple[torch.Tensor | None, str | None]:
+            for key, value in task_preds.items():
+                if key.endswith("_valid"):
+                    return value, key
+            return None, None
+
+        def target_key_for_mask(mask_key: str | None) -> str:
+            if mask_key and mask_key.startswith("track_") and mask_key.endswith("_valid"):
+                constituent = mask_key[len("track_") : -len("_valid")]
+                return f"particle_{constituent}_valid"
+            return "particle_hit_valid"
+
         query_mask = targets.get("query_mask")
         if query_mask is not None:
             query_mask = query_mask.bool()
@@ -29,7 +41,7 @@ class TrackMLTracker(ModelWrapper):
             # Skip layers that don't have track_hit_valid task (e.g., encoder layer)
             if "track_hit_valid" not in layer_preds:
                 continue
-            mask = layer_preds["track_hit_valid"]["track_hit_valid"]
+            mask, _ = select_mask(layer_preds["track_hit_valid"])
             if mask is not None:
                 num_valid = mask.sum(-1).float()
                 frac_valid = num_valid / mask.shape[-1]
@@ -57,8 +69,14 @@ class TrackMLTracker(ModelWrapper):
             pred_valid = pred_valid & query_mask
 
         # Set the masks of any track slots that are not used as null
-        pred_hit_masks = preds["track_hit_valid"]["track_hit_valid"] & pred_valid.unsqueeze(-1)
-        true_hit_masks = targets["particle_hit_valid"] & true_valid.unsqueeze(-1)
+        pred_mask, pred_mask_key = select_mask(preds["track_hit_valid"])
+        if pred_mask is None:
+            return
+        pred_hit_masks = pred_mask & pred_valid.unsqueeze(-1)
+        target_key = target_key_for_mask(pred_mask_key)
+        if target_key not in targets:
+            target_key = "particle_hit_valid"
+        true_hit_masks = targets[target_key] & true_valid.unsqueeze(-1)
 
         # Calculate the true/false positive rates between the predicted and true masks
         # Number of hits that were correctly assigned to the track

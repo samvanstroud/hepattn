@@ -1,5 +1,5 @@
 seed_everything: 42
-name: TRK-v8-STRIP-0p4-th0p3
+name: TRK-v8-strip-lca-th0p3-w512-enc512-epochs30
 data:
   train_dir:  /share/rcif2/pduckett/data/prepped/train/
   val_dir: /share/rcif2/pduckett/data/prepped/val/
@@ -90,12 +90,12 @@ data:
 
 trainer:
   # Training stuff here
-  max_epochs: 10
+  max_epochs: 30
   accelerator: gpu
   devices: 2
   precision: bf16-mixed
   log_every_n_steps: 50
-  default_root_dir: /share/rcif2/pduckett/hepattn-trahxam-old/logs/
+  default_root_dir: /share/rcif2/pduckett/hepattn-dq-pr/logs/
   gradient_clip_val: 0.1
   enable_progress_bar: true
 
@@ -158,7 +158,10 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 256
-      input_sort_field: phi
+      sorter:
+        class_path: hepattn.utils.sorter.Sorter
+        init_args:
+          input_sort_field: phi
       unified_decoding: true
       dynamic_query_source: pixel
       input_nets:
@@ -238,7 +241,7 @@ model:
           num_layers: 8
           dim: *dim
           attn_type: flash
-          window_size: 1024
+          window_size: 512
           window_wrap: true
           hybrid_norm: true
           norm: CustomLayerNorm
@@ -249,15 +252,18 @@ model:
         dynamic_query_source: pixel
         num_decoder_layers: &num_dec_layers 3
         num_queries: *num_objects
-        mask_attention: true
+        mask_attention: false
+        local_strided_attn: true
+        window_size: 512
+        window_wrap: true
+        block_size: 16
         use_query_masks: false
-        unmask_all_false: true
+        unmask_all_false: false
         decoder_layer_config:
           dim: *dim
           norm: CustomLayerNorm
           hybrid_norm: true
-          dense_kwargs: {activation: SwiGLU}
-          attn_kwargs: {bias: false}
+          attn_kwargs: {bias: false, attn_type: flex}
           bidirectional_ca: false
 
       encoder_tasks:
@@ -322,7 +328,7 @@ model:
                 mask_logit_key: track_key_logit
                 target_mask_key: particle_hit
                 dim: *dim
-                loss_weight: 1.0
+                loss_weight: 2.0
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
