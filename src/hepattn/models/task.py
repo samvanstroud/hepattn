@@ -320,6 +320,7 @@ class ObjectClassificationTask(Task):
         }
 
 
+
 class HitFilterTask(Task):
     def __init__(
         self,
@@ -330,6 +331,7 @@ class HitFilterTask(Task):
         threshold: float = 0.1,
         mask_keys: bool = False,
         loss_fn: Literal["bce", "focal", "both"] = "bce",
+        loss_weight: float = 1.0,
         has_intermediate_loss: bool = True,
     ):
         """Task used for classifying whether constituents belong to reconstructable objects or not.
@@ -342,6 +344,7 @@ class HitFilterTask(Task):
             threshold: Threshold for classification.
             mask_keys: Whether to mask keys.
             loss_fn: Loss function to use.
+            loss_weight: Multiplicative weight applied to this task's losses.
             has_intermediate_loss: Whether the task has intermediate loss.
         """
         super().__init__(has_intermediate_loss=has_intermediate_loss, permute_loss=False)
@@ -352,6 +355,7 @@ class HitFilterTask(Task):
         self.dim = dim
         self.threshold = threshold
         self.loss_fn = loss_fn
+        self.loss_weight = loss_weight
         self.mask_keys = mask_keys
 
         # Internal
@@ -383,17 +387,17 @@ class HitFilterTask(Task):
         if self.loss_fn == "bce":
             pos_weight = 1 / target.float().mean()
             loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=pos_weight)
-            return {f"{self.input_object}_{self.loss_fn}": loss}
+            return {f"{self.input_object}_{self.loss_fn}": self.loss_weight * loss}
         if self.loss_fn == "focal":
             loss = mask_focal_loss(output, target)
-            return {f"{self.input_object}_{self.loss_fn}": loss}
+            return {f"{self.input_object}_{self.loss_fn}": self.loss_weight * loss}
         if self.loss_fn == "both":
             pos_weight = 1 / target.float().mean()
             bce_loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=pos_weight)
             focal_loss_value = mask_focal_loss(output, target)
             return {
-                f"{self.input_object}_bce": bce_loss,
-                f"{self.input_object}_focal": focal_loss_value,
+                f"{self.input_object}_bce": self.loss_weight * bce_loss,
+                f"{self.input_object}_focal": self.loss_weight * focal_loss_value,
             }
         raise ValueError(f"Unknown loss function: {self.loss_fn}")
 

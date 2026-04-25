@@ -1,3 +1,4 @@
+import torch
 from lightning.pytorch.cli import ArgsType
 from torch import nn
 
@@ -17,19 +18,43 @@ class TrackMLFilter(ModelWrapper):
         super().__init__(name, model, lrs_config, optimizer)
 
     def log_custom_metrics(self, preds, targets, stage):
-        # assert len(self.model.tasks) == 1
-        task = self.model.tasks[0]
-        target_field = task.target_field
-        input_object = task.input_object
-        expected_key = f"{input_object}_{target_field}"
-        pred = preds["final"]["hit_filter"][expected_key]
-        true = targets[expected_key]
+        preds_unpacked = {}
+        targets_unpacked = {}
 
-        tp = (pred * true).sum()
-        tn = ((~pred) * (~true)).sum()
+        for task in self.model.tasks:
+            if not all(hasattr(task, attr) for attr in ("input_object", "target_field")):
+                continue
+            if task.name not in preds["final"]:
+                continue
 
-        metrics = {
-            # Log quanties based on the number of hits
+            input_object = task.input_object
+            expected_key = f"{input_object}_{task.target_field}"
+            if expected_key not in preds["final"][task.name] or expected_key not in targets:
+                continue
+
+            pred = preds["final"][task.name][expected_key]
+            true = targets[expected_key]
+            preds_unpacked[input_object] = pred
+            targets_unpacked[input_object] = true
+
+            metrics = self._filter_metrics(pred, true, targets)
+            self._log_filter_metrics(stage, input_object, metrics)
+
+            # Preserve the historical TrackML hit_filter metric names.
+            if task.name == "hit_filter":
+                self._log_filter_metrics(stage, None, metrics)
+
+        if "pixel" in preds_unpacked and "strip" in preds_unpacked:
+            pred = torch.cat((preds_unpacked["pixel"], preds_unpacked["strip"]), dim=-1)
+            true = torch.cat((targets_unpacked["pixel"], targets_unpacked["strip"]), dim=-1)
+            self._log_filter_metrics(stage, "hit", self._filter_metrics(pred, true, targets))
+
+    def _filter_metrics(self, pred, true, targets):
+        tp = (pred & true).sum()
+        tn = ((~pred) & (~true)).sum()
+
+        return {
+            # Log quantities based on the number of hits
             "nh_total_pre": float(pred.shape[1]),
             "nh_total_post": float(pred.sum()),
             "nh_pred_true": pred.float().sum(),
@@ -48,9 +73,13 @@ class TrackMLFilter(ModelWrapper):
             "num_particles": targets["particle_valid"].float().sum(),
         }
 
-        # Now actually log the metrics
+    def _log_filter_metrics(self, stage, prefix, metrics):
         for metric_name, metric_value in metrics.items():
-            self.log(f"{stage}/{metric_name}", metric_value, sync_dist=True, batch_size=1)
+            if prefix is None:
+                log_name = f"{stage}/{metric_name}"
+            else:
+                log_name = f"{stage}/{prefix}_{metric_name}"
+            self.log(log_name, metric_value, sync_dist=True, batch_size=1)
 
 
 def main(args: ArgsType = None) -> None:

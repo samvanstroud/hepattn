@@ -19,19 +19,97 @@ class TrackMLTracker(ModelWrapper):
     ):
         super().__init__(name, model, lrs_config, optimizer, mtl)
 
-    def log_custom_metrics(self, preds, targets, stage):
-        def select_mask(task_preds: dict[str, torch.Tensor]) -> tuple[torch.Tensor | None, str | None]:
-            for key, value in task_preds.items():
-                if key.endswith("_valid"):
-                    return value, key
+    @staticmethod
+    def _collect_pred_hit_masks(task_preds: dict[str, torch.Tensor]) -> torch.Tensor | None:
+        masks = [value.bool() for key, value in task_preds.items() if key.startswith("track_") and key.endswith("_valid")]
+        if not masks:
+            return None
+        if len(masks) == 1:
+            return masks[0]
+        return torch.cat(masks, dim=-1)
+
+    @staticmethod
+    def _collect_pred_true_hit_masks(
+        task_preds: dict[str, torch.Tensor],
+        targets: dict[str, torch.Tensor],
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        pred_masks: list[torch.Tensor] = []
+        true_masks: list[torch.Tensor] = []
+
+        for key, pred_mask in task_preds.items():
+            if not (key.startswith("track_") and key.endswith("_valid")):
+                continue
+
+            constituent = key[len("track_") : -len("_valid")]
+            target_key = f"particle_{constituent}_valid"
+            if target_key not in targets:
+                if "particle_hit_valid" in targets and targets["particle_hit_valid"].shape == pred_mask.shape:
+                    target_key = "particle_hit_valid"
+                else:
+                    continue
+
+            pred_masks.append(pred_mask.bool())
+            true_masks.append(targets[target_key].bool())
+
+        if not pred_masks:
             return None, None
+        if len(pred_masks) == 1:
+            return pred_masks[0], true_masks[0]
+        return torch.cat(pred_masks, dim=-1), torch.cat(true_masks, dim=-1)
 
-        def target_key_for_mask(mask_key: str | None) -> str:
-            if mask_key and mask_key.startswith("track_") and mask_key.endswith("_valid"):
-                constituent = mask_key[len("track_") : -len("_valid")]
-                return f"particle_{constituent}_valid"
-            return "particle_hit_valid"
+    def _augment_test_targets_with_event_counts(
+        self,
+        _inputs: dict[str, torch.Tensor],
+        targets: dict[str, torch.Tensor],
+    ) -> dict[str, torch.Tensor]:
+        augmented_targets = targets.copy()
 
+        sample_tensor = next(value for value in targets.values() if isinstance(value, torch.Tensor))
+        batch_size = sample_tensor.shape[0]
+        device = sample_tensor.device
+
+        query_mask = targets.get("query_mask")
+        if query_mask is not None:
+            augmented_targets["num_initialized_queries"] = query_mask.bool().sum(dim=-1, keepdim=True).to(torch.int32)
+        else:
+            decoder = getattr(getattr(self, "model", None), "decoder", None)
+            num_queries = getattr(decoder, "_num_queries", None)
+            if num_queries is not None:
+                augmented_targets["num_initialized_queries"] = torch.full(
+                    (batch_size, 1),
+                    int(num_queries),
+                    dtype=torch.int32,
+                    device=device,
+                )
+
+        particle_valid = targets.get("particle_valid")
+        if particle_valid is not None:
+            augmented_targets["num_reconstructable_particles"] = particle_valid.bool().sum(dim=-1, keepdim=True).to(torch.int32)
+
+        input_names = list(getattr(getattr(self, "model", None), "input_names", []))
+        input_hit_counts: list[torch.Tensor] = []
+        for input_name in input_names:
+            valid_key = f"{input_name}_valid"
+            if valid_key not in targets:
+                continue
+            hit_count = targets[valid_key].bool().sum(dim=-1, keepdim=True).to(torch.int32)
+            augmented_targets[f"num_{input_name}_hits"] = hit_count
+            input_hit_counts.append(hit_count)
+
+        if "key_valid" in targets:
+            augmented_targets["num_input_hits"] = targets["key_valid"].bool().sum(dim=-1, keepdim=True).to(torch.int32)
+        elif input_hit_counts:
+            augmented_targets["num_input_hits"] = torch.stack(input_hit_counts, dim=0).sum(dim=0)
+
+        if particle_valid is not None and "particle_key_valid" in targets:
+            truth_hits = (
+                targets["particle_key_valid"].bool() & particle_valid.bool().unsqueeze(-1)
+            ).sum(dim=(-1, -2), keepdim=False)
+            augmented_targets["num_truth_hits_on_reconstructable_tracks"] = truth_hits.unsqueeze(-1).to(torch.int32)
+
+        return augmented_targets
+
+    def log_custom_metrics(self, preds, targets, stage):
         query_mask = targets.get("query_mask")
         if query_mask is not None:
             query_mask = query_mask.bool()
@@ -41,7 +119,7 @@ class TrackMLTracker(ModelWrapper):
             # Skip layers that don't have track_hit_valid task (e.g., encoder layer)
             if "track_hit_valid" not in layer_preds:
                 continue
-            mask, _ = select_mask(layer_preds["track_hit_valid"])
+            mask = self._collect_pred_hit_masks(layer_preds["track_hit_valid"])
             if mask is not None:
                 num_valid = mask.sum(-1).float()
                 frac_valid = num_valid / mask.shape[-1]
@@ -69,14 +147,11 @@ class TrackMLTracker(ModelWrapper):
             pred_valid = pred_valid & query_mask
 
         # Set the masks of any track slots that are not used as null
-        pred_mask, pred_mask_key = select_mask(preds["track_hit_valid"])
-        if pred_mask is None:
+        pred_mask, true_mask = self._collect_pred_true_hit_masks(preds["track_hit_valid"], targets)
+        if pred_mask is None or true_mask is None:
             return
         pred_hit_masks = pred_mask & pred_valid.unsqueeze(-1)
-        target_key = target_key_for_mask(pred_mask_key)
-        if target_key not in targets:
-            target_key = "particle_hit_valid"
-        true_hit_masks = targets[target_key] & true_valid.unsqueeze(-1)
+        true_hit_masks = true_mask & true_valid.unsqueeze(-1)
 
         # Calculate the true/false positive rates between the predicted and true masks
         # Number of hits that were correctly assigned to the track
@@ -117,11 +192,26 @@ class TrackMLTracker(ModelWrapper):
         self.log(f"{stage}/num_particles", torch.mean(true_num.float()), sync_dist=True)
 
         num_hits_total = float(pred_hit_masks.shape[-1])
-        num_hits_valid = float(true_hit_masks.sum())
+        num_hits_valid = true_hit_masks.sum().float().item()
         num_hits_noise = num_hits_total - num_hits_valid
         self.log(f"{stage}/num_hits", num_hits_total, sync_dist=True)
         self.log(f"{stage}/num_hits_valid", num_hits_valid, sync_dist=True)
         self.log(f"{stage}/num_hits_noise", num_hits_noise, sync_dist=True)
+
+    def test_step(
+        self,
+        batch: tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]],
+    ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], dict[str, torch.Tensor], dict[str, torch.Tensor]]:
+        inputs, targets = batch
+        outputs = self.model(inputs)
+
+        # Calculate loss to also run matching and expose query_mask/sorted targets.
+        outputs, targets, losses = self.model.loss(outputs, targets)
+
+        preds = self.model.predict(outputs)
+        augmented_targets = self._augment_test_targets_with_event_counts(inputs, targets)
+
+        return outputs, preds, losses, augmented_targets
 
 
 def main(args: ArgsType = None) -> None:

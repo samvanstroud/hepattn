@@ -1,7 +1,9 @@
+
 import json
 import re
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from lightning import Callback, LightningModule, Trainer
@@ -10,10 +12,15 @@ from lightning import Callback, LightningModule, Trainer
 class MemoryStats(Callback):
     """Record peak CUDA memory usage for fit/test runs."""
 
-    def __init__(self, save_dirname: str = "memory") -> None:
+    def __init__(self, save_dirname: str = "memory", record_per_step: bool = True) -> None:
         super().__init__()
         self.save_dirname = save_dirname
+        self.record_per_step = record_per_step
         self._saved_stages: set[str] = set()
+        self._wrapped_module = None
+        self._old_forward = None
+        self._wrapped_stage: str | None = None
+        self._per_step_stats: dict[str, dict[str, list[int]]] = {}
 
     def _get_cuda_device(self, trainer: Trainer) -> torch.device | None:
         device = getattr(trainer.strategy, "root_device", None)
@@ -31,28 +38,112 @@ class MemoryStats(Callback):
         sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("._-")
         return sanitized or "run"
 
+    def _init_stage_stats(self, stage: str) -> None:
+        self._per_step_stats[stage] = {
+            "peak_allocated_bytes": [],
+            "peak_reserved_bytes": [],
+            "peak_allocated_delta_bytes": [],
+            "peak_reserved_delta_bytes": [],
+            "query_counts": [],
+        }
+
+    def _extract_query_count(self, pl_module: LightningModule, step_outputs) -> int | None:
+        model_outputs = step_outputs[0] if isinstance(step_outputs, (tuple, list)) else step_outputs
+
+        if isinstance(model_outputs, dict):
+            encoder_outputs = model_outputs.get("encoder", {})
+            query_mask = encoder_outputs.get("query_mask")
+            if query_mask is not None:
+                return int(query_mask.to(dtype=torch.int64).sum().item())
+
+        model = getattr(pl_module, "model", pl_module)
+        decoder = getattr(model, "decoder", None)
+        static_num_queries = getattr(decoder, "_num_queries", None)
+        if static_num_queries is None:
+            return None
+        return int(static_num_queries)
+
+    def _wrap_forward(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
+        if not self.record_per_step or stage not in {"test", "predict"}:
+            return
+
+        device = self._get_cuda_device(trainer)
+        if device is None:
+            return
+
+        model = pl_module
+        if hasattr(model, "model"):
+            model = model.model
+
+        self._wrapped_module = model
+        self._old_forward = model.forward
+        self._wrapped_stage = stage
+
+        def wrapped_forward(*args, **kwargs):
+            torch.cuda.synchronize(device)
+            torch.cuda.reset_peak_memory_stats(device)
+            base_allocated = int(torch.cuda.memory_allocated(device))
+            base_reserved = int(torch.cuda.memory_reserved(device))
+
+            out = self._old_forward(*args, **kwargs)
+
+            torch.cuda.synchronize(device)
+            peak_allocated = int(torch.cuda.max_memory_allocated(device))
+            peak_reserved = int(torch.cuda.max_memory_reserved(device))
+
+            stage_stats = self._per_step_stats[stage]
+            stage_stats["peak_allocated_bytes"].append(peak_allocated)
+            stage_stats["peak_reserved_bytes"].append(peak_reserved)
+            stage_stats["peak_allocated_delta_bytes"].append(max(peak_allocated - base_allocated, 0))
+            stage_stats["peak_reserved_delta_bytes"].append(max(peak_reserved - base_reserved, 0))
+            return out
+
+        model.forward = wrapped_forward
+
+    def _unwrap_forward(self) -> None:
+        if self._wrapped_module is None or self._old_forward is None:
+            return
+        self._wrapped_module.forward = self._old_forward
+        self._wrapped_module = None
+        self._old_forward = None
+        self._wrapped_stage = None
+
     def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._saved_stages.discard("fit")
+        self._init_stage_stats("fit")
         self._reset_peaks(trainer)
 
     def on_test_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._saved_stages.discard("test")
+        self._init_stage_stats("test")
         self._reset_peaks(trainer)
+        self._wrap_forward(trainer, pl_module, stage="test")
 
     def on_predict_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._saved_stages.discard("predict")
+        self._init_stage_stats("predict")
         self._reset_peaks(trainer)
+        self._wrap_forward(trainer, pl_module, stage="predict")
 
     def on_fit_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._save_stats(trainer, pl_module, stage="fit")
 
     def on_test_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        self._unwrap_forward()
         self._save_stats(trainer, pl_module, stage="test")
 
     def on_predict_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        self._unwrap_forward()
         self._save_stats(trainer, pl_module, stage="predict")
 
+    def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx) -> None:
+        self._record_query_count(pl_module, outputs, stage="test")
+
+    def on_predict_batch_end(self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0) -> None:
+        self._record_query_count(pl_module, outputs, stage="predict")
+
     def on_exception(self, trainer: Trainer, pl_module: LightningModule, exception: BaseException) -> None:
+        self._unwrap_forward()
         stage = self._infer_stage(trainer)
         self._save_stats(trainer, pl_module, stage=stage, interrupted=True, exception=exception)
 
@@ -62,6 +153,16 @@ class MemoryStats(Callback):
         if getattr(trainer, "predicting", False):
             return "predict"
         return "fit"
+
+    def _record_query_count(self, pl_module: LightningModule, outputs, stage: str) -> None:
+        stage_stats = self._per_step_stats.get(stage)
+        if stage_stats is None:
+            return
+
+        query_count = self._extract_query_count(pl_module, outputs)
+        if query_count is None:
+            return
+        stage_stats["query_counts"].append(query_count)
 
     def _save_stats(
         self,
@@ -84,8 +185,14 @@ class MemoryStats(Callback):
         except RuntimeError as err:
             sync_error = repr(err)
 
-        peak_allocated = int(torch.cuda.max_memory_allocated(device))
-        peak_reserved = int(torch.cuda.max_memory_reserved(device))
+        stage_stats = self._per_step_stats.get(stage)
+        if stage_stats and stage_stats["peak_allocated_bytes"]:
+            peak_allocated = max(stage_stats["peak_allocated_bytes"])
+            peak_reserved = max(stage_stats["peak_reserved_bytes"])
+        else:
+            peak_allocated = int(torch.cuda.max_memory_allocated(device))
+            peak_reserved = int(torch.cuda.max_memory_reserved(device))
+
         current_allocated = int(torch.cuda.memory_allocated(device))
         current_reserved = int(torch.cuda.memory_reserved(device))
         total_memory = int(torch.cuda.get_device_properties(device).total_memory)
@@ -109,6 +216,7 @@ class MemoryStats(Callback):
             "peak_allocated_fraction_of_device": peak_allocated / total_memory,
             "peak_reserved_fraction_of_device": peak_reserved / total_memory,
             "interrupted": interrupted,
+            "num_recorded_steps": 0 if stage_stats is None else len(stage_stats["peak_allocated_bytes"]),
         }
         if exception is not None:
             local_summary["exception_type"] = type(exception).__name__
@@ -154,6 +262,10 @@ class MemoryStats(Callback):
             run_name = self._sanitize_name(pl_module.name)
             output_path = out_dir / f"{run_name}_{stage}_memory_summary.json"
 
+            if stage_stats and stage_stats["peak_allocated_bytes"]:
+                for key, values in stage_stats.items():
+                    np.save(out_dir / f"{run_name}_{stage}_{key}.npy", np.asarray(values, dtype=np.int64))
+
             summary = {
                 **local_summary,
                 "global_peak_allocated_bytes": global_peak_allocated,
@@ -169,6 +281,8 @@ class MemoryStats(Callback):
             print("-" * 80)
             print(f"{stage} peak allocated memory: {summary['global_peak_allocated_gb']:.2f} GB")
             print(f"{stage} peak reserved memory: {summary['global_peak_reserved_gb']:.2f} GB")
+            if stage_stats and stage_stats["peak_allocated_bytes"]:
+                print(f"Saved per-step memory arrays to {out_dir!s}")
             if interrupted:
                 print(f"{stage} run ended early with {summary.get('exception_type', 'an exception')}")
             print(f"Saved memory summary to {output_path!s}")
