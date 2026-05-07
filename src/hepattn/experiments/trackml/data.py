@@ -189,7 +189,7 @@ class TrackMLDataset(Dataset):
         if self.hit_volume_ids:
             hits = hits[hits["volume_id"].isin(self.hit_volume_ids)]
 
-        # Scale the input coordinates to in meters so they are ~ 1
+        # Scale the input coordinates to so they are ~ 1 (trackml in mm)
         for coord in ["x", "y", "z"]:
             hits[coord] *= HIT_COORDINATE_SCALE
 

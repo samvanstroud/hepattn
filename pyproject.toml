@@ -60,9 +60,12 @@ platforms = ["linux-64", "linux-aarch64"]
 
 [tool.pixi.pypi-dependencies]
 hepattn = { path = ".", editable = true }
+datasets = ">=4.4.1,<5"
+fsspec = { version = ">=2025.10.0,<2027", extras = ["http"] }
 
 [tool.pixi.pypi-options]
 no-build-isolation = ["flash-attn"]
+# extra-index-urls = ["https://download.pytorch.org/whl/cu128"]
 
 [tool.pixi.feature.gpu.pypi-dependencies]
 torch = { version = "==2.9.1", index = "https://download.pytorch.org/whl/cu128"}
@@ -88,7 +91,6 @@ git = ">=2.51.0,<3"
 git-lfs = ">=3.7.0,<4"
 ninja = ">=1.13.1,<2"
 cuda = "12.8.*"
-datasets = ">=4.4.1,<5"
 
 [tool.pixi.tasks.test]
 cmd = "pytest"
@@ -111,7 +113,7 @@ preview = true
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["G", "D100", "D101", "D102", "D103",  "D104", "D105", "D106", "D107", "D205", "ANN", "PLW", "FBT", "EM",  "PLR2004", "PT018", "COM812", "CPY001", "TRY003", "S101", "N812", "PLR0913", "PLR0917", "DOC201", "INP001", "PLR6301", "T201", "TD002", "TD003", "FIX002", "ARG002", "C901", "PLR0914", "PLR0912", "PLR0915", "PT011", "ERA001", "PGH004", "PLC0206", "S311", "PLR0911", "PLR6104", "S404", "S603", "B028", "PLR1702",]
+ignore = ["G", "D100", "D101", "D102", "D103",  "D104", "D105", "D106", "D107", "D205", "ANN", "PLW", "FBT", "EM",  "PLR2004", "PT018", "COM812", "CPY001", "TRY003", "S101", "N812", "PLR0913", "PLR0917", "DOC201", "INP001", "PLR6301", "T201", "TD002", "TD003", "FIX002", "ARG002", "C901", "PLR0914", "PLR0912", "PLR0915", "PT011", "ERA001", "PGH004", "PLC0206", "S311", "PLR0911", "PLR6104", "S404", "S603", "B028", "PLR1702", "N806", "N806"]
 #isort.split-on-trailing-comma=false
 pydocstyle.convention = "google"
 
