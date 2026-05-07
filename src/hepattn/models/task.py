@@ -320,7 +320,6 @@ class ObjectClassificationTask(Task):
         }
 
 
-
 class HitFilterTask(Task):
     def __init__(
         self,
@@ -463,19 +462,19 @@ class HitFilterTaskBatched(HitFilterTask):
             target_mean = target.float().mean()
             weight = 1 / target_mean if target_mean > 0 else torch.tensor(1.0, device=output.device)
             loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=weight)
-            return {f"{self.input_object}_{self.loss_fn}": loss}
+            return {f"{self.input_object}_{self.loss_fn}": self.loss_weight * loss}
         if self.loss_fn == "focal":
             # Use the mask-aware focal loss implementation available in loss.py
             loss = mask_focal_loss(output, target)
-            return {f"{self.input_object}_{self.loss_fn}": loss}
+            return {f"{self.input_object}_{self.loss_fn}": self.loss_weight * loss}
         if self.loss_fn == "both":
             target_mean = target.float().mean()
             weight = 1 / target_mean if target_mean > 0 else torch.tensor(1.0, device=output.device)
             bce_loss = nn.functional.binary_cross_entropy_with_logits(output, target, pos_weight=weight)
             focal_loss_value = mask_focal_loss(output, target)
             return {
-                f"{self.input_object}_bce": bce_loss,
-                f"{self.input_object}_focal": focal_loss_value,
+                f"{self.input_object}_bce": self.loss_weight * bce_loss,
+                f"{self.input_object}_focal": self.loss_weight * focal_loss_value,
             }
         raise ValueError(f"Unknown loss function: {self.loss_fn}")
 
@@ -720,6 +719,19 @@ class IoUPredictionTask(Task):
         # Avoid division by zero
         return intersection / (union + 1e-6)
 
+    @staticmethod
+    def _select_constituent_probs(pred_probs: Tensor, selector: Tensor) -> Tensor:
+        if selector.ndim != 2:
+            raise ValueError(f"Expected a batched selector of shape (batch, num_hits), got {tuple(selector.shape)}")
+
+        selected_per_batch = selector.sum(dim=-1)
+        if not torch.equal(selected_per_batch, torch.full_like(selected_per_batch, selected_per_batch[0])):
+            raise ValueError("All events in the batch must select the same number of constituents for IoU prediction.")
+
+        num_selected = int(selected_per_batch[0].item())
+        selected = pred_probs.masked_select(selector.unsqueeze(1))
+        return selected.view(pred_probs.shape[0], pred_probs.shape[1], num_selected)
+
     def loss(
         self,
         outputs: dict[str, Tensor],
@@ -742,6 +754,22 @@ class IoUPredictionTask(Task):
 
         # Get target mask
         target = targets[self.target_mask_key + "_" + self.target_field].type_as(mask_logits)
+
+        if pred_probs.shape[-1] != target.shape[-1]:
+            selector_key = f"key_is_{self.input_constituent}"
+            if self.input_constituent == "key" or selector_key not in targets:
+                raise ValueError(
+                    f"Mask logits for '{self.mask_task_name}' have shape {tuple(pred_probs.shape)}, "
+                    f"but target '{self.target_mask_key}_{self.target_field}' has shape {tuple(target.shape)}. "
+                    f"Add '{selector_key}' to targets or configure a matching input_constituent."
+                )
+            pred_probs = self._select_constituent_probs(pred_probs, targets[selector_key].bool())
+
+        if pred_probs.shape[-1] != target.shape[-1]:
+            raise ValueError(
+                f"IoU mask shape mismatch after constituent selection: predictions {tuple(pred_probs.shape)}, "
+                f"targets {tuple(target.shape)} for task '{self.name}'."
+            )
 
         # Calculate the actual IoU between predicted and target masks
         iou_target = self.calculate_iou(pred_probs, target)

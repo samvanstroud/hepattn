@@ -26,6 +26,7 @@ class TrackMLDataset(Dataset):
         particle_min_pt: float = 1.0,
         particle_max_abs_eta: float = 2.5,
         particle_min_num_hits=3,
+        particle_min_num_pixel_hits: int = 0,
         event_max_num_particles=1000,
         strict_max_objects: bool = False,
         hit_eval_path: str | None = None,
@@ -40,6 +41,10 @@ class TrackMLDataset(Dataset):
         # Set the global random sampling seed
         self.sampling_seed = 42
         np.random.seed(self.sampling_seed)  # noqa: NPY002
+
+        if particle_min_num_pixel_hits > 0 and (feature_volume_ids is None or "pixel" not in feature_volume_ids):
+            msg = "particle_min_num_pixel_hits > 0 requires data.feature_volume_ids.pixel to be configured."
+            raise ValueError(msg)
 
         # If using dummy data, skip file-based initialization
         if self.dummy_data:
@@ -56,6 +61,8 @@ class TrackMLDataset(Dataset):
             self.particle_min_pt = particle_min_pt
             self.particle_max_abs_eta = particle_max_abs_eta
             self.particle_min_num_hits = particle_min_num_hits
+            self.particle_min_num_pixel_hits = particle_min_num_pixel_hits
+            self.feature_volume_ids = feature_volume_ids
             self.event_max_num_particles = event_max_num_particles
             return
 
@@ -98,6 +105,7 @@ class TrackMLDataset(Dataset):
         self.particle_min_pt = particle_min_pt
         self.particle_max_abs_eta = particle_max_abs_eta
         self.particle_min_num_hits = particle_min_num_hits
+        self.particle_min_num_pixel_hits = particle_min_num_pixel_hits
 
         # Event level cuts
         self.event_max_num_particles = event_max_num_particles
@@ -105,6 +113,28 @@ class TrackMLDataset(Dataset):
 
     def __len__(self):
         return int(self.num_events)
+
+    def _get_feature_hits(self, hits: pd.DataFrame, feature_name: str) -> pd.DataFrame:
+        if self.feature_volume_ids is not None and feature_name in self.feature_volume_ids:
+            return hits[hits["volume_id"].isin(self.feature_volume_ids[feature_name])]
+        return hits
+
+    @staticmethod
+    def _particle_counts_for_ids(particle_ids: pd.Series, counts: pd.Series) -> np.ndarray:
+        return particle_ids.map(counts).fillna(0).to_numpy(dtype=np.int32)
+
+    def _filter_reconstructable_particles(self, particles: pd.DataFrame, hits: pd.DataFrame) -> pd.DataFrame:
+        counts = hits["particle_id"].value_counts()
+        keep_particle_ids = counts[counts >= self.particle_min_num_hits].index
+        particles = particles[particles["particle_id"].isin(keep_particle_ids)]
+
+        if self.particle_min_num_pixel_hits > 0:
+            pixel_hits = self._get_feature_hits(hits, "pixel")
+            pixel_counts = pixel_hits["particle_id"].value_counts()
+            keep_pixel_particle_ids = pixel_counts[pixel_counts >= self.particle_min_num_pixel_hits].index
+            particles = particles[particles["particle_id"].isin(keep_pixel_particle_ids)]
+
+        return particles
 
     def __getitem__(self, idx):
         if self.dummy_data:
@@ -121,10 +151,7 @@ class TrackMLDataset(Dataset):
         feature_hits_map: dict[str, pd.DataFrame] = {}
         for feature, fields in self.inputs.items():
             # Determine per-feature hit subset
-            if self.feature_volume_ids is not None and feature in self.feature_volume_ids:
-                feature_hits = hits[hits["volume_id"].isin(self.feature_volume_ids[feature])]
-            else:
-                feature_hits = hits
+            feature_hits = self._get_feature_hits(hits, feature)
             feature_hits_map[feature] = feature_hits
 
             # Valid mask is all True for the feature-specific subset
@@ -133,6 +160,11 @@ class TrackMLDataset(Dataset):
 
             for field in fields:
                 inputs[f"{feature}_{field}"] = torch.from_numpy(feature_hits[field].values).unsqueeze(0).half()
+
+        if len(self.inputs) > 1:
+            key_hits = pd.concat([feature_hits_map[feature] for feature in self.inputs], axis=0)
+        else:
+            key_hits = next(iter(feature_hits_map.values()))
 
         # Unified decoding uses merged "key" constituents; provide matching target mask.
         if len(self.inputs) > 1:
@@ -150,22 +182,60 @@ class TrackMLDataset(Dataset):
         num_padding = self.event_max_num_particles - num_particles
         targets["particle_valid"] = torch.cat([torch.full((num_particles,), True), torch.full((num_padding,), False)]).unsqueeze(0)
 
+        if "pixel" in feature_hits_map:
+            particle_num_pixel_hits = torch.zeros((self.event_max_num_particles,), dtype=torch.int32)
+            particle_num_pixel_hits[:num_particles] = torch.from_numpy(
+                self._particle_counts_for_ids(
+                    particles["particle_id"],
+                    feature_hits_map["pixel"]["particle_id"].value_counts(),
+                )
+            )
+            targets["particle_num_pixel_hits"] = particle_num_pixel_hits.unsqueeze(0)
+
         # Create the mask targets
         selected_particle_ids = torch.from_numpy(particles["particle_id"].values)
         particle_ids = torch.cat([selected_particle_ids, torch.full((num_padding,), -999)])
         hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
         targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
         # Unified decoding uses "key" as the merged constituent name.
-        # Keep a separate copy so sorting can reorder it without mutating particle_hit_valid.
-        targets["particle_key_valid"] = targets["particle_hit_valid"].clone()
+        # This must match the model's concatenation order: pixel inputs, then strip inputs.
+        key_hit_particle_ids = torch.from_numpy(key_hits["particle_id"].values)
+        targets["particle_key_valid"] = (particle_ids.unsqueeze(-1) == key_hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+        if len(self.inputs) > 1:
+            key_start = 0
+            for feature, feature_hits in feature_hits_map.items():
+                feature_hit_particle_ids = torch.from_numpy(feature_hits["particle_id"].values)
+                feature_mask = (particle_ids.unsqueeze(-1) == feature_hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+                targets[f"particle_{feature}_hit_valid"] = feature_mask
+                targets[f"particle_{feature}_valid"] = feature_mask.any(dim=-1)
+
+                key_is_feature = torch.zeros((len(key_hits),), dtype=torch.bool)
+                key_is_feature[key_start : key_start + len(feature_hits)] = True
+                targets[f"key_is_{feature}"] = key_is_feature.unsqueeze(0)
+                key_start += len(feature_hits)
 
         # Store particle and hit IDs for dynamic query selection
         targets["hit_particle_id"] = hit_particle_ids.unsqueeze(0)  # (1, N_hits)
+        targets["key_particle_id"] = key_hit_particle_ids.unsqueeze(0)  # (1, N_key)
         targets["particle_id"] = particle_ids.unsqueeze(0)  # (1, N_particles)
+
+        # Store per-hit detector layer UIDs (volume_id * 1000 + layer_id) for eval layer cuts
+        targets["hit_layer_id"] = torch.from_numpy(hits["layer_uid"].values).unsqueeze(0)  # (1, N_hits)
+        targets["key_layer_id"] = torch.from_numpy(key_hits["layer_uid"].values).unsqueeze(0)  # (1, N_key)
+
+        target_hit_collections = {
+            "hit": hits,
+            "key": key_hits,
+            **feature_hits_map,
+        }
+
+        # Always provide per-input filter targets for auxiliary pixel/strip heads.
+        for feature, feature_hits in feature_hits_map.items():
+            targets[f"{feature}_on_valid_particle"] = torch.from_numpy(feature_hits["on_valid_particle"].to_numpy()).unsqueeze(0)
 
         # Create the hit filter targets (note this ignores the event_max_num_particles filtering)
         for target_feature, fields in self.targets.items():
-            target_hits = feature_hits_map.get(target_feature, hits)
+            target_hits = target_hit_collections.get(target_feature, hits)
             if "on_valid_particle" in fields:
                 targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(target_hits["on_valid_particle"].to_numpy()).unsqueeze(0)
             if "is_first" in fields:
@@ -207,6 +277,7 @@ class TrackMLDataset(Dataset):
         hits["eta"] = -np.log(np.tan(hits["theta"] / 2))
         hits["u"] = hits["x"] / (hits["x"] ** 2 + hits["y"] ** 2)
         hits["v"] = hits["y"] / (hits["x"] ** 2 + hits["y"] ** 2)
+        hits["layer_uid"] = hits["volume_id"] * 1000 + hits["layer_id"]
 
         # Add extra particle fields
         particles["p"] = np.sqrt(particles["px"] ** 2 + particles["py"] ** 2 + particles["pz"] ** 2)
@@ -243,9 +314,7 @@ class TrackMLDataset(Dataset):
         # TODO: Add back truth based hit filtering
 
         # Apply particle cut based on hit content
-        counts = hits["particle_id"].value_counts()
-        keep_particle_ids = counts[counts >= self.particle_min_num_hits].index.to_numpy()
-        particles = particles[particles["particle_id"].isin(keep_particle_ids)]
+        particles = self._filter_reconstructable_particles(particles, hits)
 
         # Mark which hits are on a valid / reconstructable particle, for the hit filter
         hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
@@ -312,12 +381,46 @@ class TrackMLDataset(Dataset):
 
         # Create the mask targets
         targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
+        feature_hit_particle_ids = {feature: torch.randint(0, num_particles, (num_hits,)) for feature in self.inputs}
+        key_hit_particle_ids_parts = []
+        key_start = 0
+        for feature, feature_particle_ids in feature_hit_particle_ids.items():
+            key_hit_particle_ids_parts.append(feature_particle_ids)
+
+            if len(self.inputs) <= 1:
+                continue
+
+            feature_mask = (particle_ids.unsqueeze(-1) == feature_particle_ids.unsqueeze(-2)).unsqueeze(0)
+            targets[f"particle_{feature}_hit_valid"] = feature_mask
+            targets[f"particle_{feature}_valid"] = feature_mask.any(dim=-1)
+
+            key_is_feature = torch.zeros((len(self.inputs) * num_hits,), dtype=torch.bool)
+            key_is_feature[key_start : key_start + num_hits] = True
+            key_start += num_hits
+            targets[f"key_is_{feature}"] = key_is_feature.unsqueeze(0)
+        if len(self.inputs) > 1:
+            key_hit_particle_ids = torch.cat(key_hit_particle_ids_parts, dim=-1)
+        else:
+            key_hit_particle_ids = key_hit_particle_ids_parts[0]
+        targets["particle_key_valid"] = (particle_ids.unsqueeze(-1) == key_hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
         # Store particle and hit IDs for dynamic query selection
         targets["hit_particle_id"] = hit_particle_ids.unsqueeze(0)  # (1, N_hits)
+        targets["key_particle_id"] = key_hit_particle_ids.unsqueeze(0)  # (1, N_key)
         targets["particle_id"] = particle_ids.unsqueeze(0)  # (1, N_particles)
 
         # Create the hit filter targets (random boolean)
+        feature_on_valid_particle = {}
+        for feature in self.inputs:
+            feature_on_valid_particle[feature] = torch.randint(0, 2, (num_hits,), dtype=torch.bool)
+            targets[f"{feature}_on_valid_particle"] = feature_on_valid_particle[feature].unsqueeze(0)
+        if "pixel" in self.inputs:
+            particle_num_pixel_hits = torch.zeros((self.event_max_num_particles,), dtype=torch.int32)
+            pixel_hit_particle_ids = hit_particle_ids if len(self.inputs) == 1 else hit_particle_ids
+            pixel_counts = torch.bincount(pixel_hit_particle_ids, minlength=num_particles).to(torch.int32)
+            particle_num_pixel_hits[:num_particles] = pixel_counts[:num_particles]
+            targets["particle_num_pixel_hits"] = particle_num_pixel_hits.unsqueeze(0)
+        targets["key_on_valid_particle"] = torch.cat([feature_on_valid_particle[feature] for feature in self.inputs], dim=-1).unsqueeze(0)
         targets["hit_on_valid_particle"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
         targets["hit_is_first"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
 
@@ -345,12 +448,23 @@ class TrackMLDataModule(LightningDataModule):
         num_train: int,
         num_val: int,
         num_test: int,
+        inputs: dict,
+        targets: dict,
         test_dir: str | None = None,
         pin_memory: bool = True,
         hit_eval_train: str | None = None,
         hit_eval_val: str | None = None,
         hit_eval_test: str | None = None,
-        **kwargs,
+        hit_volume_ids: list | None = None,
+        feature_volume_ids: dict | None = None,
+        particle_min_pt: float = 1.0,
+        particle_max_abs_eta: float = 2.5,
+        particle_min_num_hits: int = 3,
+        particle_min_num_pixel_hits: int = 0,
+        event_max_num_particles: int = 1000,
+        strict_max_objects: bool = False,
+        hit_filter_threshold: float = 0.1,
+        dummy_data: bool = False,
     ):
         super().__init__()
 
@@ -365,7 +479,20 @@ class TrackMLDataModule(LightningDataModule):
         self.hit_eval_train = hit_eval_train
         self.hit_eval_val = hit_eval_val
         self.hit_eval_test = hit_eval_test
-        self.kwargs = kwargs
+        self.kwargs = {
+            "inputs": inputs,
+            "targets": targets,
+            "hit_volume_ids": hit_volume_ids,
+            "feature_volume_ids": feature_volume_ids,
+            "particle_min_pt": particle_min_pt,
+            "particle_max_abs_eta": particle_max_abs_eta,
+            "particle_min_num_hits": particle_min_num_hits,
+            "particle_min_num_pixel_hits": particle_min_num_pixel_hits,
+            "event_max_num_particles": event_max_num_particles,
+            "strict_max_objects": strict_max_objects,
+            "hit_filter_threshold": hit_filter_threshold,
+            "dummy_data": dummy_data,
+        }
 
     def setup(self, stage: str):
         if stage in {"fit", "test"}:

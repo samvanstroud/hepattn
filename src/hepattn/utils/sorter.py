@@ -2,6 +2,10 @@ import torch
 from torch import Tensor, nn
 
 
+def _target_belongs_to_input(key: str, input_name: str) -> bool:
+    return key.startswith(f"{input_name}_") or key.startswith(f"particle_{input_name}_")
+
+
 class Sorter(nn.Module):
     def __init__(self, input_sort_field: str) -> None:
         super().__init__()
@@ -63,13 +67,12 @@ class Sorter(nn.Module):
                 sort_idx = torch.argsort(sort_fields[f"{input_name}_{self.input_sort_field}"], dim=-1)
 
             for key, x in targets.items():
-                if x is None or input_name not in key:
+                if x is None or not _target_belongs_to_input(key, input_name):
                     continue
 
                 # sort target mask
                 if x.ndim == 3:
                     sort_dim = 2
-                    this_sort_idx = sort_idx
                     this_sort_idx = sort_idx.unsqueeze(1).expand_as(x)
 
                 # sort target for input constituent
@@ -77,7 +80,13 @@ class Sorter(nn.Module):
                     sort_dim = 1
                     this_sort_idx = sort_idx
                 else:
-                    raise ValueError(f"Unexpected key {key} for input hit {input_name}")
+                    continue
+
+                # Only reorder hit-level targets whose sortable axis matches this input's hit count.
+                # This avoids accidentally sorting particle-level targets such as
+                # `particle_num_pixel_hits`, which mention an input name but live on the particle axis.
+                if x.shape[sort_dim] != sort_idx.shape[-1]:
+                    continue
 
                 shape_before = x.shape
                 targets[key] = torch.gather(x, sort_dim, this_sort_idx)
