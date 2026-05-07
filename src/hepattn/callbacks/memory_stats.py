@@ -43,7 +43,24 @@ class MemoryStats(Callback):
             "peak_reserved_bytes": [],
             "peak_allocated_delta_bytes": [],
             "peak_reserved_delta_bytes": [],
+            "query_counts": [],
         }
+
+    def _extract_query_count(self, pl_module: LightningModule, step_outputs) -> int | None:
+        model_outputs = step_outputs[0] if isinstance(step_outputs, (tuple, list)) else step_outputs
+
+        if isinstance(model_outputs, dict):
+            encoder_outputs = model_outputs.get("encoder", {})
+            query_mask = encoder_outputs.get("query_mask")
+            if query_mask is not None:
+                return int(query_mask.to(dtype=torch.int64).sum().item())
+
+        model = getattr(pl_module, "model", pl_module)
+        decoder = getattr(model, "decoder", None)
+        static_num_queries = getattr(decoder, "_num_queries", None)
+        if static_num_queries is None:
+            return None
+        return int(static_num_queries)
 
     def _wrap_forward(self, trainer: Trainer, pl_module: LightningModule, stage: str) -> None:
         if not self.record_per_step or stage not in {"test", "predict"}:
@@ -118,6 +135,12 @@ class MemoryStats(Callback):
         self._unwrap_forward()
         self._save_stats(trainer, pl_module, stage="predict")
 
+    def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx) -> None:
+        self._record_query_count(pl_module, outputs, stage="test")
+
+    def on_predict_batch_end(self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0) -> None:
+        self._record_query_count(pl_module, outputs, stage="predict")
+
     def on_exception(self, trainer: Trainer, pl_module: LightningModule, exception: BaseException) -> None:
         self._unwrap_forward()
         stage = self._infer_stage(trainer)
@@ -129,6 +152,16 @@ class MemoryStats(Callback):
         if getattr(trainer, "predicting", False):
             return "predict"
         return "fit"
+
+    def _record_query_count(self, pl_module: LightningModule, outputs, stage: str) -> None:
+        stage_stats = self._per_step_stats.get(stage)
+        if stage_stats is None:
+            return
+
+        query_count = self._extract_query_count(pl_module, outputs)
+        if query_count is None:
+            return
+        stage_stats["query_counts"].append(query_count)
 
     def _save_stats(
         self,
