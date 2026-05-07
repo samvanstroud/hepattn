@@ -1,15 +1,16 @@
 seed_everything: 42
-name: TRK-ISAMBARD-120925-epochs10-local-ca-w512-flex-eta4-strips
-
+name: TRK-v8-eta4-pt600-epochs30
 data:
-  train_dir:
-  val_dir:
-  test_dir:
+  # isambard
+  train_dir:  /share/rcif2/pduckett/data/prepped/train/
+  val_dir: /share/rcif2/pduckett/data/prepped/val/
+  test_dir: /share/rcif2/pduckett/data/prepped/test/
 
-  hit_eval_train:
-  hit_eval_val:
-  hit_eval_test:
-
+  hit_eval_train: /share/rcif2/pduckett/hepattn-dq/HF-pix-600MeV-eta4_20260214-T195401/epoch=070-val_loss=0.20153_train_eval.h5
+  hit_eval_val: /share/rcif2/pduckett/hepattn-dq/HF-pix-600MeV-eta4_20260214-T195401/epoch=070-val_loss=0.20153_val_eval.h5
+  hit_eval_test: /share/rcif2/pduckett/hepattn-dq/HF-pix-600MeV-eta4_20260214-T195401/epoch=070-val_loss=0.20153_test_eval.h5
+  hit_filter_threshold: 0.1
+  
   num_workers: 10
   num_train: -1
   num_test: -1
@@ -18,11 +19,7 @@ data:
   # Select only hits from these detector volumes
   # pix barrel: 8, pix endcap: 7, 9
   # See: https://competitions.codalab.org/competitions/20112
-  hit_volume_ids: [7, 8, 9, 12, 13, 14]
-
-  feature_volume_ids:
-    pixel: [7, 8, 9]
-    strip: [12, 13, 14]
+  hit_volume_ids: [7, 8, 9]
 
   # Minimum pt for a particle to be deemed reconstructible
   particle_min_pt: 0.6
@@ -34,11 +31,12 @@ data:
   particle_min_num_hits: 3
 
   # Maximum number of reconstructable particles allowed in an event
-  event_max_num_particles: &num_objects 8000
+  event_max_num_particles: &num_objects 4000
+  strict_max_objects: false
 
   # Define which inputs will be available to the model
   inputs:
-    pixel:
+    hit:
       # Global hit coords
       - x
       - y
@@ -49,6 +47,7 @@ data:
       - phi
       - u
       - v
+      - s
       # Hit local charge information
       - charge_frac
       - leta
@@ -58,19 +57,10 @@ data:
       - lz
       - geta
       - gphi
-    strip:
-      # Global hit coords
-      - x
-      - y
-      - z
-      - r
-      - s
-      - eta
-      - phi
-      - u
-      - v
 
   targets:
+    hit:
+      - is_first
     particle:
       - pt
       - eta
@@ -78,12 +68,12 @@ data:
 
 trainer:
   # Training stuff here
-  max_epochs: 10
+  max_epochs: 30
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
-  log_every_n_steps: 10
-  default_root_dir: logs
+  log_every_n_steps: 50
+  default_root_dir: ./logs/
   gradient_clip_val: 0.1
   enable_progress_bar: true
 
@@ -92,18 +82,25 @@ trainer:
   #  init_args:
   #    dirpath: ./profile_logs/
   #    filename: profile.json
+  #    row_limit: 100
+  #    sort_by_key: cpu_time_total
 
   logger:
     class_path: hepattn.utils.loggers.MyCometLogger
     init_args:
       project: trackml_tracking
-      log_env_details: true
 
   callbacks:
+    # - class_path: hepattn.callbacks.AttnMaskLogger
+    #   init_args:
+    #     log_every_n_batches: 100
     - class_path: hepattn.callbacks.Compile
+      init_args:
+        skip_dynamic_cudagraphs: true
+        #mode: max-autotune # use for fastest inference
     - class_path: hepattn.callbacks.InferenceTimer
+    - class_path: hepattn.callbacks.MemoryStats
     - class_path: hepattn.callbacks.SaveConfig
-    - class_path: hepattn.callbacks.AttnMaskLogger
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
         monitor: val/loss
@@ -117,7 +114,7 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     - class_path: lightning.pytorch.callbacks.TQDMProgressBar
       init_args:
-        refresh_rate: 1
+        refresh_rate: 50
 
 model:
   optimizer: Lion
@@ -127,7 +124,7 @@ model:
     initial: 1e-5
     max: 5e-5
     end: 1e-5
-    pct_start: 0.05
+    pct_start: 0.02
     skip_scheduler: false
     weight_decay: 1e-5
 
@@ -137,20 +134,15 @@ model:
   model:
     class_path: hepattn.models.MaskFormer
     init_args:
-      sorter:
-        class_path: hepattn.utils.sorter.Sorter
-        init_args:
-          input_sort_field: phi
       dim: &dim 256
-      unified_decoding: true
+      input_sort_field: phi
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
           modules:
             - class_path: hepattn.models.InputNet
               init_args:
-                input_name: pixel
-                # Which fields will be used to construct this input type
+                input_name: hit
                 fields:
                   - x
                   - y
@@ -160,6 +152,7 @@ model:
                   - phi
                   - u
                   - v
+                  - s
                   - charge_frac
                   - leta
                   - lphi
@@ -171,69 +164,67 @@ model:
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
-                    input_size: 16
+                    input_size: 17
+                    hidden_layers: [128]
                     output_size: *dim
+                    activation: SwiGLU
                 posenc:
                   class_path: hepattn.models.PositionEncoder
                   init_args:
-                    input_name: pixel
+                    input_name: hit
                     fields:
+                      - r
+                      - eta
                       - phi
                     dim: *dim
-            - class_path: hepattn.models.InputNet
-              init_args:
-                input_name: strip
-                # Which fields will be used to construct this input type
-                fields:
-                  - x
-                  - y
-                  - z
-                  - r
-                  - eta
-                  - phi
-                  - u
-                  - v
-                net:
-                  class_path: hepattn.models.Dense
-                  init_args:
-                    input_size: 8
-                    output_size: *dim
-                posenc:
-                  class_path: hepattn.models.PositionEncoder
-                  init_args:
-                    input_name: strip
-                    fields:
-                      - phi
-                    dim: *dim
-      decoder:
-        class_path: hepattn.models.decoder.MaskFormerDecoder
-        init_args:
-          num_decoder_layers: 4
-          num_queries: *num_objects
-          decoder_layer_config:
-            dim: *dim
-            norm: RMSNorm
-            hybrid_norm: true
-            attn_kwargs:
-              attn_type: flex
-          local_strided_attn: true
-          window_size: 512
-          mask_attention: false
-          unified_decoding: true
-          posenc:
-            alpha: 1.3
-            base: 50000
 
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 10
+          num_layers: 8
           dim: *dim
           attn_type: flash
           window_size: 512
           window_wrap: true
           hybrid_norm: true
-          norm: RMSNorm
+          norm: CustomLayerNorm
+          dense_kwargs: {activation: SwiGLU}
+          attn_kwargs: {bias: false}
+      decoder:
+        dynamic_queries: true
+        dynamic_query_source: hit
+        num_decoder_layers: &num_dec_layers 3
+        num_queries: *num_objects
+        mask_attention: true
+        use_query_masks: false
+        debug: false
+        unmask_all_false: true
+        decoder_layer_config:
+          dim: *dim
+          norm: CustomLayerNorm
+          hybrid_norm: true
+          dense_kwargs: {activation: SwiGLU}
+          attn_kwargs: {bias: false}
+          bidirectional_ca: false
+
+      encoder_tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.ClassificationTask
+              init_args:
+                name: query_init
+                input_object: hit
+                classes: ["is_first"]
+                loss_weight: 1.0
+                threshold: 0.3
+                permute_loss: false
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: *dim
+                    hidden_layers: [256]
+                    output_size: 1
 
       tasks:
         class_path: torch.nn.ModuleList
@@ -245,13 +236,15 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
-                losses:
-                  object_bce: 1.0
-                costs:
-                  object_bce: 1.0
+                has_intermediate_loss: true
+                has_first_layer_loss: false
                 dim: *dim
+                losses:
+                  object_bce: 0.1
+                costs:
+                  object_bce: 0.1
                 null_weight: 1.0
-                has_intermediate_loss: false
+
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: track_hit_valid
@@ -259,22 +252,30 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
-                unified_decoding: true
-                losses:
-                  mask_bce: 100.0
-                  #mask_dice: 2.0
-                  mask_focal: 50.0
-                costs:
-                  mask_bce: 100.0
-                  #mask_dice: 2.0
-                  mask_focal: 50.0
                 dim: *dim
+                losses:
+                  mask_dice: 2.0
+                  mask_focal: 100.0
+                costs:
+                  mask_dice: 2.0
+                  mask_focal: 100.0
                 null_weight: 1.0
-                has_intermediate_loss: false
 
+            - class_path: hepattn.models.task.IoUPredictionTask
+              init_args:
+                name: track_iou
+                input_object: query
+                mask_task_name: track_hit_valid
+                mask_logit_key: track_hit_logit
+                target_mask_key: particle_hit
+                dim: *dim
+                loss_weight: 1.0
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
         init_args:
           default_solver: scipy
           adaptive_solver: true
+          n_jobs: *num_dec_layers
+          parallel_solver: true
+          parallel_backend: process

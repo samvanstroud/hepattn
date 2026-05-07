@@ -1,36 +1,38 @@
 seed_everything: 42
-name: TRK-v0-lite-aux-only-mask
-
+name: TRK-v8-eta4-lca-eta4-900
 data:
-  train_dir: /share/rcifdata/maxhart/data/trackml/prepped/train/
-  val_dir: /share/rcifdata/maxhart/data/trackml/prepped/val/
-  test_dir: /share/rcifdata/maxhart/data/trackml/prepped/test/
+  # isambard
+  train_dir:  /share/rcif2/pduckett/data/prepped/train/
+  val_dir: /share/rcif2/pduckett/data/prepped/val/
+  test_dir: /share/rcif2/pduckett/data/prepped/test/
 
-  hit_eval_train: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_train_eval.h5
-  hit_eval_val: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_val_eval.h5
-  hit_eval_test: /share/rcifdata/svanstroud/hepattn/src/hepattn/experiments/trackml/logs/HC-v3-lite_20250620-T114025/ckpts/epoch=016-val_loss=0.15730_test_eval.h5
-
+  hit_eval_train: /share/rcif2/pduckett/hepattn-dq/HF-pix-900MeV-eta4_20260214-T194855/train_eval.h5
+  hit_eval_val: /share/rcif2/pduckett/hepattn-dq/HF-pix-900MeV-eta4_20260214-T194855/val_eval.h5
+  hit_eval_test: /share/rcif2/pduckett/hepattn-dq/HF-pix-900MeV-eta4_20260214-T194855/test_eval.h5
+  hit_filter_threshold: 0.314
+  
   num_workers: 10
   num_train: -1
-  num_test: 10
-  num_val: 10
+  num_test: -1
+  num_val: -1
 
   # Select only hits from these detector volumes
   # pix barrel: 8, pix endcap: 7, 9
   # See: https://competitions.codalab.org/competitions/20112
-  hit_volume_ids: [8]
+  hit_volume_ids: [7, 8, 9]
 
   # Minimum pt for a particle to be deemed reconstructible
-  particle_min_pt: 1.0
+  particle_min_pt: 0.9
 
   # Maximum absolute eta for a particle to be deemed reconstructible
-  particle_max_abs_eta: 2.5
+  particle_max_abs_eta: 4
 
   # Minimum number of true hits for a particle to be deemed reconstructible
   particle_min_num_hits: 3
 
   # Maximum number of reconstructable particles allowed in an event
-  event_max_num_particles: &num_objects 1200
+  event_max_num_particles: &num_objects 1800
+  strict_max_objects: false
 
   # Define which inputs will be available to the model
   inputs:
@@ -45,6 +47,7 @@ data:
       - phi
       - u
       - v
+      - s
       # Hit local charge information
       - charge_frac
       - leta
@@ -56,6 +59,8 @@ data:
       - gphi
 
   targets:
+    hit:
+      - is_first
     particle:
       - pt
       - eta
@@ -63,12 +68,12 @@ data:
 
 trainer:
   # Training stuff here
-  max_epochs: 10
+  max_epochs: 30
   accelerator: gpu
   devices: 1
   precision: bf16-mixed
   log_every_n_steps: 50
-  default_root_dir: logs
+  default_root_dir: ./logs/
   gradient_clip_val: 0.1
   enable_progress_bar: true
 
@@ -77,6 +82,8 @@ trainer:
   #  init_args:
   #    dirpath: ./profile_logs/
   #    filename: profile.json
+  #    row_limit: 100
+  #    sort_by_key: cpu_time_total
 
   logger:
     class_path: hepattn.utils.loggers.MyCometLogger
@@ -84,9 +91,15 @@ trainer:
       project: trackml_tracking
 
   callbacks:
-    #- class_path: hepattn.callbacks.TargetStats
     - class_path: hepattn.callbacks.Compile
+      init_args:
+        skip_dynamic_cudagraphs: true
+        #mode: max-autotune # use for fastest inference
+    # - class_path: hepattn.callbacks.AttnMaskLogger
+    #   init_args:
+    #     log_every_n_batches: 100
     - class_path: hepattn.callbacks.InferenceTimer
+    - class_path: hepattn.callbacks.MemoryStats
     - class_path: hepattn.callbacks.SaveConfig
     - class_path: hepattn.callbacks.Checkpoint
       init_args:
@@ -111,7 +124,7 @@ model:
     initial: 1e-5
     max: 5e-5
     end: 1e-5
-    pct_start: 0.05
+    pct_start: 0.02
     skip_scheduler: false
     weight_decay: 1e-5
 
@@ -122,7 +135,10 @@ model:
     class_path: hepattn.models.MaskFormer
     init_args:
       dim: &dim 256
-      encoder_input_sort_field: phi
+      sorter:
+        class_path: hepattn.utils.sorter.Sorter
+        init_args:
+          input_sort_field: phi
       input_nets:
         class_path: torch.nn.ModuleList
         init_args:
@@ -130,7 +146,6 @@ model:
             - class_path: hepattn.models.InputNet
               init_args:
                 input_name: hit
-                # Which fields will be used to construct this input type
                 fields:
                   - x
                   - y
@@ -140,6 +155,7 @@ model:
                   - phi
                   - u
                   - v
+                  - s
                   - charge_frac
                   - leta
                   - lphi
@@ -151,10 +167,12 @@ model:
                 net:
                   class_path: hepattn.models.Dense
                   init_args:
-                    input_size: 16
+                    input_size: 17
+                    hidden_layers: [128]
                     output_size: *dim
+                    activation: SwiGLU
                 posenc:
-                  class_path: hepattn.models.FourierPositionEncoder
+                  class_path: hepattn.models.PositionEncoder
                   init_args:
                     input_name: hit
                     fields:
@@ -162,27 +180,57 @@ model:
                       - eta
                       - phi
                     dim: *dim
-                    scale: 0.1
 
       encoder:
         class_path: hepattn.models.Encoder
         init_args:
-          num_layers: 10
+          num_layers: 8
           dim: *dim
           attn_type: flash
           window_size: 512
           window_wrap: true
           hybrid_norm: true
-          norm: RMSNorm
-
+          norm: CustomLayerNorm
+          dense_kwargs: {activation: SwiGLU}
+          attn_kwargs: {bias: false}
       decoder:
-        num_decoder_layers: 4
+        dynamic_queries: true
+        dynamic_query_source: hit
+        num_decoder_layers: &num_dec_layers 3
         num_queries: *num_objects
-        mask_attention: true
+        mask_attention: false
+        local_strided_attn: true
+        window_size: 64
+        window_wrap: true
+        block_size: 16
         use_query_masks: false
+        unmask_all_false: false
+        intermediate_tasks: false
         decoder_layer_config:
           dim: *dim
-          norm: RMSNorm
+          norm: CustomLayerNorm
+          hybrid_norm: true
+          attn_kwargs: {bias: false, attn_type: flex}
+          bidirectional_ca: false
+
+      encoder_tasks:
+        class_path: torch.nn.ModuleList
+        init_args:
+          modules:
+            - class_path: hepattn.models.task.ClassificationTask
+              init_args:
+                name: query_init
+                input_object: hit
+                classes: ["is_first"]
+                loss_weight: 1.0
+                threshold: 0.25
+                permute_loss: false
+                net:
+                  class_path: hepattn.models.Dense
+                  init_args:
+                    input_size: *dim
+                    hidden_layers: [256]
+                    output_size: 1
 
       tasks:
         class_path: torch.nn.ModuleList
@@ -194,12 +242,15 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
-                losses:
-                  object_bce: 1.0
-                costs:
-                  object_bce: 1.0
+                has_intermediate_loss: false
+                has_first_layer_loss: false
                 dim: *dim
+                losses:
+                  object_bce: 0.1
+                costs:
+                  object_bce: 0.1
                 null_weight: 1.0
+
             - class_path: hepattn.models.task.ObjectHitMaskTask
               init_args:
                 name: track_hit_valid
@@ -207,19 +258,31 @@ model:
                 input_object: query
                 output_object: track
                 target_object: particle
-                losses:
-                  mask_bce: 100.0
-                  #mask_dice: 2.0
-                  mask_focal: 50.0
-                costs:
-                  mask_bce: 100.0
-                  #mask_dice: 2.0
-                  mask_focal: 50.0
+                has_intermediate_loss: false
                 dim: *dim
+                losses:
+                  mask_dice: 2.0
+                  mask_focal: 25.0
+                costs:
+                  mask_dice: 2.0
+                  mask_focal: 25.0
                 null_weight: 1.0
+
+            - class_path: hepattn.models.task.IoUPredictionTask
+              init_args:
+                name: track_iou
+                input_object: query
+                mask_task_name: track_hit_valid
+                mask_logit_key: track_hit_logit
+                target_mask_key: particle_hit
+                dim: *dim
+                loss_weight: 2.0
 
       matcher:
         class_path: hepattn.models.matcher.Matcher
         init_args:
           default_solver: scipy
           adaptive_solver: true
+          n_jobs: *num_dec_layers
+          parallel_solver: true
+          parallel_backend: process

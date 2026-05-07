@@ -8,6 +8,8 @@ from lightning import LightningDataModule
 from lightning.pytorch.utilities.rank_zero import rank_zero_info
 from torch.utils.data import DataLoader, Dataset
 
+HIT_COORDINATE_SCALE = 0.01
+
 
 def is_valid_file(path):
     path = Path(path)
@@ -130,7 +132,7 @@ class TrackMLDataset(Dataset):
             targets[f"{feature}_valid"] = inputs[f"{feature}_valid"]
 
             for field in fields:
-                inputs[f"{feature}_{field}"] = torch.from_numpy(feature_hits[field].values).unsqueeze(0).half()
+                inputs[f"{feature}_{field}"] = torch.from_numpy(feature_hits[field].to_numpy(copy=True)).unsqueeze(0).half()
 
         # Create the targets for whether a particle slot is used or not
         if num_particles > self.event_max_num_particles:
@@ -145,9 +147,9 @@ class TrackMLDataset(Dataset):
         targets["particle_valid"] = torch.cat([torch.full((num_particles,), True), torch.full((num_padding,), False)]).unsqueeze(0)
 
         # Create the mask targets
-        selected_particle_ids = torch.from_numpy(particles["particle_id"].values)
+        selected_particle_ids = torch.from_numpy(particles["particle_id"].to_numpy(copy=True))
         particle_ids = torch.cat([selected_particle_ids, torch.full((num_padding,), -999)])
-        hit_particle_ids = torch.from_numpy(hits["particle_id"].values)
+        hit_particle_ids = torch.from_numpy(hits["particle_id"].to_numpy(copy=True))
         targets["particle_hit_valid"] = (particle_ids.unsqueeze(-1) == hit_particle_ids.unsqueeze(-2)).unsqueeze(0)
 
         # Store particle and hit IDs for dynamic query selection
@@ -157,9 +159,11 @@ class TrackMLDataset(Dataset):
         # Create the hit filter targets (note this ignores the event_max_num_particles filtering)
         for target_feature, fields in self.targets.items():
             if "on_valid_particle" in fields:
-                targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy()).unsqueeze(0)
+                targets[f"{target_feature}_on_valid_particle"] = torch.from_numpy(hits["on_valid_particle"].to_numpy(copy=True)).unsqueeze(0)
             if "is_first" in fields:
-                targets[f"{target_feature}_is_first"] = torch.from_numpy(hits["is_first"].to_numpy()).unsqueeze(0)
+                targets[f"{target_feature}_is_first"] = torch.from_numpy(hits["is_first"].to_numpy(copy=True)).unsqueeze(0)
+            if "is_last" in fields:
+                targets[f"{target_feature}_is_last"] = torch.from_numpy(hits["is_last"].to_numpy(copy=True)).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([self.sample_ids[idx]], dtype=torch.int32)
@@ -170,7 +174,7 @@ class TrackMLDataset(Dataset):
                 # Null target/particle slots are filled with nans
                 # This acts as a sanity check that we correctly mask out null slots in the loss
                 x = torch.full((self.event_max_num_particles,), torch.nan)
-                x[:num_particles] = torch.from_numpy(particles[field].to_numpy()[: self.event_max_num_particles])
+                x[:num_particles] = torch.from_numpy(particles[field].to_numpy(copy=True)[: self.event_max_num_particles])
                 targets[f"particle_{field}"] = x.unsqueeze(0)
 
         return inputs, targets
@@ -187,7 +191,7 @@ class TrackMLDataset(Dataset):
 
         # Scale the input coordinates to in meters so they are ~ 1
         for coord in ["x", "y", "z"]:
-            hits[coord] *= 0.01
+            hits[coord] *= HIT_COORDINATE_SCALE
 
         # Add extra hit fields
         hits["r"] = np.sqrt(hits["x"] ** 2 + hits["y"] ** 2)
@@ -237,12 +241,15 @@ class TrackMLDataset(Dataset):
         # Mark which hits are on a valid / reconstructable particle, for the hit filter
         hits["on_valid_particle"] = hits["particle_id"].isin(particles["particle_id"])
 
-        # Mark which hits are the first (innermost) hit on each particle track
+        # Mark which hits are the first (innermost) and last (outermost) hit on each particle track
         # Only calculate for hits on valid particles
         valid_hits = hits[hits["on_valid_particle"]]
         first_hit_indices = valid_hits.groupby("particle_id")["r"].idxmin()
         hits["is_first"] = False
         hits.loc[first_hit_indices, "is_first"] = True
+        last_hit_indices = valid_hits.groupby("particle_id")["r"].idxmax()
+        hits["is_last"] = False
+        hits.loc[last_hit_indices, "is_last"] = True
 
         # Sanity checks
         assert len(particles) != 0, "No particles remaining - loosen selection!"
@@ -303,6 +310,7 @@ class TrackMLDataset(Dataset):
         # Create the hit filter targets (random boolean)
         targets["hit_on_valid_particle"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
         targets["hit_is_first"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
+        targets["hit_is_last"] = torch.randint(0, 2, (num_hits,), dtype=torch.bool).unsqueeze(0)
 
         # Add sample ID
         targets["sample_id"] = torch.tensor([idx], dtype=torch.int32)
