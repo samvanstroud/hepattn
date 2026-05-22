@@ -20,42 +20,148 @@ class TrackMLTracker(ModelWrapper):
         super().__init__(name, model, lrs_config, optimizer, mtl)
 
     @staticmethod
-    def _collect_pred_hit_masks(task_preds: dict[str, torch.Tensor]) -> torch.Tensor | None:
-        masks = [value.bool() for key, value in task_preds.items() if key.startswith("track_") and key.endswith("_valid")]
+    def _track_hit_mask_pred_map(layer_preds: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+        pred_map: dict[str, torch.Tensor] = {}
+        for task_preds in layer_preds.values():
+            if not isinstance(task_preds, dict):
+                continue
+            for key, value in task_preds.items():
+                if key == "track_valid":
+                    continue
+                if key.startswith("track_") and key.endswith("_valid"):
+                    constituent = key[len("track_") : -len("_valid")]
+                    pred_map[constituent] = value
+
+        if len(pred_map) > 1 and "key" in pred_map:
+            pred_map.pop("key")
+
+        return pred_map
+
+    @classmethod
+    def _collect_pred_hit_masks(cls, layer_preds: dict[str, dict[str, torch.Tensor]]) -> torch.Tensor | None:
+        masks = [value.bool() for value in cls._track_hit_mask_pred_map(layer_preds).values()]
         if not masks:
             return None
         if len(masks) == 1:
             return masks[0]
         return torch.cat(masks, dim=-1)
 
-    @staticmethod
+    @classmethod
+    def _pred_true_hit_mask_map(
+        cls,
+        layer_preds: dict[str, dict[str, torch.Tensor]],
+        targets: dict[str, torch.Tensor],
+    ) -> dict[str, tuple[torch.Tensor, torch.Tensor]]:
+        mask_map: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+
+        for constituent, pred_mask in cls._track_hit_mask_pred_map(layer_preds).items():
+            target_key = None
+            candidate_keys = [f"particle_{constituent}_hit_valid", f"particle_{constituent}_valid", "particle_hit_valid"]
+            for key in candidate_keys:
+                target = targets.get(key)
+                if target is not None and target.shape == pred_mask.shape:
+                    target_key = key
+                    break
+
+            if target_key is None:
+                continue
+
+            mask_map[constituent] = (pred_mask.bool(), targets[target_key].bool())
+
+        return mask_map
+
+    @classmethod
     def _collect_pred_true_hit_masks(
-        task_preds: dict[str, torch.Tensor],
+        cls,
+        layer_preds: dict[str, dict[str, torch.Tensor]],
         targets: dict[str, torch.Tensor],
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         pred_masks: list[torch.Tensor] = []
         true_masks: list[torch.Tensor] = []
 
-        for key, pred_mask in task_preds.items():
-            if not (key.startswith("track_") and key.endswith("_valid")):
-                continue
-
-            constituent = key[len("track_") : -len("_valid")]
-            target_key = f"particle_{constituent}_valid"
-            if target_key not in targets:
-                if "particle_hit_valid" in targets and targets["particle_hit_valid"].shape == pred_mask.shape:
-                    target_key = "particle_hit_valid"
-                else:
-                    continue
-
-            pred_masks.append(pred_mask.bool())
-            true_masks.append(targets[target_key].bool())
+        for pred_mask, true_mask in cls._pred_true_hit_mask_map(layer_preds, targets).values():
+            pred_masks.append(pred_mask)
+            true_masks.append(true_mask)
 
         if not pred_masks:
             return None, None
         if len(pred_masks) == 1:
             return pred_masks[0], true_masks[0]
         return torch.cat(pred_masks, dim=-1), torch.cat(true_masks, dim=-1)
+
+    def _log_avg_num_valid_hits(
+        self,
+        stage: str,
+        metric_prefix: str,
+        mask: torch.Tensor,
+        query_mask: torch.Tensor | None,
+    ) -> None:
+        num_valid = mask.sum(-1).float()
+        frac_valid = num_valid / mask.shape[-1]
+
+        if query_mask is None:
+            self.log(f"{stage}/{metric_prefix}avg_num_valid_hits", num_valid.mean(), sync_dist=True)
+            self.log(f"{stage}/{metric_prefix}avg_frac_valid_hits", frac_valid.mean(), sync_dist=True)
+            return
+
+        valid_num_valid = num_valid[query_mask]
+        valid_frac_valid = frac_valid[query_mask]
+        if valid_num_valid.numel() > 0:
+            self.log(f"{stage}/{metric_prefix}avg_num_valid_hits", valid_num_valid.mean(), sync_dist=True)
+        if valid_frac_valid.numel() > 0:
+            self.log(f"{stage}/{metric_prefix}avg_frac_valid_hits", valid_frac_valid.mean(), sync_dist=True)
+
+    def _log_hit_mask_performance(
+        self,
+        pred_hit_masks: torch.Tensor,
+        true_hit_masks: torch.Tensor,
+        pred_valid: torch.Tensor,
+        true_valid: torch.Tensor,
+        stage: str,
+        metric_prefix: str = "",
+    ) -> None:
+        hit_tp = (pred_hit_masks & true_hit_masks).sum(-1).float()
+        hit_p = pred_hit_masks.sum(-1).float()
+        hit_t = true_hit_masks.sum(-1).float()
+
+        true_relevant = true_valid & (hit_t > 0)
+        pred_relevant = pred_valid & (hit_p > 0)
+
+        hit_eff = torch.where(hit_t > 0, hit_tp / hit_t, torch.zeros_like(hit_tp))
+        hit_pur = torch.where(hit_p > 0, hit_tp / hit_p, torch.zeros_like(hit_tp))
+
+        for wp in [0.5, 0.75, 1.0]:
+            effs = (hit_eff >= wp) & pred_valid & true_relevant
+            purs = (hit_pur >= wp) & true_valid & pred_relevant
+
+            true_counts = true_relevant.float().sum(-1)
+            pred_counts = pred_relevant.float().sum(-1)
+
+            roi_effs = torch.where(true_counts > 0, effs.float().sum(-1) / true_counts, torch.nan)
+            roi_purs = torch.where(pred_counts > 0, purs.float().sum(-1) / pred_counts, torch.nan)
+
+            valid_roi_effs = roi_effs[~roi_effs.isnan()]
+            valid_roi_purs = roi_purs[~roi_purs.isnan()]
+
+            if valid_roi_effs.numel() > 0:
+                self.log(f"{stage}/{metric_prefix}p{wp}_eff", valid_roi_effs.mean(), sync_dist=True)
+            if valid_roi_purs.numel() > 0:
+                self.log(f"{stage}/{metric_prefix}p{wp}_pur", valid_roi_purs.mean(), sync_dist=True)
+
+        nh_per_true = true_hit_masks.sum(-1).float()[true_relevant]
+        nh_per_pred = pred_hit_masks.sum(-1).float()[pred_relevant]
+
+        if nh_per_true.numel() > 0:
+            self.log(f"{stage}/{metric_prefix}nh_per_particle", nh_per_true.mean(), sync_dist=True)
+        if nh_per_pred.numel() > 0:
+            self.log(f"{stage}/{metric_prefix}nh_per_track", nh_per_pred.mean(), sync_dist=True)
+
+        num_hits_total = float(pred_hit_masks.shape[-1])
+        num_hits_valid = true_hit_masks.sum().float().item()
+        num_hits_noise = num_hits_total - num_hits_valid
+        self.log(f"{stage}/{metric_prefix}num_hits", num_hits_total, sync_dist=True)
+        self.log(f"{stage}/{metric_prefix}num_hits_valid", num_hits_valid, sync_dist=True)
+        self.log(f"{stage}/{metric_prefix}num_hits_noise", num_hits_noise, sync_dist=True)
 
     def _augment_test_targets_with_event_counts(
         self,
@@ -116,24 +222,12 @@ class TrackMLTracker(ModelWrapper):
 
         # log intermediate layer mask predictions
         for layer_name, layer_preds in preds.items():
-            # Skip layers that don't have track_hit_valid task (e.g., encoder layer)
-            if "track_hit_valid" not in layer_preds:
-                continue
-            mask = self._collect_pred_hit_masks(layer_preds["track_hit_valid"])
+            mask = self._collect_pred_hit_masks(layer_preds)
             if mask is not None:
-                num_valid = mask.sum(-1).float()
-                frac_valid = num_valid / mask.shape[-1]
+                self._log_avg_num_valid_hits(stage, f"{layer_name}_", mask, query_mask)
 
-                if query_mask is None:
-                    self.log(f"{stage}/{layer_name}_avg_num_valid_hits", torch.mean(num_valid), sync_dist=True)
-                    self.log(f"{stage}/{layer_name}_avg_frac_valid_hits", torch.mean(frac_valid), sync_dist=True)
-                else:
-                    valid_num_valid = num_valid[query_mask]
-                    valid_frac_valid = frac_valid[query_mask]
-                    if valid_num_valid.numel() > 0:
-                        self.log(f"{stage}/{layer_name}_avg_num_valid_hits", valid_num_valid.mean(), sync_dist=True)
-                    if valid_frac_valid.numel() > 0:
-                        self.log(f"{stage}/{layer_name}_avg_frac_valid_hits", valid_frac_valid.mean(), sync_dist=True)
+            for constituent, constituent_mask in self._track_hit_mask_pred_map(layer_preds).items():
+                self._log_avg_num_valid_hits(stage, f"{layer_name}_{constituent}_", constituent_mask.bool(), query_mask)
 
         # Just log predictions from the final layer
         preds = preds["final"]
@@ -147,56 +241,30 @@ class TrackMLTracker(ModelWrapper):
             pred_valid = pred_valid & query_mask
 
         # Set the masks of any track slots that are not used as null
-        pred_mask, true_mask = self._collect_pred_true_hit_masks(preds["track_hit_valid"], targets)
+        pred_mask, true_mask = self._collect_pred_true_hit_masks(preds, targets)
         if pred_mask is None or true_mask is None:
             return
         pred_hit_masks = pred_mask & pred_valid.unsqueeze(-1)
         true_hit_masks = true_mask & true_valid.unsqueeze(-1)
+        self._log_hit_mask_performance(pred_hit_masks, true_hit_masks, pred_valid, true_valid, stage)
 
-        # Calculate the true/false positive rates between the predicted and true masks
-        # Number of hits that were correctly assigned to the track
-        hit_tp = (pred_hit_masks & true_hit_masks).sum(-1)
-
-        # Number of predicted hits on the track
-        hit_p = pred_hit_masks.sum(-1)
-
-        # True number of hits on the track
-        hit_t = true_hit_masks.sum(-1)
-
-        # Calculate the efficiency and purity at differnt matching working points
-        for wp in [0.5, 0.75, 1.0]:
-            both_valid = true_valid & pred_valid
-
-            effs = (hit_tp / hit_t >= wp) & both_valid
-            purs = (hit_tp / hit_p >= wp) & both_valid
-
-            roi_effs = effs.float().sum(-1) / true_valid.float().sum(-1)
-            roi_purs = purs.float().sum(-1) / pred_valid.float().sum(-1)
-
-            mean_eff = roi_effs.nanmean()
-            mean_pur = roi_purs.nanmean()
-
-            self.log(f"{stage}/p{wp}_eff", mean_eff, sync_dist=True)
-            self.log(f"{stage}/p{wp}_pur", mean_pur, sync_dist=True)
+        for constituent, (constituent_pred_mask, constituent_true_mask) in self._pred_true_hit_mask_map(preds, targets).items():
+            constituent_pred_hit_masks = constituent_pred_mask & pred_valid.unsqueeze(-1)
+            constituent_true_hit_masks = constituent_true_mask & true_valid.unsqueeze(-1)
+            self._log_hit_mask_performance(
+                constituent_pred_hit_masks,
+                constituent_true_hit_masks,
+                pred_valid,
+                true_valid,
+                stage,
+                metric_prefix=f"{constituent}_",
+            )
 
         pred_num = pred_valid.sum(-1)
-
-        nh_per_true = true_hit_masks.sum(-1).float()[true_valid].mean()
-        nh_per_pred = pred_hit_masks.sum(-1).float()[pred_valid].mean()
-
-        self.log(f"{stage}/nh_per_particle", torch.mean(nh_per_true.float()), sync_dist=True)
-        self.log(f"{stage}/nh_per_track", torch.mean(nh_per_pred.float()), sync_dist=True)
 
         self.log(f"{stage}/num_tracks", torch.mean(pred_num.float()), sync_dist=True)
         true_num = true_valid.sum(-1)
         self.log(f"{stage}/num_particles", torch.mean(true_num.float()), sync_dist=True)
-
-        num_hits_total = float(pred_hit_masks.shape[-1])
-        num_hits_valid = true_hit_masks.sum().float().item()
-        num_hits_noise = num_hits_total - num_hits_valid
-        self.log(f"{stage}/num_hits", num_hits_total, sync_dist=True)
-        self.log(f"{stage}/num_hits_valid", num_hits_valid, sync_dist=True)
-        self.log(f"{stage}/num_hits_noise", num_hits_noise, sync_dist=True)
 
     def test_step(
         self,

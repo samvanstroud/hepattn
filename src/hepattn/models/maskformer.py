@@ -92,14 +92,11 @@ class MaskFormer(nn.Module):
             key_slices[input_name] = slice(key_start, key_start + n_objects)
             key_start += n_objects
 
-            # These masks/slices can be used to pick out specific
-            # objects after we have merged them all together.
-            # Normally only needed when not doing unified decoding,
-            # but also required for dynamic queries with a sorter.
-            if (not self.unified_decoding) or (self.unified_decoding and self.decoder.dynamic_queries and self.sorter is not None):
-                device = inputs[input_name + "_valid"].device
-                mask = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1)
-                x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
+            # Keep per-input masks available so unified decoding can still
+            # materialize per-input views from the merged representation.
+            device = inputs[input_name + "_valid"].device
+            mask = torch.cat([torch.full((inputs[i + "_valid"].shape[-1],), i == input_name, device=device) for i in self.input_names], dim=-1)
+            x[f"key_is_{input_name}"] = mask.unsqueeze(0).expand(batch_size, -1)
 
         # Merge the input constituents and the padding mask into a single set
         x["key_embed"] = torch.concatenate([x[input_name + "_embed"] for input_name in self.input_names], dim=-2)
@@ -151,8 +148,8 @@ class MaskFormer(nn.Module):
                 x[f"{self.dynamic_query_source}_embed"] = x["key_embed"][:, source_slice, :]
                 x[f"{self.dynamic_query_source}_valid"] = x["key_valid_full"][:, source_slice]
 
-        # Unmerge the updated features back into the separate input types only if not doing unified decoding
-        if not self.unified_decoding:
+        # Keep per-input views synchronized with the merged representation.
+        if self.unified_decoding or len(self.input_names) > 1:
             x = unmerge_inputs(x, self.input_names)
 
         # Run encoder tasks

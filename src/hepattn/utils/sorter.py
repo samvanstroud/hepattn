@@ -50,6 +50,8 @@ class Sorter(nn.Module):
         # Include merged "key" for unified decoding targets if present.
         input_names = [*self.input_names, "key"]
         key_sort_idx = None
+        key_aligned_prefixes = ("paper_hit_", "paper_truth_")
+        key_aligned_exact_keys = {"paper_hit_is_pixel", "paper_hit_is_strip"}
 
         for input_name in input_names:
             if input_name == "key":
@@ -63,17 +65,33 @@ class Sorter(nn.Module):
                 sort_idx = torch.argsort(sort_fields[f"{input_name}_{self.input_sort_field}"], dim=-1)
 
             for key, x in targets.items():
-                if x is None or input_name not in key:
+                if x is None:
+                    continue
+
+                if input_name == "key" and (key.startswith(key_aligned_prefixes) or key in key_aligned_exact_keys):
+                    if x.ndim != 2 or x.shape[1] != sort_idx.shape[-1]:
+                        continue
+                    sort_dim = 1
+                    this_sort_idx = sort_idx
+                    shape_before = x.shape
+                    targets[key] = torch.gather(x, sort_dim, this_sort_idx)
+                    assert targets[key].shape == shape_before, f"Shape mismatch after sorting: {targets[key].shape} != {shape_before} for key {key}"
+                    continue
+
+                if input_name not in key:
                     continue
 
                 # sort target mask
                 if x.ndim == 3:
+                    if x.shape[2] != sort_idx.shape[-1]:
+                        continue
                     sort_dim = 2
-                    this_sort_idx = sort_idx
                     this_sort_idx = sort_idx.unsqueeze(1).expand_as(x)
 
                 # sort target for input constituent
                 elif x.ndim == 2:
+                    if x.shape[1] != sort_idx.shape[-1]:
+                        continue
                     sort_dim = 1
                     this_sort_idx = sort_idx
                 else:

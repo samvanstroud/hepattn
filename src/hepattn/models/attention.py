@@ -14,7 +14,7 @@ except ImportError:
         flash_attn_varlen_func = None  # ty: ignore [conflicting-declarations]
 
 from torch import Size, Tensor, nn
-from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention
+from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, create_block_mask, flex_attention
 from torch.nn.functional import scaled_dot_product_attention
 
 from hepattn.models.norm import NORM_TYPES
@@ -61,6 +61,42 @@ def merge_masks(
         merged_mask = attn_mask & merged_mask if merged_mask is not None else attn_mask
 
     return merged_mask
+
+
+def merge_flex_masks(
+    q_mask: Tensor | None,
+    kv_mask: Tensor | None,
+    attn_mask: BlockMask | None,
+    q_shape: Size,
+    k_shape: Size,
+    device: torch.device,
+) -> BlockMask | None:
+    """Create a flex BlockMask that combines padding masks with an optional existing BlockMask."""
+    if q_mask is None and kv_mask is None and attn_mask is None:
+        return None
+
+    batch_size = q_shape[0]
+    q_len = q_shape[-2]
+    kv_len = k_shape[-2]
+
+    if batch_size != 1:
+        raise AssertionError("Flex attention with q/kv padding masks currently only supports batch size of 1.")
+
+    q_mask = q_mask.bool() if q_mask is not None else None
+    kv_mask = kv_mask.bool() if kv_mask is not None else None
+    orig_mod = attn_mask.mask_mod if attn_mask is not None else None
+
+    def mask_mod(b, h, q_idx, kv_idx):
+        valid = True
+        if orig_mod is not None:
+            valid = orig_mod(b, h, q_idx, kv_idx)
+        if q_mask is not None:
+            valid = valid & q_mask[b, q_idx]
+        if kv_mask is not None:
+            valid = valid & kv_mask[b, kv_idx]
+        return valid
+
+    return create_block_mask(mask_mod, B=batch_size, H=None, Q_LEN=q_len, KV_LEN=kv_len, device=str(device))
 
 
 def unpad_for_flash_varlen(x: Tensor, kv_mask: Tensor) -> tuple[Tensor, Tensor, dict]:
@@ -351,8 +387,8 @@ class Attention(nn.Module):
 
         # Check that the specified attention backend actualy supports kv masking / jagged inputs
         if kv_mask is not None:
-            msg = f"Only the backends {VARLEN_ATTN_TYPES} support kv masking"
-            assert self.attn_type in VARLEN_ATTN_TYPES, msg
+            msg = f"Only the backends {VARLEN_ATTN_TYPES + ['flex']} support kv masking"
+            assert self.attn_type in [*VARLEN_ATTN_TYPES, "flex"], msg
 
         if attn_mask is not None:
             msg = f"Only the backends {ATTN_MASK_ATTN_TYPES} support attention masking"
@@ -376,7 +412,7 @@ class Attention(nn.Module):
         # Fused attention
         if self.attn_type == "flex":
             assert isinstance(attn_mask, BlockMask) or attn_mask is None, "Flex attention requires a BlockMask for attention masking."
-            assert not kv_mask, "Flex attention with key/value padding masks is not supported yet."
+            attn_mask = merge_flex_masks(q_mask, kv_mask, attn_mask, q_shape, kv_shape, q.device)
             # Batch size > 1 only supported when no block_mask is provided
             if attn_mask is not None:
                 assert q.shape[0] == 1, "Flex attention with block_mask currently only supports batch size of 1."

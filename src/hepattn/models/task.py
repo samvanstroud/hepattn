@@ -21,6 +21,38 @@ REGRESSION_LOSS_FNS = {
 RegressionLossType = Literal["l1", "l2", "smooth_l1"]
 
 
+def _resolve_mask_target(
+    targets: dict[str, Tensor],
+    base_key: str,
+    target_field: str,
+    reference_shape: torch.Size | None = None,
+) -> Tensor:
+    candidate_keys: list[str] = []
+    if target_field == "valid" and not base_key.endswith("_hit"):
+        candidate_keys.append(f"{base_key}_hit_valid")
+    candidate_keys.append(f"{base_key}_{target_field}")
+
+    present_targets: list[tuple[str, Tensor]] = []
+    for key in dict.fromkeys(candidate_keys):
+        if key not in targets:
+            continue
+        target = targets[key]
+        present_targets.append((key, target))
+        if reference_shape is None or target.shape == reference_shape:
+            return target
+
+    if present_targets:
+        found_shapes = ", ".join(f"{key}: {tuple(target.shape)}" for key, target in present_targets)
+        if reference_shape is not None:
+            raise ValueError(
+                f"No mask target for {base_key!r}/{target_field!r} matched expected shape {tuple(reference_shape)}. "
+                f"Found {found_shapes}."
+            )
+        return present_targets[0][1]
+
+    raise KeyError(f"Missing mask target for {base_key!r}/{target_field!r}. Tried: {candidate_keys}")
+
+
 class Task(nn.Module, ABC):
     """Abstract base class for all tasks.
 
@@ -591,7 +623,12 @@ class ObjectHitMaskTask(Task):
 
     def cost(self, outputs: dict[str, Tensor], targets: dict[str, Tensor]) -> dict[str, Tensor]:
         output = outputs[self.output_object_hit + "_logit"].detach().to(torch.float32)
-        target = targets[self.target_object_hit + "_" + self.target_field].detach().to(output.dtype)
+        target = _resolve_mask_target(
+            targets,
+            self.target_object_hit,
+            self.target_field,
+            reference_shape=output.shape,
+        ).detach().to(output.dtype)
 
         hit_pad = targets[self.input_constituent + "_valid"]
 
@@ -608,7 +645,12 @@ class ObjectHitMaskTask(Task):
         layer_outputs: dict[str, dict[str, Tensor]] | None = None,
     ) -> dict[str, Tensor]:
         output = outputs[self.output_object_hit + "_logit"]
-        target = targets[self.target_object_hit + "_" + self.target_field].type_as(output)
+        target = _resolve_mask_target(
+            targets,
+            self.target_object_hit,
+            self.target_field,
+            reference_shape=output.shape,
+        ).type_as(output)
 
         hit_pad = targets[self.input_constituent + "_valid"]
         object_pad = targets[self.target_object + "_valid"]
@@ -741,7 +783,12 @@ class IoUPredictionTask(Task):
         pred_probs = mask_logits.sigmoid()
 
         # Get target mask
-        target = targets[self.target_mask_key + "_" + self.target_field].type_as(mask_logits)
+        target = _resolve_mask_target(
+            targets,
+            self.target_mask_key,
+            self.target_field,
+            reference_shape=mask_logits.shape,
+        ).type_as(mask_logits)
 
         # Calculate the actual IoU between predicted and target masks
         iou_target = self.calculate_iou(pred_probs, target)
