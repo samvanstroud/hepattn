@@ -109,8 +109,7 @@ def plot_roi_display(inputs, targets, batch_idx, plot_dir):
 
     atlasify(
         "Simulation Internal",
-        rf"$\sqrt{{s}} = 13\,\mathrm{{TeV}},\; Z'\!\rightarrow q\bar{{q}}$"
-        + f"\nROI {roi_id}: {num_pix} pixel hits, {num_tracks} tracks",
+        rf"$\sqrt{{s}} = 13\,\mathrm{{TeV}},\; Z'\!\rightarrow q\bar{{q}}$" + f"\nROI {roi_id}: {num_pix} pixel hits, {num_tracks} tracks",
         sub_font_size=SUB_FONTSIZE,
     )
 
@@ -141,10 +140,12 @@ def main():
     batch_idx = torch.argmax(max_sharing_per_roi)
     max_shared = max_sharing_per_roi[batch_idx].item()
 
-    print(f"Plotting ROI {targets['sample_id'][batch_idx].item()} "
-          f"(most-shared pixel has {max_shared} tracks, "
-          f"{targets['sudo_valid'][batch_idx].sum().item()} total tracks, "
-          f"{inputs['pix_valid'][batch_idx].sum().item()} pixel hits)")
+    print(
+        f"Plotting ROI {targets['sample_id'][batch_idx].item()} "
+        f"(most-shared pixel has {max_shared} tracks, "
+        f"{targets['sudo_valid'][batch_idx].sum().item()} total tracks, "
+        f"{inputs['pix_valid'][batch_idx].sum().item()} pixel hits)"
+    )
 
     plot_roi_display(inputs, targets, batch_idx, PLOT_DIR)
     print(f"Plots saved to {PLOT_DIR}")

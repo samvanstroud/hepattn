@@ -156,15 +156,19 @@ def main():
     # ── 2D hit maps ──────────────────────────────────────────────────────
 
     plot_2d_scatter(
-        pix["pix_x"].numpy(), pix["pix_y"].numpy(),
-        r"Pixel $x$ [mm]", r"Pixel $y$ [mm]",
+        pix["pix_x"].numpy(),
+        pix["pix_y"].numpy(),
+        r"Pixel $x$ [mm]",
+        r"Pixel $y$ [mm]",
         f"Pixel Hits $x$-$y$ ({n_rois} ROIs)",
         "pix_xy",
     )
 
     plot_2d_scatter(
-        pix["pix_z"].numpy(), pix["pix_r"].numpy(),
-        r"Pixel $z$ [mm]", r"Pixel $r$ [mm]",
+        pix["pix_z"].numpy(),
+        pix["pix_r"].numpy(),
+        r"Pixel $z$ [mm]",
+        r"Pixel $r$ [mm]",
         f"Pixel Hits $z$-$r$ ({n_rois} ROIs)",
         "pix_zr",
     )
