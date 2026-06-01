@@ -12,8 +12,6 @@ import scipy
 import torch
 from torch import nn
 
-from reconstruct_anything.utils.import_utils import check_import_safe
-
 _POOL_LOCK = Lock()
 _THREAD_POOLS: dict[int, ThreadPool] = {}
 _PROCESS_POOLS = {}
@@ -72,24 +70,19 @@ SOLVERS = {
     "scipy": solve_scipy,
 }
 
-# Some compiled extension can cause SIGKILL errors if compiled for the wrong arch
-# So we have to check they won't kill everything when we import them
-if check_import_safe("lap1015"):
-    import lap1015
+try:
+    from py_lap_solver.solvers import Solvers as _PyLapSolvers
 
-    def solve_1015_early(cost):
-        return lap1015.lap_early(cost)
+    if _PyLapSolvers.Lap1015Sequential is not None:
+        _lap1015_solver = _PyLapSolvers.Lap1015Sequential
 
-    def solve_1015_late(cost):
-        return lap1015.lap_late(cost)
+        def solve_lap1015(cost):
+            return _lap1015_solver.solve_single(cost)
 
-    SOLVERS["lap1015_late"] = solve_1015_late
-    # SOLVERS["lap1015_early"] = lap1015_early
-else:
+        SOLVERS["lap1015"] = solve_lap1015
+except ImportError:
     warnings.warn(
-        """Failed to import lap1015 solver. This could be because it is not installed,
-    or because it was built targeting a different architecture than supported on the current machine.
-    Rebuilding the package on the current machine may fix this.""",
+        "py-lap-solver not installed; only scipy LAP solver available.",
         ImportWarning,
         stacklevel=2,
     )
@@ -99,12 +92,9 @@ def match_individual(solver_fn, cost: np.ndarray, default_idx: np.ndarray) -> np
     """Solve one assignment problem and pad unmatched predictions with default indices."""
     pred_idx = np.asarray(solver_fn(cost), dtype=np.int32)
 
-    if solver_fn is SOLVERS["scipy"]:
-        remaining = np.ones(default_idx.shape[0], dtype=np.bool_)
-        remaining[pred_idx] = False
-        pred_idx = np.concatenate([pred_idx, default_idx[remaining]])
-
-    return pred_idx
+    remaining = np.ones(default_idx.shape[0], dtype=np.bool_)
+    remaining[pred_idx] = False
+    return np.concatenate([pred_idx, default_idx[remaining]])
 
 
 def match_parallel(solver_fn, costs_t: np.ndarray, lengths_np: np.ndarray, pred_dim: int, n_jobs: int = 8) -> torch.Tensor:
